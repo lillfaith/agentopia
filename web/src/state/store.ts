@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { Agent, AgentStats, TownEvent, TownSnapshot } from "../../../shared/types";
 import { DEMO, api, subscribe, type AccountInfo } from "../api/client";
 
-export type PanelId = "town" | "schedules" | "tasks" | "projects" | "log" | "approvals" | "treasury" | "settings" | "new-project";
+export type PanelId = "town" | "schedules" | "tasks" | "projects" | "log" | "approvals" | "rewards" | "treasury" | "settings" | "new-project";
 
 /** A real hand-off between agents (from a task.handoff event) that the world animates. */
 export interface Errand {
@@ -104,6 +104,7 @@ export const useTown = create<UIState>((set, get) => ({
     try {
       const snapshot = await api.snapshot();
       snapshot.projects ??= [];
+      snapshot.rewards ??= { balance: 0, earnedToday: 0, dailyCap: 0, owned: [] };
       const activity = { ...get().activity };
       for (const e of snapshot.events) noteActivity(activity, e);
       // Only a multi-user server knows /api/auth/me; a self-hosted town answers 404. Asked once per sign-in.

@@ -256,6 +256,31 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE workflows ADD COLUMN project_id TEXT REFERENCES projects(id);
   CREATE INDEX idx_tasks_project ON tasks(project_id, created_at);
   `,
+
+  /* 6 — rewards: append-only coin ledger, owned cosmetics, achievements */ `
+  CREATE TABLE coin_ledger (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT NOT NULL,
+    amount       INTEGER NOT NULL,
+    reason       TEXT NOT NULL,
+    -- idempotency key: one entry per task reward, achievement or purchase
+    ref          TEXT NOT NULL UNIQUE,
+    kind         TEXT NOT NULL,
+    content_key  TEXT
+  );
+  CREATE INDEX idx_coin_ledger_kind ON coin_ledger(kind, ts);
+  CREATE INDEX idx_coin_ledger_content ON coin_ledger(content_key, ts);
+
+  CREATE TABLE owned_items (
+    item_id      TEXT PRIMARY KEY,
+    acquired_at  TEXT NOT NULL
+  );
+
+  CREATE TABLE achievements (
+    id           TEXT PRIMARY KEY,
+    unlocked_at  TEXT NOT NULL
+  );
+  `,
 ];
 
 export type Database = DatabaseSync;

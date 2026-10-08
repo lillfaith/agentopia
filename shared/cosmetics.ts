@@ -16,8 +16,10 @@ export interface WearableItem {
   slot: WearableSlot;
   icon: string;
   description: string;
-  /** Cosmetic pack the item ships in ("core" = built in). */
+  /** Cosmetic pack the item ships in ("core" = built in, free). */
   pack: string;
+  /** Price in town coins (earned from verified work; no cash value). Absent = free. */
+  price?: number;
 }
 
 /** Built-in "core" pack. All original designs. */
@@ -57,6 +59,16 @@ export const WEARABLES: WearableItem[] = [
   { id: "bouquet", name: "Bouquet", slot: "hand", icon: "💐", description: "A small bunch of flowers.", pack: "core" },
   { id: "parasol", name: "Lace parasol", slot: "hand", icon: "⛱️", description: "A frilly pink parasol.", pack: "core" },
 ];
+
+/** Boutique pack: bought with coins in the town shop. */
+WEARABLES.push(
+  { id: "star-halo", name: "Star halo", slot: "head", icon: "🌟", description: "A golden halo ringed with tiny stars.", pack: "boutique", price: 120 },
+  { id: "heart-crown", name: "Heart crown", slot: "head", icon: "💖", description: "A rose-gold band topped with little hearts.", pack: "boutique", price: 200 },
+  { id: "heart-locket", name: "Heart locket", slot: "neck", icon: "💞", description: "A gold chain with a glowing heart pendant.", pack: "boutique", price: 90 },
+  { id: "heart-wings", name: "Heart wings", slot: "back", icon: "💗", description: "Four plush hearts that flutter like wings.", pack: "boutique", price: 180 },
+  { id: "star-wand", name: "Star wand", slot: "hand", icon: "🪄", description: "A slim wand with a twinkling star.", pack: "boutique", price: 100 },
+  { id: "heart-balloon", name: "Heart balloon", slot: "hand", icon: "🎈", description: "A shiny heart balloon on a ribbon.", pack: "boutique", price: 60 },
+);
 
 export const EYE_STYLES = ["round", "sparkle", "sleepy", "happy", "dot", "wink"] as const;
 export const EXPRESSIONS = ["smile", "grin", "calm", "cat", "surprised"] as const;

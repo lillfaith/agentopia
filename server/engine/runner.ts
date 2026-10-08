@@ -6,6 +6,7 @@ import type { Store } from "../db/store.js";
 import type { LLMProvider } from "../llm/provider.js";
 import { budgetStatus } from "./budget.js";
 import { AgentExecutor } from "./executor.js";
+import { rewardTask } from "./rewards.js";
 import { Scheduler } from "./scheduler.js";
 
 /** A crashed worker's tasks are recovered at most this long after its last heartbeat. */
@@ -227,6 +228,11 @@ export class TaskRunner {
         this.store.addEvent({ type: "task.completed", agentId: task.agentId, taskId: task.id, message: `Finished: ${task.title}`, simulated: sim });
         this.flashStatus(task.agentId, task.id, "completed", `Done: ${task.title}`);
         this.onCompleted(task);
+        try {
+          rewardTask(this.store, task.id, sim);
+        } catch (err) {
+          console.error("[rewards]", err); // never let a reward problem affect the task itself
+        }
       } else if (outcome.kind === "waiting_approval") {
         this.store.updateTask(task.id, { status: "waiting_approval", releaseLease: true });
         this.store.setAgentStatus(task.agentId, "waiting_approval", "Waiting for your approval", task.id, sim);

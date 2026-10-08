@@ -12,6 +12,7 @@ import { SchedulesPanel } from "./ui/Schedules";
 import { TownPanel } from "./ui/Town";
 import { Wardrobe } from "./ui/Wardrobe";
 import { CameraPad } from "./ui/CameraPad";
+import { RewardsPanel } from "./ui/Rewards";
 import { Dock, ProviderBanner, Toasts, TopBar, useSoundEffects } from "./ui/Hud";
 
 function Hud() {
@@ -42,6 +43,7 @@ function Hud() {
       {panel === "projects" && <Projects />}
       {panel === "log" && <ActivityLog />}
       {panel === "approvals" && <ApprovalsPanel />}
+      {panel === "rewards" && <RewardsPanel />}
       {panel === "treasury" && <TreasuryPanel />}
       {panel === "settings" && <SettingsPanel />}
       {wardrobeId && <Wardrobe agentId={wardrobeId} />}

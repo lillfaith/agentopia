@@ -126,6 +126,72 @@ function FairyWings() {
   );
 }
 
+const ROSE_GOLD = { color: "#f3b6c8", metalness: 0.5, roughness: 0.3 };
+
+function Star({ outer, inner, depth, color, emissive = 0.4 }: { outer: number; inner: number; depth: number; color: string; emissive?: number }) {
+  const geom = useMemo(() => {
+    const g = new THREE.ExtrudeGeometry(starShape(outer, inner), { depth, bevelEnabled: true, bevelSize: depth * 0.3, bevelThickness: depth * 0.3, bevelSegments: 1 });
+    g.translate(0, 0, -depth / 2);
+    return g;
+  }, [outer, inner, depth]);
+  return (
+    <mesh geometry={geom}>
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={emissive} metalness={0.3} roughness={0.35} />
+    </mesh>
+  );
+}
+
+/** Boutique: four plush hearts that flutter like wings. */
+function HeartWings() {
+  const left = useRef<THREE.Group>(null);
+  const right = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    const f = Math.sin(clock.elapsedTime * 5) * 0.22;
+    if (left.current) left.current.rotation.y = -0.45 - f;
+    if (right.current) right.current.rotation.y = 0.45 + f;
+  });
+  const side = (
+    <>
+      <group position={[0.24, 0.1, 0]} rotation={[0, 0, -0.55]}>
+        <Heart size={0.24} depth={0.05} color="#ffb3cf" emissive={0.15} />
+      </group>
+      <group position={[0.18, -0.12, 0]} rotation={[0, 0, -2.3]}>
+        <Heart size={0.15} depth={0.04} color="#e6c4f5" emissive={0.15} />
+      </group>
+    </>
+  );
+  return (
+    <group position={[0, 0.08, -0.04]}>
+      <group ref={right}>{side}</group>
+      <group ref={left} scale={[-1, 1, 1]}>
+        {side}
+      </group>
+    </group>
+  );
+}
+
+/** Boutique: a heart balloon on a ribbon that bobs gently. */
+function HeartBalloon() {
+  const ref = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (ref.current) {
+      ref.current.position.y = 0.62 + Math.sin(clock.elapsedTime * 1.6) * 0.03;
+      ref.current.rotation.z = Math.sin(clock.elapsedTime * 1.1) * 0.08;
+    }
+  });
+  return (
+    <group>
+      <mesh position={[0, 0.28, 0]}>
+        <cylinderGeometry args={[0.006, 0.006, 0.56, 4]} />
+        <meshStandardMaterial color="#fff4f6" />
+      </mesh>
+      <group ref={ref} position={[0, 0.62, 0]}>
+        <Heart size={0.17} depth={0.12} color="#ff8fb8" emissive={0.12} />
+      </group>
+    </group>
+  );
+}
+
 function Steam() {
   const ref = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
@@ -150,6 +216,40 @@ function Steam() {
 
 function HeadItem({ id }: { id: string }) {
   switch (id) {
+    case "star-halo":
+      return (
+        <group position={[0, 0.3, 0]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.2, 0.016, 8, 32]} />
+            <meshStandardMaterial {...GOLD} emissive="#ffd86b" emissiveIntensity={0.5} />
+          </mesh>
+          {[0, 1, 2, 3, 4].map((i) => {
+            const a = (i / 5) * Math.PI * 2;
+            return (
+              <group key={i} position={[Math.sin(a) * 0.2, 0.02, Math.cos(a) * 0.2]} rotation={[0, a, 0]}>
+                <Star outer={0.045} inner={0.02} depth={0.015} color="#ffe27a" />
+              </group>
+            );
+          })}
+        </group>
+      );
+    case "heart-crown":
+      return (
+        <group position={[0, 0.06, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.22, 0.25, 0.12, 16, 1, true]} />
+            <meshStandardMaterial {...ROSE_GOLD} side={THREE.DoubleSide} />
+          </mesh>
+          {[0, 1, 2, 3, 4].map((i) => {
+            const a = (i / 5) * Math.PI * 2;
+            return (
+              <group key={i} position={[Math.sin(a) * 0.22, 0.12, Math.cos(a) * 0.22]} rotation={[0, a, 0]}>
+                <Heart size={0.075} depth={0.03} color={i === 0 ? "#ff6fa3" : "#ffb3cf"} emissive={i === 0 ? 0.4 : 0.1} />
+              </group>
+            );
+          })}
+        </group>
+      );
     case "ribbon-bow":
       return (
         <group position={[0.2, 0, 0.06]} rotation={[0, 0, -0.35]}>
@@ -421,6 +521,18 @@ function EyesItem({ id }: { id: string }) {
 
 function NeckItem({ id }: { id: string }) {
   switch (id) {
+    case "heart-locket":
+      return (
+        <group position={[0, -0.04, 0]} rotation={[0.18, 0, 0]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]} scale={[1.02, 0.97, 1]}>
+            <torusGeometry args={[0.5, 0.012, 6, 48]} />
+            <meshStandardMaterial {...GOLD} />
+          </mesh>
+          <group position={[0, -0.1, 0.5]}>
+            <Heart size={0.1} depth={0.04} color="#ff8fb8" emissive={0.35} />
+          </group>
+        </group>
+      );
     case "scarf":
       return (
         <group>
@@ -497,6 +609,8 @@ function NeckItem({ id }: { id: string }) {
 
 function BackItem({ id }: { id: string }) {
   switch (id) {
+    case "heart-wings":
+      return <HeartWings />;
     case "backpack":
       return (
         <group position={[0, -0.04, -0.06]}>
@@ -564,6 +678,20 @@ function BackItem({ id }: { id: string }) {
 
 function HandItem({ id }: { id: string }) {
   switch (id) {
+    case "star-wand":
+      return (
+        <group position={[0, 0.08, 0.02]}>
+          <mesh position={[0, 0.06, 0]}>
+            <cylinderGeometry args={[0.012, 0.014, 0.3, 6]} />
+            <meshStandardMaterial color="#fff4f6" roughness={0.4} />
+          </mesh>
+          <group position={[0, 0.25, 0]}>
+            <Star outer={0.075} inner={0.032} depth={0.025} color="#ffd86b" emissive={0.6} />
+          </group>
+        </group>
+      );
+    case "heart-balloon":
+      return <HeartBalloon />;
     case "book":
       return (
         <group rotation={[0.2, -0.4, 0]}>

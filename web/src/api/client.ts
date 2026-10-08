@@ -1,4 +1,4 @@
-import type { Agent, Building, Project, Schedule, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
+import type { Achievement, Agent, Building, CoinEntry, Project, Schedule, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
 
 import { DemoError, demoCall, demoSubscribe } from "../demo/demoServer";
 
@@ -115,6 +115,8 @@ export const api = {
   billing: () => call<any>("/api/billing"),
   checkout: (plan: string) => post<{ url: string }>("/api/billing/checkout", { plan }),
   billingPortal: () => post<{ url: string }>("/api/billing/portal", {}),
+  rewards: () => call<{ ledger: CoinEntry[]; achievements: Achievement[] }>("/api/rewards"),
+  buyItem: (itemId: string) => post<{ ok: true; balance: number }>("/api/shop/buy", { itemId }),
   emergencyStop: () => post<{ ok: true; cancelled: number }>("/api/system/stop", {}),
   resumeAll: () => post<{ ok: true }>("/api/system/resume", {}),
   testConnection: () => post<Verification>("/api/system/test-connection", {}),

@@ -101,6 +101,23 @@ function WardrobeInner({ agent, onClose }: { agent: Agent; onClose: () => void }
       return { ...l, wearables: w };
     });
 
+  const owned = useTown((s) => s.snapshot?.rewards.owned);
+  const load = useTown((s) => s.load);
+  const ownedSet = useMemo(() => new Set(owned ?? []), [owned]);
+  // Shop items can be tried on freely; keeping one needs it bought first (the server checks too).
+  const tryingOn = WEARABLE_SLOTS.map((slot) => look.wearables[slot])
+    .filter((id, i) => id && id !== agent.appearance.wearables[WEARABLE_SLOTS[i]])
+    .map((id) => WEARABLES.find((w) => w.id === id))
+    .filter((w): w is (typeof WEARABLES)[number] => !!w?.price && !ownedSet.has(w.id));
+  const buy = async (id: string) => {
+    try {
+      await api.buyItem(id);
+      await load();
+      push({ tone: "good", text: "Bought! ✨" });
+    } catch (err) {
+      push({ tone: "bad", text: err instanceof Error ? err.message : String(err) });
+    }
+  };
   const lookChanged = JSON.stringify(look) !== JSON.stringify(agent.appearance);
   const identityChanged = name.trim() !== agent.name || personality.trim() !== agent.personality;
   const dirty = lookChanged || identityChanged;
@@ -224,6 +241,7 @@ function WardrobeInner({ agent, onClose }: { agent: Agent; onClose: () => void }
                   <button key={w.id} className={`item ${look.wearables[slot] === w.id ? "on" : ""}`} onClick={() => wear(slot, w.id)} title={w.description}>
                     <span className="item-icon">{w.icon}</span>
                     <span>{w.name}</span>
+                    {w.price && !ownedSet.has(w.id) && <small className="muted">✨ {w.price}</small>}
                   </button>
                 ))}
               </div>
@@ -232,6 +250,18 @@ function WardrobeInner({ agent, onClose }: { agent: Agent; onClose: () => void }
         </div>
       )}
 
+      {tryingOn.length > 0 && (
+        <div className="warn-box">
+          Trying on shop items — buy them to keep them:
+          <div className="row gap-s">
+            {tryingOn.map((w) => (
+              <button key={w.id} className="btn primary" onClick={() => buy(w.id)}>
+                {w.icon} {w.name} · ✨ {w.price}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="wardrobe-actions">
         <button
           className="btn"
@@ -244,7 +274,7 @@ function WardrobeInner({ agent, onClose }: { agent: Agent; onClose: () => void }
         >
           Reset
         </button>
-        <button className="btn primary" disabled={!dirty || busy || !name.trim()} onClick={save}>
+        <button className="btn primary" disabled={!dirty || busy || !name.trim() || tryingOn.length > 0} onClick={save}>
           {busy ? "Saving…" : "Save"}
         </button>
       </div>

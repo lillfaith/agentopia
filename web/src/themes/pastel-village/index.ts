@@ -25,6 +25,7 @@ export const pastelVillage: ThemeManifest = {
       "new-project": "✨",
       log: "📜",
       approvals: "🔔",
+      rewards: "🏆",
       treasury: "💰",
       settings: "⚙️",
       overview: "🗺️",

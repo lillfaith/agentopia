@@ -13,6 +13,7 @@ import { budgetStatus } from "../engine/budget.js";
 import type { TaskRunner } from "../engine/runner.js";
 import { computeNextRun, isValidTimezone, validateCadence } from "../engine/scheduler.js";
 import { treasurySummary } from "../engine/treasury.js";
+import { achievements, buyItem, ledger, rewardsSummary, unownedWearables } from "../engine/rewards.js";
 import { runVerification } from "../engine/verify.js";
 import { startCampaignWorkflow } from "../engine/workflows.js";
 import { body, security } from "./security.js";
@@ -233,6 +234,7 @@ export function createApi(deps: ApiDeps): Hono {
     const snapshot: TownSnapshot = {
       settings: store.getSettings(),
       projects: store.listProjects(),
+      rewards: rewardsSummary(store),
       agents: store.listAgents(),
       stats: store.agentStats(),
       buildings: store.listBuildings(),
@@ -266,6 +268,8 @@ export function createApi(deps: ApiDeps): Hono {
     if (!b.ok) return b.res;
     const blocked = modelNotAllowed(b.data.model);
     if (blocked) return c.json(err(blocked), 403);
+    const locked = b.data.appearance ? unownedWearables(store, {}, b.data.appearance.wearables as Record<string, string | undefined>) : [];
+    if (locked.length) return c.json(err(`Buy ${locked.join(", ")} in the shop first`), 403);
     if (!store.getBuilding(b.data.buildingId)) return c.json(err("Unknown building"), 400);
     let id = slugify(b.data.name);
     if (store.getAgent(id)) id = `${id}-${randomUUID().slice(0, 4)}`;
@@ -298,6 +302,10 @@ export function createApi(deps: ApiDeps): Hono {
     if (!b.ok) return b.res;
     const blocked = modelNotAllowed(b.data.model);
     if (blocked) return c.json(err(blocked), 403);
+    if (b.data.appearance) {
+      const locked = unownedWearables(store, current.appearance.wearables, b.data.appearance.wearables as Record<string, string | undefined>);
+      if (locked.length) return c.json(err(`Buy ${locked.join(", ")} in the shop first`), 403);
+    }
     if (b.data.buildingId && !store.getBuilding(b.data.buildingId)) return c.json(err("Unknown building"), 400);
     const { avatar, ...rest } = b.data;
     const patch = { ...rest } as Parameters<Store["updateAgent"]>[1];
@@ -519,6 +527,15 @@ export function createApi(deps: ApiDeps): Hono {
     if (!b.ok) return b.res;
     const r = runner.decideApproval(c.req.param("id"), b.data.approve, b.data.note ?? null);
     return r.ok ? c.json({ ok: true }) : c.json(err(r.error!), 409);
+  });
+
+  // ── rewards & shop (coins are earned server-side only; there is no endpoint that grants them) ──
+  api.get("/api/rewards", (c) => c.json({ ...rewardsSummary(store), ledger: ledger(store, 50), achievements: achievements(store) }));
+  api.post("/api/shop/buy", async (c) => {
+    const b = await body(c, z.object({ itemId: z.string().min(1).max(60) }).strict());
+    if (!b.ok) return b.res;
+    const r = buyItem(store, b.data.itemId);
+    return r.ok ? c.json(r) : c.json(err(r.error), 409);
   });
 
   // ── system: emergency stop ──

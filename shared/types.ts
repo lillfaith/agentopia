@@ -247,7 +247,8 @@ export type EventType =
   | "budget.hold"
   | "usage.recorded"
   | "system.verification"
-  | "system.notice";
+  | "system.notice"
+  | "reward.earned";
 
 export interface TownEvent {
   id: number;
@@ -465,9 +466,37 @@ export interface Project {
   updatedAt: ISODate;
 }
 
+// ───────────────────────── Rewards ─────────────────────────
+
+/** Town coins: earned only for verified work, spent on cosmetics. No cash value; never purchasable or withdrawable. */
+export interface CoinEntry {
+  id: number;
+  ts: ISODate;
+  amount: number;
+  reason: string;
+  ref: string;
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  coins: number;
+  unlockedAt: ISODate | null;
+}
+
+export interface RewardsSummary {
+  balance: number;
+  /** Coins earned from tasks today (UTC), counted against the daily cap. */
+  earnedToday: number;
+  dailyCap: number;
+  owned: string[];
+}
+
 export interface TownSnapshot {
   settings: TownSettings;
   projects: Project[];
+  rewards: RewardsSummary;
   agents: Agent[];
   stats: AgentStats[];
   buildings: Building[];

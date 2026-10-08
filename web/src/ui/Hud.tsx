@@ -57,6 +57,9 @@ export function TopBar() {
           <span className="chip" onClick={() => s.openPanel("treasury")} role="button" title="Real API usage only">
             🪙 {fmtTokens(tokens)} · {fmtUsd(cost)}
           </span>
+          <span className="chip" onClick={() => s.openPanel("rewards")} role="button" title="Town coins, earned for verified work. No cash value.">
+            ✨ {snap.rewards.balance} coins
+          </span>
           {snap.status.budget.globalHold && (
             <span className="chip chip-bad" onClick={() => s.openPanel("settings")} role="button" title="A budget limit was reached; new work is paused">
               ⛔ budget paused
@@ -138,6 +141,7 @@ const DOCK: { id: PanelId; label: string }[] = [
   { id: "projects", label: "Deliverables" },
   { id: "log", label: "Activity log" },
   { id: "approvals", label: "Approvals" },
+  { id: "rewards", label: "Rewards" },
   { id: "treasury", label: "Treasury" },
   { id: "settings", label: "Settings" },
 ];
