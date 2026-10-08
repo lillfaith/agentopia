@@ -65,8 +65,8 @@ describe("pastel village layout", () => {
 
       it("keeps scenery off paths and plots", () => {
         const c = composeTown(slots);
-        const solids = [...c.trees, ...c.bushes, ...c.lamps, ...c.mushrooms];
-        expect(c.trees.length).toBeGreaterThan(40);
+        const solids = [...c.trees, ...c.bushes, ...c.lamps];
+        expect(c.trees.length).toBeGreaterThan(5);
         for (const s of solids) {
           expect(distToPaths(c.paths, s.x, s.z), `object at ${s.x.toFixed(1)},${s.z.toFixed(1)} on a path`).toBeGreaterThan(0.8);
           for (const l of Object.values(slots)) expect(inPlot(l, s.x, s.z)).toBe(false);
@@ -79,6 +79,15 @@ describe("pastel village layout", () => {
     });
   }
 
+  it("stays calm: few scenery types and a modest amount of it", () => {
+    const c = composeTown(SEEDED);
+    expect(new Set(c.trees.map((t) => t.kind))).toEqual(new Set(["round", "blossom"]));
+    expect(c.trees.length).toBeLessThan(70);
+    expect(c.bushes.length).toBeLessThan(25);
+    // flowers live only in the plaza bed (plus the hyacinth field)
+    for (const f of c.flowers) expect(Math.abs(Math.hypot(f.x, f.z) - 8.75)).toBeLessThan(0.6);
+  });
+
   it("is deterministic and stays within a scenery budget", () => {
     const a = composeTown(ALL);
     const b = composeTown(ALL);
@@ -89,11 +98,9 @@ describe("pastel village layout", () => {
 
   it("has the plaza, pier and picnic features", () => {
     const c = composeTown(SEEDED);
-    expect(c.openings.length).toBe(7); // 3 buildings + pier, picnic, garden and pond
-    expect(c.pond).not.toBeNull();
-    expect(c.garden).not.toBeNull();
+    expect(c.openings.length).toBe(5); // 3 buildings + pier and picnic
     expect(c.hedges.length).toBeGreaterThan(30);
     expect(c.picnic).not.toBeNull();
-    expect(c.hyacinths.length).toBeGreaterThan(150);
+    expect(c.hyacinths.length).toBeGreaterThan(100);
   });
 });

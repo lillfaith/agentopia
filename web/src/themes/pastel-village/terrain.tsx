@@ -84,26 +84,6 @@ function GrassTop() {
   );
 }
 
-/** Soft darker/lighter lawn patches so the meadow isn't one flat colour. */
-function MeadowPatches() {
-  const items = useMemo<Inst[]>(() => {
-    const rand = seeded(77);
-    const out: Inst[] = [];
-    for (let i = 0; i < 26; i++) {
-      const a = rand() * Math.PI * 2;
-      const r = 10 + rand() * (islandRadiusAt(a) - beachWidthAt(a) - 13);
-      out.push({ x: Math.cos(a) * r, y: 0.006, z: Math.sin(a) * r, rx: -Math.PI / 2, rz: rand() * 6, s: 4 + rand() * 5, sy: 0.6 + rand() * 0.5, color: rand() < 0.45 ? TOKENS.ground.patchDark : rand() < 0.5 ? TOKENS.ground.patchLight : TOKENS.ground.patchBlush });
-    }
-    return out;
-  }, []);
-  return (
-    <Instanced items={items}>
-      <planeGeometry args={[1, 1]} />
-      <meshBasicMaterial map={radialTexture()} transparent opacity={0.3} depthWrite={false} polygonOffset polygonOffsetFactor={-1} />
-    </Instanced>
-  );
-}
-
 function Cliffs() {
   const geom = useMemo(
     () =>
@@ -162,6 +142,7 @@ function Water({ lighting }: { lighting: LightingPreset }) {
   const foam = useRef<THREE.MeshBasicMaterial>(null);
   const water = useRef<THREE.MeshStandardMaterial>(null);
   const tmp = useMemo(() => new THREE.Color(), []);
+  const sheen = useMemo(() => new THREE.Color(), []);
   const ripples = useMemo(() => {
     const t = waterTexture().clone();
     t.repeat.set(26, 26);
@@ -171,8 +152,8 @@ function Water({ lighting }: { lighting: LightingPreset }) {
   const shallows = useMemo(
     () =>
       ringStrip([
-        { r: (a) => waterline(a) - 0.2, y: () => WATER_Y + 0.012, color: TOKENS.ground.shallows[0], alpha: 0.8 },
-        { r: (a) => waterline(a) + 1.6, y: () => WATER_Y + 0.012, color: TOKENS.ground.shallows[1], alpha: 0.45 },
+        { r: (a) => waterline(a) - 0.2, y: () => WATER_Y + 0.012, color: TOKENS.ground.shallows[0], alpha: 0.6 },
+        { r: (a) => waterline(a) + 1.6, y: () => WATER_Y + 0.012, color: TOKENS.ground.shallows[1], alpha: 0.32 },
         { r: (a) => waterline(a) + 4.2, y: () => WATER_Y + 0.012, color: TOKENS.ground.shallows[2], alpha: 0 },
       ]),
     [],
@@ -190,13 +171,14 @@ function Water({ lighting }: { lighting: LightingPreset }) {
     if (foam.current) foam.current.opacity = 0.55 + Math.sin(clock.elapsedTime * 1.3) * 0.25;
     ripples.offset.set(clock.elapsedTime * 0.004, clock.elapsedTime * 0.0025);
     // The sea picks up the sky's colour (a cheap stand-in for reflections).
-    if (water.current) water.current.emissive.lerp(tmp.set(lighting.skyTop).lerp(new THREE.Color(lighting.skyBottom), 0.35), Math.min(1, dt * 2));
+    // Pearly sea: a blush sheen blended with the sky's colour (a cheap stand-in for reflections).
+    if (water.current) water.current.emissive.lerp(tmp.set(lighting.skyTop).lerp(sheen.set(lighting.skyBottom), 0.4).lerp(sheen.set(TOKENS.ground.waterSheen), 0.5), Math.min(1, dt * 2));
   });
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, WATER_Y, 0]} receiveShadow>
         <circleGeometry args={[220, 64]} />
-        <meshStandardMaterial ref={water} map={ripples} color={TOKENS.ground.water} emissive="#62b2f6" emissiveIntensity={0.26} roughness={0.18} metalness={0.05} />
+        <meshStandardMaterial ref={water} map={ripples} color={TOKENS.ground.water} emissive="#62b2f6" emissiveIntensity={0.24} roughness={0.18} metalness={0.05} />
       </mesh>
       <mesh geometry={shallows}>
         <meshBasicMaterial vertexColors transparent depthWrite={false} />
@@ -204,7 +186,7 @@ function Water({ lighting }: { lighting: LightingPreset }) {
       <mesh geometry={foamGeom}>
         <meshBasicMaterial ref={foam} vertexColors transparent depthWrite={false} />
       </mesh>
-      <Sparkles count={60} scale={[80, 0.3, 80]} position={[0, WATER_Y + 0.25, 0]} size={3} speed={0.25} color="#ffffff" opacity={0.6} />
+      <Sparkles count={30} scale={[80, 0.3, 80]} position={[0, WATER_Y + 0.25, 0]} size={3} speed={0.25} color="#ffffff" opacity={0.6} />
     </group>
   );
 }
@@ -215,7 +197,6 @@ export function Terrain({ lighting }: { lighting: LightingPreset }) {
       <Water lighting={lighting} />
       <Cliffs />
       <GrassTop />
-      <MeadowPatches />
       <Beach />
     </group>
   );

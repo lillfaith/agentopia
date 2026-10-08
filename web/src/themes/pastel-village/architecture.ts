@@ -12,6 +12,7 @@
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { PALETTE, TOKENS } from "./palette";
 
 export type MatKey = "plaster" | "stone" | "brick" | "roof" | "wood" | "solid" | "foliage" | "metal" | "glass" | "glow" | "grass";
@@ -342,56 +343,45 @@ export function signPost(b: Builder, x: number, z: number, rotY: number): { pos:
   return { pos: [x, 1.12, z], rotY };
 }
 
-/** Fenced garden plot: picket fence on the sides and back, bushes at the front corners, stepping stones to the door. */
-export function yard(b: Builder, o: { doorZ: number; halfW?: number; zMin?: number; zMax?: number; fence?: string; flowers?: string[] }) {
+/**
+ * The building's plot, kept deliberately simple: a soft lawn pad, a pair of
+ * plump bushes framing the entrance (one flowering), and smooth path tiles from
+ * the door to the lane. No fences or scattered flowers, so the building reads first.
+ */
+export function yard(b: Builder, o: { doorZ: number; halfW?: number; zMax?: number; flowers?: string[] }) {
   const hw = o.halfW ?? 3.15;
-  const z0 = o.zMin ?? -2.95;
   const z1 = o.zMax ?? 2.6;
-  const fence = o.fence ?? TOKENS.wood.fence;
-  const picket = (x: number, z: number, rotY: number) => {
-    b.box("wood", fence, [0.09, 0.62, 0.05], [x, 0.31, z], [0, rotY, 0]);
-    b.add("wood", fence, new THREE.ConeGeometry(0.065, 0.1, 4), { pos: [x, 0.66, z], rot: [0, rotY + Math.PI / 4, 0] });
-  };
-  for (let x = -hw; x <= hw + 0.01; x += 0.3) picket(x, z0, 0);
-  for (let z = z0 + 0.3; z <= z1; z += 0.3) {
-    picket(-hw, z, Math.PI / 2);
-    picket(hw, z, Math.PI / 2);
-  }
-  for (const y of [0.22, 0.48]) {
-    b.box("wood", shade(fence, -0.08), [hw * 2, 0.06, 0.04], [0, y, z0 - 0.04], undefined);
-    for (const x of [-hw, hw]) b.box("wood", shade(fence, -0.08), [0.04, 0.06, z1 - z0], [x + Math.sign(x) * 0.04, y, (z0 + z1) / 2]);
-  }
-  // corner posts
-  for (const [x, z] of [
-    [-hw, z0],
-    [hw, z0],
-    [-hw, z1],
-    [hw, z1],
-  ] as [number, number][]) {
-    b.box("wood", shade(fence, -0.05), [0.14, 0.8, 0.14], [x, 0.4, z]);
-    b.sphere("wood", shade(fence, -0.05), 0.09, [x, 0.84, z], [1, 1, 1], 0);
-  }
-  // front corner bushes and flowers along the fence
-  const flowers = o.flowers ?? TOKENS.flowers.sets[0];
+  const bloom = o.flowers?.[0] ?? TOKENS.flowers.bed[0];
   for (const side of [-1, 1]) {
-    b.sphere("foliage", TOKENS.foliage.bushes[0], 0.42, [side * (hw - 0.45), 0.36, z1 - 0.35], [1, 0.85, 1]);
-    b.sphere("foliage", TOKENS.foliage.flowering[side > 0 ? 0 : 2], 0.3, [side * (hw - 0.95), 0.27, z1 - 0.2], [1, 0.85, 1]);
-    for (let z = z0 + 0.5; z < z1 - 1.2; z += 0.42) {
-      b.sphere("foliage", TOKENS.foliage.leaf, 0.1, [side * (hw - 0.25), 0.1, z], [1, 0.8, 1], 0);
-      b.sphere("foliage", flowers[Math.abs(Math.round(z * 3)) % flowers.length], 0.075, [side * (hw - 0.25), 0.22, z + 0.05], [1, 0.8, 1], 0);
-    }
+    b.sphere("foliage", side < 0 ? TOKENS.foliage.bushes[0] : TOKENS.foliage.bushes[1], 0.5, [side * (hw - 0.55), 0.42, z1 - 0.45], [1, 0.85, 1], 3);
+    // a few blossoms on the right-hand bush
+    if (side > 0) for (let i = 0; i < 5; i++) b.sphere("foliage", bloom, 0.08, [side * (hw - 0.55) + Math.cos(i * 1.3) * 0.38, 0.62 + (i % 2) * 0.12, z1 - 0.45 + Math.sin(i * 1.3) * 0.32], [1, 0.8, 1], 1);
   }
-  // stepping stones from the door to the gate
-  for (let z = o.doorZ + 0.55, i = 0; z < z1 + 0.5; z += 0.48, i++) {
-    b.add("stone", i % 2 ? TOKENS.stone.flag[3] : TOKENS.stone.flag[0], new THREE.CylinderGeometry(0.26, 0.28, 0.06, 9), { pos: [(i % 2 ? 0.08 : -0.06), 0.04, z], rot: [0, i, 0], uv: [0.4, 0.4] });
-  }
+  const tile = new RoundedBoxGeometry(0.84, 0.06, 0.84, 2, 0.12);
+  for (let z = o.doorZ + 0.6, i = 0; z < z1 + 1.2; z += 0.95, i++) b.add("solid", TOKENS.path.tiles[i % TOKENS.path.tiles.length], tile, { pos: [0, 0.05, z] });
 }
 
-/** Ground of the yard: a slightly richer lawn inside the fence. */
+/** Ground of the yard: a soft rounded lawn pad, slightly lighter than the meadow. */
 export function yardGround(b: Builder, o: { halfW?: number; zMin?: number; zMax?: number; color?: string }) {
   const hw = o.halfW ?? 3.15;
   const z0 = o.zMin ?? -2.95;
   const z1 = o.zMax ?? 2.6;
-  const g = new THREE.PlaneGeometry(hw * 2, z1 - z0);
-  b.add("grass", o.color ?? TOKENS.ground.yard, g, { pos: [0, 0.012, (z0 + z1) / 2], rot: [-Math.PI / 2, 0, 0], uv: [(hw * 2) / 4.5, (z1 - z0) / 4.5] });
+  const r = 1.2;
+  // Shape space (x, -z) so that rotating -90° about X lays it face-up on the ground.
+  const sh = new THREE.Shape();
+  const P = (x: number, z: number): [number, number] => [x, -z];
+  sh.moveTo(...P(-hw + r, z0));
+  sh.lineTo(...P(hw - r, z0));
+  sh.quadraticCurveTo(...P(hw, z0), ...P(hw, z0 + r));
+  sh.lineTo(...P(hw, z1 - r));
+  sh.quadraticCurveTo(...P(hw, z1), ...P(hw - r, z1));
+  sh.lineTo(...P(-hw + r, z1));
+  sh.quadraticCurveTo(...P(-hw, z1), ...P(-hw, z1 - r));
+  sh.lineTo(...P(-hw, z0 + r));
+  sh.quadraticCurveTo(...P(-hw, z0), ...P(-hw + r, z0));
+  const g = new THREE.ShapeGeometry(sh, 6);
+  g.rotateX(-Math.PI / 2);
+  const uv = g.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / 4.5, uv.getY(i) / 4.5);
+  b.add("grass", o.color ?? TOKENS.ground.yard, g, { pos: [0, 0.012, 0] });
 }

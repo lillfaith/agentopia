@@ -10,7 +10,7 @@ town. That walk happens because the hand-off happened in the database. Nothing o
 ![The village by day: flagstone square, cobble lanes, timber cottages, hyacinth field, beach and pier](docs/images/town-day.jpg)
 ![The same town at night: lit windows, lanterns and fairy lights on the pier](docs/images/town-night.jpg)
 
-<sub>Screenshots from the offline simulation mode (hence the banner), with a few extra departments built. With an API key, the same flows run on Claude. The sky follows your real local time; the clock's preview menu shows other times of day.</sub>
+<sub>Screenshots from the offline simulation mode (hence the banner), with one extra department built. With an API key, the same flows run on Claude. The sky follows your real local time; the clock's preview menu shows other times of day.</sub>
 
 > **Status: v0.2 (Phase 2: Autonomy).** Schedules, 24/7 workers, strict budgets, hiring, custom
 > departments and modular skills. **The live Claude API path has not yet been verified against a real key.**

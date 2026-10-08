@@ -10,51 +10,27 @@ import { RING_RADIUS, seeded, type TownPath } from "./layout";
 import { PALETTE, TOKENS } from "./palette";
 import { grassTexture, radialTexture, stoneTexture, woodTexture } from "./textures";
 
-const STONES = TOKENS.stone.flag;
-const COBBLES = TOKENS.stone.cobble;
-const MORTAR = TOKENS.stone.mortar;
 
 // ───────────── plaza floor ─────────────
 
+/** The square's floor: smooth concentric rings (cream, blush, lavender, rose) instead of busy stones. */
 function Flagstones() {
-  const items = useMemo<Inst[]>(() => {
-    const rand = seeded(101);
-    const out: Inst[] = [];
-    let ring = 0;
-    for (let r = 2.75; r < PLAZA_RADIUS - 0.1; r += 0.43, ring++) {
-      const n = Math.round((2 * Math.PI * r) / 0.6);
-      const off = rand() * 6;
-      // Rosy and lavender bands, as in a laid square.
-      const band = ring % 3 === 1 ? TOKENS.stone.flagRose : ring % 3 === 2 && ring > 3 ? TOKENS.stone.flagLavender : null;
-      for (let i = 0; i < n; i++) {
-        const a = off + (i / n) * Math.PI * 2;
-        const arc = ((2 * Math.PI * r) / n) * (0.86 + rand() * 0.06);
-        out.push({
-          x: Math.cos(a) * r,
-          y: 0.055 + rand() * 0.012,
-          z: Math.sin(a) * r,
-          ry: -a + Math.PI / 2,
-          sx: arc,
-          sy: 1,
-          sz: 0.36 + rand() * 0.03,
-          color: band ? band[Math.floor(rand() * band.length)] : STONES[Math.floor(rand() * STONES.length)],
-        });
-      }
-    }
-    return out;
-  }, []);
-  const geom = useMemo(() => new RoundedBoxGeometry(1, 0.08, 1, 1, 0.03), []);
+  const rings = TOKENS.plaza.rings;
+  const inner = 2.66;
+  const step = (PLAZA_RADIUS - inner) / rings.length;
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]} receiveShadow>
         <circleGeometry args={[PLAZA_RADIUS + 0.05, 72]} />
-        <meshStandardMaterial color={MORTAR} roughness={1} />
+        <meshStandardMaterial color={TOKENS.plaza.gap} roughness={1} />
       </mesh>
-      <Instanced items={items} receiveShadow>
-        <primitive object={geom} attach="geometry" />
-        <meshStandardMaterial roughness={0.85} />
-      </Instanced>
-      {/* curb between plaza and cobble ring */}
+      {rings.map((color, i) => (
+        <mesh key={i} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]} receiveShadow>
+          <ringGeometry args={[inner + i * step + 0.035, inner + (i + 1) * step - 0.035, 96]} />
+          <meshStandardMaterial color={color} roughness={0.75} />
+        </mesh>
+      ))}
+      {/* curb between plaza and the ring path */}
       <mesh position={[0, 0.07, 0]} receiveShadow>
         <cylinderGeometry args={[PLAZA_RADIUS + 0.32, PLAZA_RADIUS + 0.32, 0.1, 72, 1, true]} />
         <meshStandardMaterial color={TOKENS.stone.curb} roughness={0.9} side={THREE.DoubleSide} />
@@ -163,59 +139,39 @@ function Fountain({ stoneMap }: { stoneMap: THREE.Texture }) {
   );
 }
 
-// ───────────── cobbles ─────────────
+// ───────────── board-game path ─────────────
 
-function cobblesAlong(paths: TownPath[]): Inst[] {
-  const rand = seeded(202);
+/** Smooth rounded tiles along the ring and every path: clean and easy to follow. */
+function pathTiles(paths: TownPath[]): Inst[] {
   const out: Inst[] = [];
-  const add = (x: number, z: number, edge: boolean) =>
-    out.push({
-      x,
-      y: 0.045,
-      z,
-      ry: rand() * 3,
-      s: edge ? 1.15 : 0.9 + rand() * 0.25,
-      sx: 1 + rand() * 0.3,
-      color: edge ? TOKENS.stone.cobbleEdge[Math.floor(rand() * 2)] : COBBLES[Math.floor(rand() * COBBLES.length)],
-    });
-  // the plaza ring
-  for (let r = RING_RADIUS - 0.72; r <= RING_RADIUS + 0.75; r += 0.29) {
-    const edge = r < RING_RADIUS - 0.6 || r > RING_RADIUS + 0.6;
-    const n = Math.round((2 * Math.PI * r) / 0.31);
-    const off = rand();
-    for (let i = 0; i < n; i++) {
-      const a = ((i + off) / n) * Math.PI * 2 + (rand() - 0.5) * 0.01;
-      add(Math.cos(a) * r, Math.sin(a) * r, edge);
-    }
+  const ringN = Math.round((2 * Math.PI * RING_RADIUS) / 0.98);
+  for (let i = 0; i < ringN; i++) {
+    const a = (i / ringN) * Math.PI * 2;
+    out.push({ x: Math.cos(a) * RING_RADIUS, y: 0.05, z: Math.sin(a) * RING_RADIUS, ry: -a, color: TOKENS.path.ring[i % TOKENS.path.ring.length] });
   }
-  // winding paths
   for (const p of paths) {
     const pts = p.points;
-    let carry = 0;
+    let carry = 0.5;
+    let k = 0;
     for (let i = 1; i < pts.length; i++) {
       const [ax, az] = pts[i - 1];
       const [bx, bz] = pts[i];
       const len = Math.hypot(bx - ax, bz - az);
-      const nx = -(bz - az) / (len || 1);
-      const nz = (bx - ax) / (len || 1);
-      for (let d = carry; d < len; d += 0.29) {
+      const rot = Math.atan2(bx - ax, bz - az);
+      for (let d = carry; d < len; d += 0.95) {
         const t = d / len;
-        const cx = ax + (bx - ax) * t;
-        const cz = az + (bz - az) * t;
-        if (Math.hypot(cx, cz) < RING_RADIUS + 0.6) continue; // merges into the ring
-        for (let k = -2; k <= 2; k++) {
-          const o = k * 0.27 + (rand() - 0.5) * 0.06;
-          add(cx + nx * o, cz + nz * o, false);
-        }
-        for (const side of [-1, 1]) add(cx + nx * side * 0.7, cz + nz * side * 0.7, true);
+        const x = ax + (bx - ax) * t;
+        const z = az + (bz - az) * t;
+        if (Math.hypot(x, z) < RING_RADIUS + 0.75) continue; // joins the ring
+        out.push({ x, y: 0.05, z, ry: rot, color: TOKENS.path.tiles[k++ % TOKENS.path.tiles.length] });
       }
-      carry = (carry + 0.29 - (len % 0.29)) % 0.29;
+      carry = (carry + 0.95 - (len % 0.95)) % 0.95;
     }
   }
   return out;
 }
 
-/** Mortar ribbon under a path's cobbles. */
+/** Base ribbon under a path's tiles. */
 function ribbon(paths: TownPath[], width: number): THREE.BufferGeometry {
   const pos: number[] = [];
   const idx: number[] = [];
@@ -243,25 +199,21 @@ function ribbon(paths: TownPath[], width: number): THREE.BufferGeometry {
 }
 
 export function Cobbles({ paths }: { paths: TownPath[] }) {
-  const items = useMemo(() => cobblesAlong(paths), [paths]);
-  const mortar = useMemo(() => ribbon(paths, 0.82), [paths]);
-  const geom = useMemo(() => {
-    const g = new THREE.SphereGeometry(0.15, 7, 4, 0, Math.PI * 2, 0, Math.PI / 2);
-    g.scale(1, 0.38, 0.9);
-    return g;
-  }, []);
+  const items = useMemo(() => pathTiles(paths), [paths]);
+  const base = useMemo(() => ribbon(paths, 0.6), [paths]);
+  const geom = useMemo(() => new RoundedBoxGeometry(0.84, 0.06, 0.84, 2, 0.12), []);
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.018, 0]} receiveShadow>
-        <ringGeometry args={[RING_RADIUS - 0.85, RING_RADIUS + 0.88, 96]} />
-        <meshStandardMaterial color={MORTAR} roughness={1} />
+        <ringGeometry args={[RING_RADIUS - 0.62, RING_RADIUS + 0.62, 96]} />
+        <meshStandardMaterial color={TOKENS.path.base} roughness={1} />
       </mesh>
-      <mesh geometry={mortar} receiveShadow>
-        <meshStandardMaterial color={MORTAR} roughness={1} side={THREE.DoubleSide} polygonOffset polygonOffsetFactor={-1} />
+      <mesh geometry={base} receiveShadow>
+        <meshStandardMaterial color={TOKENS.path.base} roughness={1} side={THREE.DoubleSide} polygonOffset polygonOffsetFactor={-1} />
       </mesh>
       <Instanced items={items} receiveShadow>
         <primitive object={geom} attach="geometry" />
-        <meshStandardMaterial roughness={0.8} />
+        <meshStandardMaterial roughness={0.7} />
       </Instanced>
     </group>
   );
@@ -276,10 +228,10 @@ export function Hedges({ hedges }: { hedges: Placement[] }) {
     const rand = seeded(611);
     const out: Inst[] = [];
     hedges.forEach((h) => {
-      for (let k = 0; k < 4; k++) {
+      for (let k = 0; k < 2; k++) {
         const u = (rand() - 0.5) * h.s * 0.9;
         const v = (rand() - 0.5) * 0.4;
-        out.push({ x: h.x + Math.cos(h.rot) * u + Math.sin(h.rot) * v, y: 0.57, z: h.z - Math.sin(h.rot) * u + Math.cos(h.rot) * v, s: 0.06 + rand() * 0.03, sy: 0.7, color: TOKENS.foliage.hedgeBlooms[Math.floor(rand() * 4)] });
+        out.push({ x: h.x + Math.cos(h.rot) * u + Math.sin(h.rot) * v, y: 0.57, z: h.z - Math.sin(h.rot) * u + Math.cos(h.rot) * v, s: 0.06 + rand() * 0.03, sy: 0.7, color: TOKENS.flowers.bed[Math.floor(rand() * 4)] });
       }
     });
     return out;
@@ -316,7 +268,7 @@ export function Planters({ planters }: { planters: Placement[] }) {
       Array.from({ length: 9 }, (_, i) => {
         const a = (i / 9) * Math.PI * 2 + rand();
         const r = 0.1 + rand() * 0.26;
-        return { x: p.x + Math.cos(a) * r, y: 0.74 + rand() * 0.08, z: p.z + Math.sin(a) * r, s: 0.08 + rand() * 0.03, sy: 0.7, color: TOKENS.flowers.sets[i % 3][Math.floor(rand() * 3)] };
+        return { x: p.x + Math.cos(a) * r, y: 0.74 + rand() * 0.08, z: p.z + Math.sin(a) * r, s: 0.08 + rand() * 0.03, sy: 0.7, color: TOKENS.flowers.bed[(i + Math.floor(rand() * 2)) % 4] };
       }),
     );
   }, [planters]);

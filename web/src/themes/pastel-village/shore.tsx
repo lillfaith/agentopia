@@ -354,27 +354,3 @@ function Bicycle({ position, rotation }: { position: V3; rotation: number }) {
     </group>
   );
 }
-
-/** A striped camp tent on the beach. */
-export function Tent({ position, rotation }: { position: V3; rotation: number }) {
-  return (
-    <group position={position} rotation={[0, rotation, 0]}>
-      <mesh castShadow position={[0, 0.75, 0]} rotation={[0, Math.PI / 4, 0]}>
-        <coneGeometry args={[1.2, 1.5, 4, 1, true]} />
-        <meshStandardMaterial color="#ffd6e4" roughness={0.9} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[0, 0.5, 0.86]} rotation={[0.48, 0, 0]}>
-        <planeGeometry args={[0.5, 1.0]} />
-        <meshStandardMaterial color="#ff9fbf" roughness={0.9} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[0, 1.6, 0]}>
-        <cylinderGeometry args={[0.02, 0.02, 0.4, 6]} />
-        <meshStandardMaterial color={TOKENS.iron} />
-      </mesh>
-      <mesh position={[0.12, 1.72, 0]}>
-        <planeGeometry args={[0.24, 0.14]} />
-        <meshStandardMaterial color="#ffd86b" side={THREE.DoubleSide} />
-      </mesh>
-    </group>
-  );
-}

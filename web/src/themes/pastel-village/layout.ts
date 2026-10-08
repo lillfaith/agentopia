@@ -26,8 +26,6 @@ export function beachWidthAt(a: number): number {
 /** Fixed landmarks of this theme (not building plots). */
 export const FEATURES = {
   pier: { angle: 0.12, length: 8.5 },
-  pond: { center: [5.9, 19.6] as [number, number], rx: 2.1, rz: 1.45, rot: 0.3 },
-  garden: { center: [-6.9, 19.9] as [number, number], w: 3.4, d: 2.6, rot: 2.8 },
   field: { center: [-18.6, 10.4] as [number, number], rx: 4.6, rz: 3.2, rot: 0.55 },
   picnic: { center: [-15.6, 16.6] as [number, number], rot: 0.75 },
 };
@@ -108,8 +106,6 @@ export const FALLBACK_SPOTS: [number, number][] = (() => {
       if (Math.hypot(x - f.center[0], z - f.center[1]) < f.rx + 4.5) continue;
       if (Math.hypot(x - FEATURES.picnic.center[0], z - FEATURES.picnic.center[1]) < 6.5) continue;
       if (Math.hypot(x - ps.x, z - ps.z) < 7) continue;
-      if (Math.hypot(x - FEATURES.pond.center[0], z - FEATURES.pond.center[1]) < 7) continue;
-      if (Math.hypot(x - FEATURES.garden.center[0], z - FEATURES.garden.center[1]) < 7) continue;
       spots.push([x, z]);
       used.push([x, z]);
     }
@@ -160,11 +156,12 @@ function windingPath(id: string, end: P2, plots: SlotLayout[], own?: SlotLayout)
   const n = Math.max(3, Math.round(len / 0.9));
   const px = -(end[1] - start[1]) / (len || 1);
   const pz = (end[0] - start[0]) / (len || 1);
-  const bend = (hash(id) < 0.5 ? -1 : 1) * Math.min(1.1, len * 0.09);
+  // A gentle single curve: easy to follow at a glance.
+  const bend = (hash(id) < 0.5 ? -1 : 1) * Math.min(0.7, len * 0.06);
   let pts: P2[] = [];
   for (let i = 0; i <= n; i++) {
     const t = i / n;
-    const w = Math.sin(t * Math.PI) * bend * (1 - 0.35 * Math.sin(t * Math.PI * 2));
+    const w = Math.sin(t * Math.PI) * bend;
     pts.push([start[0] + (end[0] - start[0]) * t + px * w, start[1] + (end[1] - start[1]) * t + pz * w]);
   }
   // Push interior points out of other plots (a few relaxation passes).
@@ -206,15 +203,6 @@ export function townPaths(slots: Record<string, SlotLayout>): TownPath[] {
   paths.push({ id: "poi:pier", points: windingPath("pier", [ps.x, ps.z], plots) });
   const pc = FEATURES.picnic.center;
   paths.push({ id: "poi:picnic", points: windingPath("picnic", [pc[0] + 0.8, pc[1] - 1.6], plots) });
-  // Garden gate and pond edge (each faces the plaza); skipped if a building took the spot.
-  const toward = (c: P2, d: number): P2 => {
-    const len = Math.hypot(c[0], c[1]);
-    return [c[0] - (c[0] / len) * d, c[1] - (c[1] / len) * d];
-  };
-  const g = FEATURES.garden;
-  if (!plots.some((p) => inPlot(p, g.center[0], g.center[1], 2.6))) paths.push({ id: "poi:garden", points: windingPath("garden", toward(g.center, g.d / 2 + 0.9), plots) });
-  const pd = FEATURES.pond;
-  if (!plots.some((p) => inPlot(p, pd.center[0], pd.center[1], 2.7))) paths.push({ id: "poi:pond", points: windingPath("pond", toward(pd.center, pd.rz + 1.1), plots) });
   return paths;
 }
 
@@ -238,7 +226,7 @@ export function buildNav(slots: Record<string, SlotLayout>): NavGraph {
   }
   const hangouts: P2[] = [];
   for (let i = 0; i < RING_NODES; i += 3) hangouts.push(nodes[`r${i}`]);
-  for (const id of ["poi:pier", "poi:picnic", "poi:garden", "poi:pond"]) if (nodes[id]) hangouts.push(nodes[id]);
+  for (const id of ["poi:pier", "poi:picnic"]) if (nodes[id]) hangouts.push(nodes[id]);
   // On the plaza, near the benches.
   for (const a of [0.8, 2.4, 3.9, 5.5]) hangouts.push([Math.cos(a) * 4.1, Math.sin(a) * 4.1]);
   return { nodes, edges, hangouts };

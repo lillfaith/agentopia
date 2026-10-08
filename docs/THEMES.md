@@ -81,11 +81,11 @@ characters, wearables):
 | File | Role |
 |---|---|
 | `palette.ts` | Every colour in the theme: base swatches (`PALETTE`), semantic roles for the world (`TOKENS`: ground, stone, foliage, flowers, wood, roofs, walls, glow…) and the UI CSS variables (`UI_VARS`, AA-contrast notes inline). A colourway variant only needs a new palette file |
-| `layout.ts` | Pure data: plots, island outline, landmarks (pier, field, picnic, pond, garden), winding paths that steer around every plot, the walk graph, lighting keyframes |
-| `composition.ts` | Pure placement of scenery in zones (plaza ring, forest belt, groves, beach, field). Everything yields to plots and paths. Unit-tested |
+| `layout.ts` | Pure data: plots, island outline, landmarks (pier, hyacinth field, picnic), winding paths that steer around every plot, the walk graph, lighting keyframes |
+| `composition.ts` | Pure placement of scenery by focal priority: plaza first, then buildings, villagers, and a few grouped groves (two tree shapes) framing the island. Everything yields to plots and paths. Unit-tested, including a "calm" budget |
 | `architecture.ts` | Building kit (walls, half-timbering, tiled roofs, windows with shutters and flower boxes, doors, lanterns, fenced yards). Parts are merged into one mesh per material |
 | `Buildings.tsx` | One model per building kind plus a cottage for unknown kinds; animated details (dome, gears, quill, smoke) stay separate |
-| `terrain.tsx`, `plaza.tsx`, `flora.tsx`, `shore.tsx`, `garden.tsx` | Rendering of the island, square, plants, pier and picnic, pond and kitchen garden, mostly instanced |
+| `terrain.tsx`, `plaza.tsx`, `flora.tsx`, `shore.tsx` | Rendering of the island and pearly sea, the square and board-game paths, trees, and the pier and picnic, mostly instanced |
 | `textures.ts` | Procedural canvas textures (no image files) |
 | `Character.tsx`, `wearables.tsx` | Villager rig and the core cosmetic pack |
 

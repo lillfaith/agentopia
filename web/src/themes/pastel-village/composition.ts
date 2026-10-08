@@ -1,12 +1,13 @@
 /**
  * Where every piece of scenery goes. Pure (no three.js) so it is unit-testable.
  *
- * The village is composed in zones rather than scattered at random:
- *  - a flagstone plaza ringed by a cobble path, a flower bed and a clipped hedge,
- *    with paired lanterns marking every path opening;
- *  - a forest belt that frames the back of the island, thinning towards the front;
- *  - small groves between neighbouring buildings, blossom trees on the diagonals;
- *  - a beach with a lit pier at the front, a hyacinth field and a picnic corner.
+ * Composition rules (a calm, toy-like board, read in this order):
+ *  1. the plaza: the brightest, most detailed and most pink thing in view;
+ *  2. buildings on clean lawn plots, one signature prop each;
+ *  3. villagers on clear paths;
+ *  4. scenery last: only two tree shapes (soft sage rounds and sakura), grouped
+ *     into a few deliberate groves that frame the back of the island, with open
+ *     lawn and a beach at the front. No scattered wildflowers or tiny props.
  * Everything yields to building plots and paths, so custom departments never end
  * up with a tree on their doorstep or scenery across their path.
  */
@@ -23,7 +24,7 @@ export interface Placement {
   rot: number;
   color: string;
 }
-export type TreeKind = "round" | "pine" | "blossom" | "poplar";
+export type TreeKind = "round" | "blossom";
 export interface TreePlacement extends Placement {
   kind: TreeKind;
 }
@@ -32,8 +33,6 @@ export interface Composition {
   paths: TownPath[];
   trees: TreePlacement[];
   bushes: Placement[];
-  mushrooms: Placement[];
-  rocks: Placement[];
   flowers: Placement[];
   hyacinths: Placement[];
   hedges: Placement[];
@@ -42,8 +41,6 @@ export interface Composition {
   /** Angles where paths leave the plaza (through the hedge ring). */
   openings: number[];
   picnic: { x: number; z: number; rot: number } | null;
-  pond: { x: number; z: number; rx: number; rz: number; rot: number } | null;
-  garden: { x: number; z: number; w: number; d: number; rot: number } | null;
   /** Pink petal carpets under blossom trees and in meadow drifts. */
   petalCarpets: Placement[];
   /** Flower planters ringing the town square. */
@@ -89,13 +86,9 @@ function nearPier(x: number, z: number, pad = 0): boolean {
   return distToSegment(x, z, ps.x - ps.dx * 2.2, ps.z - ps.dz * 2.2, ex, ez) < 1.8 + pad;
 }
 
-const GREENS = TOKENS.foliage.greens;
+const ROUNDS = TOKENS.foliage.greens;
 const BLOSSOMS = TOKENS.foliage.blossoms;
-const PINK_ROUND = TOKENS.foliage.roundPink;
-const PINES = TOKENS.foliage.pines;
-const POPLARS = TOKENS.foliage.poplars;
-const FLOWERING = TOKENS.foliage.flowering;
-const FLOWER_SETS = TOKENS.flowers.sets;
+const BED = TOKENS.flowers.bed;
 
 export function composeTown(slots: Record<string, SlotLayout>): Composition {
   const rand = seeded(11);
@@ -103,39 +96,28 @@ export function composeTown(slots: Record<string, SlotLayout>): Composition {
   const plots = Object.values(slots);
   const paths = townPaths(slots);
   const taken: { x: number; z: number; r: number }[] = [];
-  const c: Composition = { paths, trees: [], bushes: [], mushrooms: [], rocks: [], flowers: [], hyacinths: [], hedges: [], lamps: [], benches: [], openings: [], picnic: null, pond: null, garden: null, petalCarpets: [], planters: [] };
+  const c: Composition = { paths, trees: [], bushes: [], flowers: [], hyacinths: [], hedges: [], lamps: [], benches: [], openings: [], picnic: null, petalCarpets: [], planters: [] };
 
   const pc = FEATURES.picnic.center;
-  const picnicFree = !plots.some((p) => inPlot(p, pc[0], pc[1], 1.6));
-  if (picnicFree) c.picnic = { x: pc[0], z: pc[1], rot: FEATURES.picnic.rot };
-  const pd = FEATURES.pond;
-  if (!plots.some((p) => inPlot(p, pd.center[0], pd.center[1], pd.rx + 0.6)))
-    c.pond = { x: pd.center[0], z: pd.center[1], rx: pd.rx, rz: pd.rz, rot: pd.rot };
-  const gd = FEATURES.garden;
-  const gr = Math.hypot(gd.w, gd.d) / 2;
-  if (!plots.some((p) => inPlot(p, gd.center[0], gd.center[1], gr + 0.4)))
-    c.garden = { x: gd.center[0], z: gd.center[1], w: gd.w, d: gd.d, rot: gd.rot };
+  if (!plots.some((p) => inPlot(p, pc[0], pc[1], 1.6))) c.picnic = { x: pc[0], z: pc[1], rot: FEATURES.picnic.rot };
 
   /** Can a solid object of radius `r` stand at (x, z)? */
-  const free = (x: number, z: number, r: number, opts: { pathClear?: number; plaza?: boolean; beach?: boolean } = {}) => {
+  const free = (x: number, z: number, r: number) => {
     const rr = Math.hypot(x, z);
     const a = Math.atan2(z, x);
-    const edge = islandRadiusAt(a) - (opts.beach ? 0.6 : beachWidthAt(a) + 0.9);
-    if (rr + r > edge) return false;
-    if (!opts.plaza && rr - r < HEDGE_RADIUS + 0.7) return false;
-    for (const p of plots) if (inPlot(p, x, z, r + 0.3)) return false;
-    if (distToPaths(paths, x, z) < (opts.pathClear ?? PATH_HALF_WIDTH + 0.35) + r) return false;
-    if (inField(x, z, r + 0.2)) return false;
-    if (c.picnic && Math.hypot(x - c.picnic.x, z - c.picnic.z) < 2.8 + r) return false;
-    if (c.pond && Math.hypot((x - c.pond.x) / (c.pond.rx + 0.9 + r), (z - c.pond.z) / (c.pond.rz + 0.9 + r)) < 1) return false;
-    if (c.garden && Math.hypot(x - c.garden.x, z - c.garden.z) < Math.hypot(c.garden.w, c.garden.d) / 2 + 0.6 + r) return false;
+    if (rr + r > islandRadiusAt(a) - beachWidthAt(a) - 0.9) return false;
+    if (rr - r < HEDGE_RADIUS + 1.2) return false;
+    for (const p of plots) if (inPlot(p, x, z, r + 0.6)) return false;
+    if (distToPaths(paths, x, z) < PATH_HALF_WIDTH + 0.6 + r) return false;
+    if (inField(x, z, r + 0.4)) return false;
+    if (c.picnic && Math.hypot(x - c.picnic.x, z - c.picnic.z) < 3 + r) return false;
     if (nearPier(x, z, r)) return false;
     for (const t of taken) if (Math.hypot(x - t.x, z - t.z) < t.r + r) return false;
     return true;
   };
   const take = (x: number, z: number, r: number) => taken.push({ x, z, r });
 
-  // ── plaza openings, hedge ring, flower bed, lanterns ──
+  // ── 1. plaza: openings, hedge ring, one-colour flower bed, paired lanterns ──
   for (const p of paths) {
     const pts = p.points;
     for (let i = 1; i < pts.length; i++) {
@@ -165,233 +147,111 @@ export function composeTown(slots: Record<string, SlotLayout>): Composition {
       take(x, z, 0.4);
     }
   }
-  // Flower bed: colour sets change between openings for a planted, intentional look.
-  const sorted = [...c.openings].sort((x, y) => x - y);
-  for (let a = 0; a < Math.PI * 2; a += 0.075) {
+  // A single planted band of blush, rose and white: calm, but unmistakably pink.
+  for (let a = 0; a < Math.PI * 2; a += 0.085) {
     if (nearOpening(a, 0.13)) continue;
-    let seg = sorted.findIndex((o) => o > a);
-    if (seg < 0) seg = 0;
-    const set = FLOWER_SETS[seg % FLOWER_SETS.length];
-    for (const dr of [-0.32, 0, 0.32]) {
-      const aa = a + (rand() - 0.5) * 0.05;
-      const r = BED_RADIUS + dr + (rand() - 0.5) * 0.12;
-      c.flowers.push({ x: Math.cos(aa) * r, z: Math.sin(aa) * r, s: 0.9 + rand() * 0.5, rot: rand() * 6.28, color: set[Math.floor(rand() * set.length)] });
+    for (const dr of [-0.25, 0.25]) {
+      const aa = a + (rand() - 0.5) * 0.04;
+      const r = BED_RADIUS + dr + (rand() - 0.5) * 0.08;
+      c.flowers.push({ x: Math.cos(aa) * r, z: Math.sin(aa) * r, s: 1.0 + rand() * 0.3, rot: rand() * 6.28, color: pick(BED) });
     }
   }
-  // Benches on the flagstones, facing the medallion.
   for (const a of [0.8, 2.4, 3.9, 5.5]) c.benches.push({ x: Math.cos(a) * 4.6, z: Math.sin(a) * 4.6, s: 1, rot: -a - Math.PI / 2, color: TOKENS.wood.bench });
+  for (const a of [0, 1.6, 3.15, 4.7]) c.planters.push({ x: Math.cos(a) * 5.05, z: Math.sin(a) * 5.05, s: 1, rot: -a, color: BED[0] });
 
-  // Flower planters ringing the square, between the benches.
-  for (const a of [0, 1.6, 3.15, 4.7]) c.planters.push({ x: Math.cos(a) * 5.05, z: Math.sin(a) * 5.05, s: 1, rot: -a, color: FLOWER_SETS[0][0] });
-
-  // ── blossom trees on the plaza diagonals ──
+  // Four sakura on the diagonals frame the square.
   for (const a of [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4]) {
-    for (const r of [11.3, 12.2]) {
+    for (const r of [11.6, 12.6]) {
       const x = Math.cos(a) * r;
       const z = Math.sin(a) * r;
       if (free(x, z, 1.1)) {
         c.trees.push({ kind: "blossom", x, z, s: 1.15, rot: a, color: BLOSSOMS[0] });
-        take(x, z, 1.4);
+        take(x, z, 1.6);
         break;
       }
     }
   }
 
-  // ── groves between neighbouring buildings ──
+  // ── 4. scenery: a few deliberate groves, mostly behind the town ──
+  // Each grove is one shape and one colour family, with a bush or two at its foot.
+  let g = 0;
+  for (let a = 0.1; a < Math.PI * 2; a += 0.36) {
+    const back = Math.sin(a) < 0.35; // the far side from the default camera
+    if (!back && rand() < 0.45) continue;
+    const R = islandRadiusAt(a) - beachWidthAt(a);
+    const cr = R - 2.6;
+    const cx = Math.cos(a) * cr;
+    const cz = Math.sin(a) * cr;
+    const kind: TreeKind = g++ % 3 === 1 ? "blossom" : "round";
+    const color = kind === "blossom" ? pick(BLOSSOMS) : pick(ROUNDS);
+    const members: [number, number, number][] = back
+      ? [
+          [0, 0, 1.15],
+          [1.9, 0.3, 0.95],
+          [-1.9, 0.4, 1.0],
+          [0.9, 1.9, 0.9],
+          [-0.9, 1.9, 0.85],
+        ]
+      : [
+          [0, 0, 1.05],
+          [1.6, 0.5, 0.85],
+          [-1.5, 0.4, 0.8],
+        ];
+    const ca = Math.cos(a + Math.PI / 2);
+    const sa = Math.sin(a + Math.PI / 2);
+    for (const [u, v, s] of members) {
+      // u runs along the shore, v inwards
+      const x = cx + ca * u - Math.cos(a) * v;
+      const z = cz + sa * u - Math.sin(a) * v;
+      // Grove members may touch: canopies overlapping read as one soft mass.
+      if (!free(x, z, 0.8 * s)) continue;
+      c.trees.push({ kind, x, z, s, rot: rand() * 6.28, color });
+      take(x, z, 0.9 * s);
+    }
+    const bx = cx - Math.cos(a) * 2.3;
+    const bz = cz - Math.sin(a) * 2.3;
+    if (free(bx, bz, 0.6)) {
+      c.bushes.push({ x: bx, z: bz, s: 0.85, rot: rand() * 6.28, color: kind === "blossom" ? TOKENS.foliage.flowering[0] : pick(TOKENS.foliage.bushes) });
+      take(bx, bz, 0.8);
+    }
+  }
+  // One sakura in each wide gap between buildings, so plots read as separate.
   const angles = plots.map((p) => ({ a: Math.atan2(p.position[2], p.position[0]), r: Math.hypot(p.position[0], p.position[2]) })).sort((x, y) => x.a - y.a);
-  for (let i = 0; i < angles.length; i++) {
+  for (let i = 0; i < angles.length && angles.length > 1; i++) {
     const p = angles[i];
     const q = angles[(i + 1) % angles.length];
     let gap = q.a - p.a;
     if (gap <= 0) gap += Math.PI * 2;
-    if (gap < 0.55 || angles.length < 2) continue;
+    if (gap < 0.6) continue;
     const mid = p.a + gap / 2;
-    const r = Math.max(13.5, Math.min(19, (p.r + q.r) / 2));
-    const kind: TreeKind = rand() < 0.6 ? "blossom" : "round";
-    const color = kind === "blossom" ? pick(BLOSSOMS) : pick(GREENS);
-    const pieces: [number, number, "tree" | "small" | "bush"][] = [
-      [0, 0, "tree"],
-      [1.5, 0.7, "small"],
-      [-1.2, 1.1, "bush"],
-      [0.6, -1.4, "bush"],
-      [-1.4, -0.9, "small"],
-    ];
-    const cx = Math.cos(mid) * r;
-    const cz = Math.sin(mid) * r;
-    for (const [ox, oz, what] of pieces) {
-      const x = cx + ox;
-      const z = cz + oz;
-      const rad = what === "bush" ? 0.6 : what === "small" ? 0.8 : 1.1;
-      if (!free(x, z, rad)) continue;
-      if (what === "bush") c.bushes.push({ x, z, s: 0.8 + rand() * 0.3, rot: rand() * 6.28, color: rand() < 0.6 ? pick(FLOWERING) : pick(GREENS) });
-      else c.trees.push({ kind, x, z, s: what === "small" ? 0.75 : 1.1, rot: rand() * 6.28, color });
-      take(x, z, rad + 0.2);
-    }
+    const r = Math.max(13.5, Math.min(18, (p.r + q.r) / 2));
+    const x = Math.cos(mid) * r;
+    const z = Math.sin(mid) * r;
+    if (!free(x, z, 1.1)) continue;
+    c.trees.push({ kind: "blossom", x, z, s: 1.0, rot: rand() * 6.28, color: pick(BLOSSOMS) });
+    take(x, z, 1.4);
   }
 
-  // ── forest belt framing the back of the island ──
-  for (let a = 0; a < Math.PI * 2; a += 0.055) {
-    const back = Math.sin(a) < 0.25; // z < 0 is the far side from the default camera
-    const rows = back ? 3 : 1;
-    // Colour regions drift around the rim so trees read as planted groups.
-    // Pink-first: sakura and pink-canopy groups alternate with green ones for balance.
-    const region = Math.floor((a + Math.sin(a * 3) * 0.3) / 0.62) % 6;
-    for (let row = 0; row < rows; row++) {
-      if (!back && rand() < 0.55) continue;
-      const R = islandRadiusAt(a) - beachWidthAt(a);
-      const r = R - 1.7 - row * 1.8 - rand() * 0.6;
-      const aa = a + (rand() - 0.5) * 0.04;
-      const x = Math.cos(aa) * r;
-      const z = Math.sin(aa) * r;
-      const kind: TreeKind = region === 0 ? "pine" : region === 1 ? "blossom" : region === 2 ? "round" : region === 3 ? "blossom" : region === 4 ? "round" : back ? "poplar" : "blossom";
-      const rad = kind === "poplar" ? 0.7 : kind === "pine" ? 0.85 : 1.0;
-      const s = (row === 0 ? 0.95 : 1.1) * (0.85 + rand() * 0.35);
-      if (!free(x, z, rad * s)) continue;
-      const color = kind === "pine" ? pick(PINES) : kind === "blossom" ? pick(BLOSSOMS) : kind === "poplar" ? pick(POPLARS) : region === 4 ? pick(PINK_ROUND) : pick(GREENS);
-      c.trees.push({ kind, x, z, s, rot: rand() * 6.28, color });
-      take(x, z, rad * s + 0.25);
-    }
-  }
-
-  // ── beach-side blossom trees (by the pier and the picnic) ──
-  for (const a of [0.05, 0.42, 1.1, 1.45, 1.85, 2.2]) {
-    const R = islandRadiusAt(a) - beachWidthAt(a);
-    const x = Math.cos(a) * (R - 1.4);
-    const z = Math.sin(a) * (R - 1.4);
-    if (free(x, z, 1.0)) {
-      c.trees.push({ kind: "blossom", x, z, s: 1.0 + rand() * 0.25, rot: rand() * 6.28, color: pick(BLOSSOMS) });
-      take(x, z, 1.3);
-    }
-  }
-
-  // ── mushrooms: little clusters tucked into the forest ──
-  for (let i = 0, made = 0; i < 400 && made < 7; i++) {
-    const a = Math.PI + rand() * Math.PI;
-    const r = islandRadiusAt(a) - 3 - rand() * 4;
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    if (!free(x, z, 0.9)) continue;
-    const cap = pick(TOKENS.flowers.mushrooms);
-    for (let k = 0; k < 3; k++) {
-      const mx = x + (rand() - 0.5) * 1.1;
-      const mz = z + (rand() - 0.5) * 1.1;
-      c.mushrooms.push({ x: mx, z: mz, s: 0.35 + rand() * 0.35, rot: rand() * 6.28, color: cap });
-    }
-    take(x, z, 1.1);
-    made++;
-  }
-
-  // ── bushes and rocks ──
-  for (let i = 0; i < 900 && c.bushes.length < 40; i++) {
-    const a = rand() * Math.PI * 2;
-    // Bushes gather at the edges of the forest belt and along the hedge, not mid-meadow.
-    const edge = islandRadiusAt(a) - beachWidthAt(a);
-    const r = rand() < 0.6 ? edge - 4.5 - rand() * 3.5 : HEDGE_RADIUS + 1.6 + rand() * 1.2;
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    if (!free(x, z, 0.6)) continue;
-    c.bushes.push({ x, z, s: 0.65 + rand() * 0.45, rot: rand() * 6.28, color: rand() < 0.5 ? pick(FLOWERING) : pick(GREENS) });
-    take(x, z, 0.8);
-  }
-  for (let a = 0; a < Math.PI * 2; a += 0.21) {
-    if (rand() < 0.45) continue;
-    const onBeach = beachWidthAt(a) > 0.5;
-    const R = islandRadiusAt(a);
-    const r = onBeach ? R + 0.4 + rand() * 0.6 : R - 0.8;
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    if (nearPier(x, z, 0.5)) continue;
-    c.rocks.push({ x, z, s: 0.3 + rand() * 0.45, rot: rand() * 6.28, color: pick(TOKENS.stone.rocks) });
-  }
-
-  // ── lanterns along the paths, flowers lining them ──
-  for (const p of paths) {
-    let acc = 0;
-    let side = 1;
-    let flowerAcc = 0;
-    for (let i = 1; i < p.points.length; i++) {
-      const [ax, az] = p.points[i - 1];
-      const [bx, bz] = p.points[i];
-      const seg = Math.hypot(bx - ax, bz - az);
-      const nx = -(bz - az) / (seg || 1);
-      const nz = (bx - ax) / (seg || 1);
-      acc += seg;
-      flowerAcc += seg;
-      const mx = (ax + bx) / 2;
-      const mz = (az + bz) / 2;
-      if (Math.hypot(mx, mz) < HEDGE_RADIUS + 1.5) continue;
-      if (acc > 5.5) {
-        const x = mx + nx * side * 1.15;
-        const z = mz + nz * side * 1.15;
-        if (free(x, z, 0.2, { pathClear: 1.0 })) {
-          c.lamps.push({ x, z, s: 1, rot: Math.atan2(nx * side, nz * side), color: TOKENS.glow.lampGlass });
-          take(x, z, 0.5);
-          acc = 0;
-          side = -side;
-        }
-      }
-      if (flowerAcc > 1.2) {
-        flowerAcc = 0;
-        const set = pick(FLOWER_SETS);
-        for (const sd of [-1, 1]) {
-          if (rand() < 0.15) continue;
-          for (let k = 0; k < 3; k++) {
-            const off = 1.05 + rand() * 0.35;
-            const x = mx + nx * sd * off + (rand() - 0.5) * 0.4;
-            const z = mz + nz * sd * off + (rand() - 0.5) * 0.4;
-            if (free(x, z, 0.05, { pathClear: 0.95 })) c.flowers.push({ x, z, s: 0.8 + rand() * 0.4, rot: rand() * 6.28, color: set[k % set.length] });
-          }
-        }
-      }
-    }
-  }
-  // Wildflowers in the meadows, in loose drifts.
-  for (let i = 0, drifts = 0; i < 1200 && drifts < 46; i++) {
-    const a = rand() * Math.PI * 2;
-    const r = HEDGE_RADIUS + 1.5 + rand() * (islandRadiusAt(a) - HEDGE_RADIUS - 3);
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    if (!free(x, z, 0.5)) continue;
-    const color = pick(pick(FLOWER_SETS));
-    for (let k = 0; k < 7; k++) {
-      const fx = x + (rand() - 0.5) * 1.6;
-      const fz = z + (rand() - 0.5) * 1.6;
-      if (free(fx, fz, 0.05)) c.flowers.push({ x: fx, z: fz, s: 0.7 + rand() * 0.4, rot: rand() * 6.28, color });
-    }
-    drifts++;
-  }
-
-  // ── hyacinth field in planted rows ──
+  // ── landmarks: hyacinth field in planted rows ──
   {
     const f = FEATURES.field;
     const rows = TOKENS.flowers.hyacinths;
     const cs = Math.cos(f.rot);
     const sn = Math.sin(f.rot);
     let row = 0;
-    for (let v = -f.rz + 0.25; v < f.rz; v += 0.48, row++) {
+    for (let v = -f.rz + 0.25; v < f.rz; v += 0.52, row++) {
       const hw = f.rx * Math.sqrt(Math.max(0, 1 - (v / f.rz) ** 2));
-      for (let u = -hw + 0.15; u < hw; u += 0.34) {
-        const uu = u + (rand() - 0.5) * 0.12;
-        const vv = v + (rand() - 0.5) * 0.12;
-        const x = f.center[0] + uu * cs - vv * sn;
-        const z = f.center[1] + uu * sn + vv * cs;
+      for (let u = -hw + 0.15; u < hw; u += 0.38) {
+        const x = f.center[0] + u * cs - v * sn;
+        const z = f.center[1] + u * sn + v * cs;
         if (plots.some((p) => inPlot(p, x, z, 0.3)) || distToPaths(paths, x, z) < PATH_HALF_WIDTH + 0.2) continue;
-        c.hyacinths.push({ x, z, s: 0.8 + rand() * 0.45, rot: rand() * 6.28, color: rows[row % rows.length] });
+        c.hyacinths.push({ x, z, s: 0.9 + rand() * 0.2, rot: rand() * 6.28, color: rows[row % rows.length] });
       }
     }
   }
 
-  // Petal carpets under every sakura, plus a few blush clover drifts in open meadow.
-  for (const t of c.trees) if (t.kind === "blossom") c.petalCarpets.push({ x: t.x, z: t.z, s: 3.4 * t.s, rot: t.rot, color: TOKENS.ground.patchBlush });
-  for (let i = 0, made = 0; i < 400 && made < 14; i++) {
-    const a = rand() * Math.PI * 2;
-    const r = HEDGE_RADIUS + 2 + rand() * (islandRadiusAt(a) - HEDGE_RADIUS - 5);
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    if (!free(x, z, 1.2)) continue;
-    c.petalCarpets.push({ x, z, s: 3 + rand() * 2.5, rot: rand() * 6.28, color: TOKENS.ground.patchBlush });
-    made++;
-  }
+  // Soft petal carpets under the sakura only.
+  for (const t of c.trees) if (t.kind === "blossom") c.petalCarpets.push({ x: t.x, z: t.z, s: 3.2 * t.s, rot: t.rot, color: TOKENS.ground.patchBlush });
 
   return c;
 }

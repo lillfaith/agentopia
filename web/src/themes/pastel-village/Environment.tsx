@@ -4,11 +4,10 @@ import * as THREE from "three";
 import type { EnvironmentProps, LightingPreset } from "../../theme-engine/types";
 import { composeTown } from "./composition";
 import { Flora } from "./flora";
-import { KitchenGarden, Pond } from "./garden";
 import { pierStart, seeded } from "./layout";
 import { TOKENS } from "./palette";
 import { Flowers, Plaza } from "./plaza";
-import { Picnic, Pier, Tent } from "./shore";
+import { Picnic, Pier } from "./shore";
 import { Terrain } from "./terrain";
 
 // ───────────────────────── sky & light ─────────────────────────
@@ -158,11 +157,8 @@ export function PastelEnvironment({ env, slots }: EnvironmentProps) {
       <Flowers flowers={composition.flowers} />
       <Flora composition={composition} />
       <Pier glow={lighting.glow} />
-      <Tent position={[ps.x - ps.dz * 4.2 + ps.dx * 0.6, 0.02, ps.z + ps.dx * 4.2 + ps.dz * 0.6]} rotation={Math.atan2(-ps.dx, -ps.dz) + 0.4} />
       {composition.picnic && <Picnic {...composition.picnic} glow={lighting.glow} />}
-      {composition.pond && <Pond pond={composition.pond} />}
-      {composition.garden && <KitchenGarden garden={composition.garden} />}
-      {[1, 2, 3, 4, 5, 6].map((s) => (
+      {[1, 3, 5].map((s) => (
         <Cloud key={s} seed={s * 31} />
       ))}
     </group>

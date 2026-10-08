@@ -45,8 +45,9 @@ const P = PALETTE;
 export const TOKENS = {
   ground: {
     /** Spring green warmed toward pink so it harmonises with blossoms. */
-    grass: "#b4d6a6",
-    yard: "#bddcab",
+    /** Soft, desaturated sage: alive, but never fighting the pinks. */
+    grass: "#bcd4ae",
+    yard: "#c7dcb9",
     patchDark: "#86b97c",
     patchLight: "#f1efd8",
     /** Petal carpets and clover that tint the meadow pink. */
@@ -55,9 +56,15 @@ export const TOKENS = {
     sandMid: "#f8dccd",
     sandWet: "#e8c2b4",
     cliff: ["#a8d394", "#93c385", "#f0c4bc", "#f4d2c9", "#e5afac", "#d5979f"],
-    water: "#8fd0ea",
-    shallows: ["#d9f4f2", "#c6eef0", "#bde6ee"],
+    /** Pearly pink-blue sea: pastel aqua with a blush sheen, fading to cotton-candy shallows. */
+    water: "#94cfe0",
+    waterSheen: "#f3c6dc",
+    shallows: ["#ffd6e5", "#f0d2ea", "#bfe6ee"],
   },
+  /** Board-game path: smooth tiles on a blush base. */
+  path: { base: "#f3dde3", tiles: ["#fbeaee", "#f8dbe3", "#fdf3f3"], ring: ["#f6c9d6", "#fbe3ea", "#f2bccd"], edge: "#e8bfcc" },
+  /** Plaza rings, centre outwards. */
+  plaza: { rings: ["#fdf3f2", "#f8d6e0", "#fbe9ec", "#e9dcf5", "#fbe9ec", "#f5c6d4"], gap: "#ecd0da" },
   stone: {
     flag: ["#fdf2f1", "#f8e7ea", "#fef6f4", "#f4e2e7", "#fbecef"],
     flagRose: ["#f4c9d6", "#efbccc"],
@@ -77,15 +84,15 @@ export const TOKENS = {
     rocks: ["#efd9e0", "#e3d7ef", "#f3e0d8"],
   },
   foliage: {
-    greens: ["#9fd28f", "#b2dc93", "#8fcc9f", "#bfe39a"],
+    greens: ["#a8c89c", "#b4cfa5", "#a0c3a2"],
     pines: ["#7cc6a2", "#8ad0ab", "#6fb996"],
     /** Sakura family: the signature trees. */
-    blossoms: ["#ffc4d8", "#f7aac6", "#ffd3e2", "#f2b2d0", "#e9c4f2", "#ffd6cc"],
+    blossoms: ["#f8c4d5", "#f3b3c9", "#fad0dd"],
     roundPink: ["#f5b8cf", "#e8bde8", "#ffcabb"],
     poplars: ["#a6d79a", "#c9b4ea"],
-    hedge: "#97d2a0",
+    hedge: "#a7c99f",
     hedgeBlooms: [P.sakura, P.pastelRose, "#ffffff", P.lavender],
-    bushes: ["#9cd59a", "#b4dfa0"],
+    bushes: ["#a9c99e", "#b6d1a8"],
     flowering: ["#f4a9c6", "#f7bdd2", "#e6b8ee"],
     leaf: "#7fc489",
     trunk: "#b48475",
@@ -99,7 +106,9 @@ export const TOKENS = {
       [P.blush, "#ffffff", P.babyBlue],
       [P.pastelRose, P.butter, P.blush],
     ],
-    hyacinths: ["#f4a6c8", "#e98bb8", "#d8b4f0", "#fbe3ef", "#c7aef0", "#ffc2d8", "#f7b2d0"],
+    hyacinths: ["#f4a6c8", "#fbe3ef", "#dcc4f2", "#f7b6cf"],
+    /** The plaza bed: blush, rose and white only. */
+    bed: [P.sakura, "#f39ab6", "#ffffff", P.blush],
     mushrooms: [P.rose, P.pastelRose, P.lilac, P.apricot],
   },
   wood: {
