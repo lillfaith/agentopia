@@ -5,6 +5,7 @@ import * as THREE from "three";
 import type { LightingPreset } from "../../theme-engine/types";
 import { Instanced, type Inst } from "./instancing";
 import { beachWidthAt, islandRadiusAt, seeded } from "./layout";
+import { TOKENS } from "./palette";
 import { grassTexture, radialTexture, sandTexture, waterTexture } from "./textures";
 
 const N = 200;
@@ -78,7 +79,7 @@ function GrassTop() {
   }, []);
   return (
     <mesh geometry={geom} receiveShadow>
-      <meshStandardMaterial map={map} color="#9bcf88" roughness={0.95} />
+      <meshStandardMaterial map={map} color={TOKENS.ground.grass} roughness={0.95} />
     </mesh>
   );
 }
@@ -91,7 +92,7 @@ function MeadowPatches() {
     for (let i = 0; i < 26; i++) {
       const a = rand() * Math.PI * 2;
       const r = 10 + rand() * (islandRadiusAt(a) - beachWidthAt(a) - 13);
-      out.push({ x: Math.cos(a) * r, y: 0.006, z: Math.sin(a) * r, rx: -Math.PI / 2, rz: rand() * 6, s: 4 + rand() * 5, sy: 0.6 + rand() * 0.5, color: rand() < 0.6 ? "#7fbf74" : "#d7f2b8" });
+      out.push({ x: Math.cos(a) * r, y: 0.006, z: Math.sin(a) * r, rx: -Math.PI / 2, rz: rand() * 6, s: 4 + rand() * 5, sy: 0.6 + rand() * 0.5, color: rand() < 0.45 ? TOKENS.ground.patchDark : rand() < 0.5 ? TOKENS.ground.patchLight : TOKENS.ground.patchBlush });
     }
     return out;
   }, []);
@@ -107,12 +108,12 @@ function Cliffs() {
   const geom = useMemo(
     () =>
       ringStrip([
-        { r: (a) => islandRadiusAt(a), y: () => 0, color: "#9fd48a" },
-        { r: (a) => islandRadiusAt(a) + 0.06, y: () => -0.2, color: "#86c27a" },
-        { r: (a) => islandRadiusAt(a) - 0.15, y: () => -0.5, color: "#e7bf9b" },
-        { r: (a) => islandRadiusAt(a) - 0.6, y: () => -1.45, color: "#f1d1b0" },
-        { r: (a) => islandRadiusAt(a) - 1.7, y: () => -2.65, color: "#e1b394" },
-        { r: (a) => islandRadiusAt(a) - 3.4, y: () => -3.7, color: "#cf9c86" },
+        { r: (a) => islandRadiusAt(a), y: () => 0, color: TOKENS.ground.cliff[0] },
+        { r: (a) => islandRadiusAt(a) + 0.06, y: () => -0.2, color: TOKENS.ground.cliff[1] },
+        { r: (a) => islandRadiusAt(a) - 0.15, y: () => -0.5, color: TOKENS.ground.cliff[2] },
+        { r: (a) => islandRadiusAt(a) - 0.6, y: () => -1.45, color: TOKENS.ground.cliff[3] },
+        { r: (a) => islandRadiusAt(a) - 1.7, y: () => -2.65, color: TOKENS.ground.cliff[4] },
+        { r: (a) => islandRadiusAt(a) - 3.4, y: () => -3.7, color: TOKENS.ground.cliff[5] },
       ]),
     [],
   );
@@ -128,10 +129,10 @@ function Beach() {
     () =>
       ringStrip(
         [
-          { r: (a) => islandRadiusAt(a) - beachWidthAt(a) * 0.9, y: () => 0.025, color: "#f7e7c8" },
-          { r: (a) => islandRadiusAt(a) - beachWidthAt(a) * 0.3, y: () => 0.03, color: "#f6e1bd" },
-          { r: (a) => islandRadiusAt(a) + 0.15, y: (a) => (beachWidthAt(a) > 0.05 ? 0.02 : -0.05), color: "#f2d8af" },
-          { r: (a) => islandRadiusAt(a) + 0.85 * beachWidthAt(a), y: (a) => (beachWidthAt(a) > 0.05 ? -1.7 : -0.6), color: "#d9bc92" },
+          { r: (a) => islandRadiusAt(a) - beachWidthAt(a) * 0.9, y: () => 0.025, color: TOKENS.ground.sand },
+          { r: (a) => islandRadiusAt(a) - beachWidthAt(a) * 0.3, y: () => 0.03, color: TOKENS.ground.sand },
+          { r: (a) => islandRadiusAt(a) + 0.15, y: (a) => (beachWidthAt(a) > 0.05 ? 0.02 : -0.05), color: TOKENS.ground.sandMid },
+          { r: (a) => islandRadiusAt(a) + 0.85 * beachWidthAt(a), y: (a) => (beachWidthAt(a) > 0.05 ? -1.7 : -0.6), color: TOKENS.ground.sandWet },
         ],
         (a) => beachWidthAt(a) > 0.02,
       ),
@@ -170,9 +171,9 @@ function Water({ lighting }: { lighting: LightingPreset }) {
   const shallows = useMemo(
     () =>
       ringStrip([
-        { r: (a) => waterline(a) - 0.2, y: () => WATER_Y + 0.012, color: "#c9f6ee", alpha: 0.8 },
-        { r: (a) => waterline(a) + 1.6, y: () => WATER_Y + 0.012, color: "#b2ecec", alpha: 0.45 },
-        { r: (a) => waterline(a) + 4.2, y: () => WATER_Y + 0.012, color: "#a3e2ea", alpha: 0 },
+        { r: (a) => waterline(a) - 0.2, y: () => WATER_Y + 0.012, color: TOKENS.ground.shallows[0], alpha: 0.8 },
+        { r: (a) => waterline(a) + 1.6, y: () => WATER_Y + 0.012, color: TOKENS.ground.shallows[1], alpha: 0.45 },
+        { r: (a) => waterline(a) + 4.2, y: () => WATER_Y + 0.012, color: TOKENS.ground.shallows[2], alpha: 0 },
       ]),
     [],
   );
@@ -195,7 +196,7 @@ function Water({ lighting }: { lighting: LightingPreset }) {
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, WATER_Y, 0]} receiveShadow>
         <circleGeometry args={[220, 64]} />
-        <meshStandardMaterial ref={water} map={ripples} color="#6cc3dc" emissive="#62b2f6" emissiveIntensity={0.26} roughness={0.18} metalness={0.05} />
+        <meshStandardMaterial ref={water} map={ripples} color={TOKENS.ground.water} emissive="#62b2f6" emissiveIntensity={0.26} roughness={0.18} metalness={0.05} />
       </mesh>
       <mesh geometry={shallows}>
         <meshBasicMaterial vertexColors transparent depthWrite={false} />

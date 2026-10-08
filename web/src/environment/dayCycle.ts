@@ -117,7 +117,8 @@ export function sunPosition(hour: number): [number, number, number] {
   if (h >= 5.5 && h <= 20) {
     const t = (h - 5.5) / 14.5; // 0 at sunrise, 1 at dusk
     const a = Math.PI * t;
-    return [Math.cos(a) * 34, 6 + Math.sin(a) * 30, 16];
+    // Never fully grazing: a little elevation keeps low-sun hours lit and colourful.
+    return [Math.cos(a) * 34, 11 + Math.sin(a) * 27, 16];
   }
   return [-14, 28, -20];
 }

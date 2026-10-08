@@ -31,24 +31,31 @@ export const WEARABLES: WearableItem[] = [
   { id: "beanie", name: "Cosy beanie", slot: "head", icon: "🧶", description: "Knitted beanie with a pom-pom.", pack: "core" },
   { id: "headphones", name: "Headphones", slot: "head", icon: "🎧", description: "Chunky over-ear headphones.", pack: "core" },
   { id: "sprout", name: "Sprout", slot: "head", icon: "🌱", description: "A two-leaf sprout growing from the head.", pack: "core" },
+  { id: "tiara", name: "Rose tiara", slot: "head", icon: "💎", description: "A delicate tiara with a pink heart jewel.", pack: "core" },
+  { id: "sakura-pin", name: "Sakura hairpin", slot: "head", icon: "🌸", description: "A spray of cherry blossoms tucked behind one ear.", pack: "core" },
   // eyes
   { id: "round-glasses", name: "Round glasses", slot: "eyes", icon: "👓", description: "Thin gold wire frames.", pack: "core" },
   { id: "star-shades", name: "Star shades", slot: "eyes", icon: "⭐", description: "Star-shaped sunglasses.", pack: "core" },
-  { id: "goggles", name: "Inventor goggles", slot: "eyes", icon: "🥽", description: "Brass goggles pushed up on the forehead.", pack: "core" },
+  { id: "goggles", name: "Inventor goggles", slot: "eyes", icon: "🥽", description: "Rose-gold goggles pushed up on the forehead.", pack: "core" },
+  { id: "heart-shades", name: "Heart shades", slot: "eyes", icon: "💗", description: "Heart-shaped sunglasses with pink lenses.", pack: "core" },
   // neck
   { id: "scarf", name: "Knit scarf", slot: "neck", icon: "🧣", description: "A warm striped scarf with a tail.", pack: "core" },
   { id: "bow-tie", name: "Bow tie", slot: "neck", icon: "🎗️", description: "A dapper little bow tie.", pack: "core" },
   { id: "flower-lei", name: "Flower garland", slot: "neck", icon: "🌺", description: "A loop of bright flowers.", pack: "core" },
+  { id: "pearls", name: "Pearl necklace", slot: "neck", icon: "🦪", description: "A string of blush pearls.", pack: "core" },
+  { id: "ruffle-collar", name: "Ruffle collar", slot: "neck", icon: "🎀", description: "A frilly lace collar with a little bow.", pack: "core" },
   // back
   { id: "backpack", name: "Explorer backpack", slot: "back", icon: "🎒", description: "A round backpack with a buckle.", pack: "core" },
   { id: "fairy-wings", name: "Fairy wings", slot: "back", icon: "🧚", description: "Translucent shimmering wings.", pack: "core" },
   { id: "cape", name: "Hero cape", slot: "back", icon: "🦸", description: "A short flowing cape.", pack: "core" },
+  { id: "heart-pack", name: "Heart backpack", slot: "back", icon: "💝", description: "A plush heart-shaped backpack.", pack: "core" },
   // hand
   { id: "book", name: "Storybook", slot: "hand", icon: "📘", description: "A small hardback book.", pack: "core" },
   { id: "coffee", name: "Coffee cup", slot: "hand", icon: "☕", description: "A steaming mug.", pack: "core" },
   { id: "quill", name: "Feather quill", slot: "hand", icon: "🪶", description: "A long feather pen.", pack: "core" },
   { id: "wrench", name: "Tiny wrench", slot: "hand", icon: "🔧", description: "For tightening tiny bolts.", pack: "core" },
   { id: "bouquet", name: "Bouquet", slot: "hand", icon: "💐", description: "A small bunch of flowers.", pack: "core" },
+  { id: "parasol", name: "Lace parasol", slot: "hand", icon: "⛱️", description: "A frilly pink parasol.", pack: "core" },
 ];
 
 export const EYE_STYLES = ["round", "sparkle", "sleepy", "happy", "dot", "wink"] as const;

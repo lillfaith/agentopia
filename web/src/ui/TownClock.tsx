@@ -26,8 +26,8 @@ export function TownClock() {
             <span className="clock-badge preview-badge">👁 Preview</span>
             <span className="clock-icon">{PHASE_ICON[env.phase]}</span>
             <b>{PHASE_LABEL[env.phase]}</b>
-            <span className="clock-real">
-              real time {formatClock(env.realHour)} · {PHASE_LABEL[realPhase]}
+            <span className="clock-real" title={`Real time: ${formatClock(env.realHour)} (${PHASE_LABEL[realPhase]})`}>
+              real {formatClock(env.realHour)}
             </span>
           </button>
           <button className="clock-live-btn" onClick={() => setOverride(null)} title="Return to real-time lighting">

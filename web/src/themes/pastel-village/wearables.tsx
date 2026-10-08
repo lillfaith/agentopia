@@ -60,7 +60,7 @@ function Blossom({ color, r = 0.06, position }: { color: string; r?: number; pos
   );
 }
 
-const PETALS = ["#ff9fc4", "#ffd1e3", "#bfe3ff", "#d8c8ff", "#fff1a8", "#c9f5d4"];
+const PETALS = ["#ff9fc4", "#ffd1e3", "#f6a6bf", "#d8c8ff", "#fff1a8", "#ffc9b6"];
 
 function starShape(outer: number, inner: number): THREE.Shape {
   const s = new THREE.Shape();
@@ -74,6 +74,30 @@ function starShape(outer: number, inner: number): THREE.Shape {
   return s;
 }
 
+/** A plump heart outline, centred at the origin, about 1.3·s wide. */
+export function heartShape(sz: number): THREE.Shape {
+  const h = new THREE.Shape();
+  h.moveTo(0, -0.6 * sz);
+  h.bezierCurveTo(-0.15 * sz, -0.45 * sz, -0.75 * sz, -0.15 * sz, -0.65 * sz, 0.25 * sz);
+  h.bezierCurveTo(-0.55 * sz, 0.65 * sz, -0.05 * sz, 0.65 * sz, 0, 0.3 * sz);
+  h.bezierCurveTo(0.05 * sz, 0.65 * sz, 0.55 * sz, 0.65 * sz, 0.65 * sz, 0.25 * sz);
+  h.bezierCurveTo(0.75 * sz, -0.15 * sz, 0.15 * sz, -0.45 * sz, 0, -0.6 * sz);
+  return h;
+}
+
+function Heart({ size, depth, color, emissive = 0 }: { size: number; depth: number; color: string; emissive?: number }) {
+  const geom = useMemo(() => {
+    const g = new THREE.ExtrudeGeometry(heartShape(size), { depth, bevelEnabled: true, bevelSize: depth * 0.4, bevelThickness: depth * 0.4, bevelSegments: 2, curveSegments: 10 });
+    g.translate(0, 0, -depth / 2);
+    return g;
+  }, [size, depth]);
+  return (
+    <mesh geometry={geom} castShadow>
+      <meshStandardMaterial color={color} roughness={0.4} emissive={color} emissiveIntensity={emissive} />
+    </mesh>
+  );
+}
+
 function FairyWings() {
   const left = useRef<THREE.Group>(null);
   const right = useRef<THREE.Group>(null);
@@ -85,7 +109,7 @@ function FairyWings() {
   const wing = (big: boolean, y: number) => (
     <mesh position={[big ? 0.22 : 0.17, y, 0]} rotation={[0, 0, big ? 0.5 : -0.4]} scale={big ? [0.26, 0.17, 1] : [0.18, 0.11, 1]}>
       <circleGeometry args={[1, 20]} />
-      <meshStandardMaterial color="#cdf3ff" emissive="#a8e8ff" emissiveIntensity={0.35} transparent opacity={0.6} side={THREE.DoubleSide} depthWrite={false} />
+      <meshStandardMaterial color="#ffe0ef" emissive="#ffc2dd" emissiveIntensity={0.35} transparent opacity={0.6} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   );
   return (
@@ -205,11 +229,11 @@ function HeadItem({ id }: { id: string }) {
         <group position={[0, -0.14, 0]}>
           <mesh scale={[1, 0.85, 0.96]}>
             <sphereGeometry args={[0.4, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2]} />
-            <meshStandardMaterial color="#8fd3c1" roughness={0.95} />
+            <meshStandardMaterial color="#f4a6bf" roughness={0.95} />
           </mesh>
           <mesh position={[0, 0.02, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[1, 0.96, 1]}>
             <torusGeometry args={[0.39, 0.065, 8, 28]} />
-            <meshStandardMaterial color="#6fbfab" roughness={0.95} />
+            <meshStandardMaterial color="#e888a8" roughness={0.95} />
           </mesh>
           <mesh position={[0, 0.37, 0]}>
             <sphereGeometry args={[0.1, 12, 10]} />
@@ -222,7 +246,7 @@ function HeadItem({ id }: { id: string }) {
         <group position={[0, -0.32, 0]}>
           <mesh>
             <torusGeometry args={[0.47, 0.035, 8, 28, Math.PI]} />
-            <meshStandardMaterial color="#5b5f7a" roughness={0.4} />
+            <meshStandardMaterial color="#a87597" roughness={0.4} />
           </mesh>
           {[-1, 1].map((s) => (
             <group key={s} position={[s * 0.49, 0, 0]}>
@@ -236,6 +260,36 @@ function HeadItem({ id }: { id: string }) {
               </mesh>
             </group>
           ))}
+        </group>
+      );
+    case "tiara":
+      return (
+        <group position={[0, -0.02, 0.06]} rotation={[-0.3, 0, 0]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.3, 0.025, 6, 24, Math.PI]} />
+            <meshStandardMaterial {...GOLD} color="#f2c9a0" />
+          </mesh>
+          {[-0.9, -0.45, 0.45, 0.9].map((a) => (
+            <mesh key={a} position={[Math.sin(a) * 0.3, 0.07, Math.cos(a) * 0.3]}>
+              <coneGeometry args={[0.03, 0.12, 5]} />
+              <meshStandardMaterial {...GOLD} color="#f2c9a0" />
+            </mesh>
+          ))}
+          <group position={[0, 0.1, 0.3]} scale={0.9}>
+            <Heart size={0.11} depth={0.04} color="#ff7fab" emissive={0.25} />
+          </group>
+        </group>
+      );
+    case "sakura-pin":
+      return (
+        <group position={[0.3, -0.08, 0.14]} rotation={[0.2, 0.5, -0.3]}>
+          <Blossom color="#ffc4d8" r={0.085} position={[0, 0, 0]} />
+          <Blossom color="#ffd6e4" r={0.07} position={[0.11, -0.05, 0.02]} />
+          <Blossom color="#f7aac6" r={0.065} position={[-0.06, -0.1, 0.03]} />
+          <mesh position={[0.05, 0.08, -0.03]} rotation={[0, 0, -0.6]} scale={[1, 0.4, 0.6]}>
+            <sphereGeometry args={[0.07, 8, 6]} />
+            <meshStandardMaterial color="#8fd18a" />
+          </mesh>
         </group>
       );
     case "sprout":
@@ -263,6 +317,8 @@ function HeadItem({ id }: { id: string }) {
 function EyesItem({ id }: { id: string }) {
   const star = useMemo(() => starShape(0.13, 0.06), []);
   const starBack = useMemo(() => starShape(0.155, 0.075), []);
+  const heartFrame = useMemo(() => heartShape(0.2), []);
+  const heartLens = useMemo(() => heartShape(0.16), []);
   switch (id) {
     case "round-glasses":
       return (
@@ -312,18 +368,39 @@ function EyesItem({ id }: { id: string }) {
           </mesh>
         </group>
       );
+    case "heart-shades":
+      return (
+        <group position={[0, 0.01, 0.06]}>
+          {[-0.16, 0.16].map((x) => (
+            <group key={x} position={[x, 0, 0]} rotation={[0, x * 0.9, 0]}>
+              <mesh position={[0, 0, -0.006]}>
+                <shapeGeometry args={[heartFrame]} />
+                <meshStandardMaterial color="#e7799e" roughness={0.4} side={THREE.DoubleSide} />
+              </mesh>
+              <mesh>
+                <shapeGeometry args={[heartLens]} />
+                <meshStandardMaterial color="#c84a7c" roughness={0.12} metalness={0.3} transparent opacity={0.85} side={THREE.DoubleSide} />
+              </mesh>
+            </group>
+          ))}
+          <mesh rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.012, 0.012, 0.1, 6]} />
+            <meshStandardMaterial color="#e7799e" />
+          </mesh>
+        </group>
+      );
     case "goggles":
       return (
         <group position={[0, 0.2, -0.44]}>
           <mesh rotation={[Math.PI / 2, 0, 0]} scale={[1, 0.95, 1]}>
             <torusGeometry args={[0.37, 0.03, 8, 32]} />
-            <meshStandardMaterial color="#8a7dd8" />
+            <meshStandardMaterial color="#c497b4" />
           </mesh>
           {[-0.13, 0.13].map((x) => (
             <group key={x} position={[x, 0.03, 0.33]} rotation={[-0.55, x * 1.4, 0]}>
               <mesh>
                 <cylinderGeometry args={[0.1, 0.1, 0.06, 18]} />
-                <meshStandardMaterial color="#c99a45" metalness={0.6} roughness={0.3} />
+                <meshStandardMaterial color="#e6a99c" metalness={0.6} roughness={0.3} />
               </mesh>
               <mesh position={[0, 0.032, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                 <circleGeometry args={[0.08, 18]} />
@@ -349,12 +426,12 @@ function NeckItem({ id }: { id: string }) {
         <group>
           <mesh rotation={[Math.PI / 2, 0, 0]} scale={[1, 0.95, 1]}>
             <torusGeometry args={[0.5, 0.075, 10, 32]} />
-            <meshStandardMaterial color="#ff8f8f" roughness={0.95} />
+            <meshStandardMaterial color="#ec88a8" roughness={0.95} />
           </mesh>
           {[0, 1, 2].map((i) => (
             <mesh key={i} position={[0.2 + i * 0.012, -0.1 - i * 0.1, 0.47]} rotation={[0.1, 0, 0.12]}>
               <boxGeometry args={[0.13, 0.1, 0.05]} />
-              <meshStandardMaterial color={i % 2 ? "#fff2d6" : "#ff8f8f"} roughness={0.95} />
+              <meshStandardMaterial color={i % 2 ? "#fff4f6" : "#ec88a8"} roughness={0.95} />
             </mesh>
           ))}
         </group>
@@ -362,7 +439,42 @@ function NeckItem({ id }: { id: string }) {
     case "bow-tie":
       return (
         <group position={[0, 0, 0.48]}>
-          <Bow color="#5b8def" scale={0.7} />
+          <Bow color="#cf5a86" scale={0.7} />
+        </group>
+      );
+    case "pearls":
+      return (
+        <group position={[0, -0.04, 0]} rotation={[0.18, 0, 0]}>
+          {Array.from({ length: 22 }, (_, i) => {
+            const a = (i / 22) * Math.PI * 2;
+            return (
+              <mesh key={i} position={[Math.sin(a) * 0.51, 0, Math.cos(a) * 0.485]}>
+                <sphereGeometry args={[0.04, 8, 6]} />
+                <meshStandardMaterial color="#fde6ee" roughness={0.25} metalness={0.25} />
+              </mesh>
+            );
+          })}
+          <mesh position={[0, -0.07, 0.5]}>
+            <sphereGeometry args={[0.065, 10, 8]} />
+            <meshStandardMaterial color="#ffd0e0" roughness={0.2} metalness={0.3} />
+          </mesh>
+        </group>
+      );
+    case "ruffle-collar":
+      return (
+        <group>
+          {Array.from({ length: 16 }, (_, i) => {
+            const a = (i / 16) * Math.PI * 2;
+            return (
+              <mesh key={i} position={[Math.sin(a) * 0.5, 0, Math.cos(a) * 0.48]} rotation={[0, a, 0.0]} scale={[1, 0.55, 0.45]}>
+                <sphereGeometry args={[0.13, 10, 6]} />
+                <meshStandardMaterial color="#fff6fa" roughness={0.9} />
+              </mesh>
+            );
+          })}
+          <group position={[0, 0.02, 0.56]}>
+            <Bow color="#ec88a8" scale={0.55} />
+          </group>
         </group>
       );
     case "flower-lei":
@@ -390,11 +502,11 @@ function BackItem({ id }: { id: string }) {
         <group position={[0, -0.04, -0.06]}>
           <mesh castShadow scale={[0.8, 0.95, 0.5]}>
             <sphereGeometry args={[0.36, 18, 14]} />
-            <meshStandardMaterial color="#f2a65a" roughness={0.8} />
+            <meshStandardMaterial color="#f8b79c" roughness={0.8} />
           </mesh>
           <mesh position={[0, 0.12, -0.08]} scale={[0.82, 0.5, 0.48]}>
             <sphereGeometry args={[0.36, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2]} />
-            <meshStandardMaterial color="#d9853b" roughness={0.8} />
+            <meshStandardMaterial color="#ec88a8" roughness={0.8} />
           </mesh>
           <mesh position={[0, 0.02, -0.18]}>
             <boxGeometry args={[0.08, 0.06, 0.03]} />
@@ -403,19 +515,37 @@ function BackItem({ id }: { id: string }) {
           {[-1, 1].map((s) => (
             <mesh key={s} position={[s * 0.24, 0.3, 0.3]} rotation={[0.25, 0, 0]}>
               <boxGeometry args={[0.06, 0.035, 0.56]} />
-              <meshStandardMaterial color="#d9853b" roughness={0.8} />
+              <meshStandardMaterial color="#ec88a8" roughness={0.8} />
             </mesh>
           ))}
         </group>
       );
     case "fairy-wings":
       return <FairyWings />;
+    case "heart-pack":
+      return (
+        <group position={[0, -0.02, -0.12]}>
+          <group rotation={[0, Math.PI, 0]}>
+            <Heart size={0.42} depth={0.2} color="#f6a6bf" />
+          </group>
+          <mesh position={[0, 0.02, -0.17]}>
+            <sphereGeometry args={[0.06, 8, 6]} />
+            <meshStandardMaterial color="#fff4f6" />
+          </mesh>
+          {[-1, 1].map((sd) => (
+            <mesh key={sd} position={[sd * 0.24, 0.3, 0.34]} rotation={[0.25, 0, 0]}>
+              <boxGeometry args={[0.06, 0.035, 0.56]} />
+              <meshStandardMaterial color="#ec88a8" roughness={0.8} />
+            </mesh>
+          ))}
+        </group>
+      );
     case "cape":
       return (
         <group position={[0, -0.15, 0.45]}>
           <mesh castShadow>
             <cylinderGeometry args={[0.44, 0.62, 0.78, 20, 1, true, Math.PI * 0.62, Math.PI * 0.76]} />
-            <meshStandardMaterial color="#e2556f" roughness={0.7} side={THREE.DoubleSide} />
+            <meshStandardMaterial color="#e7799e" roughness={0.7} side={THREE.DoubleSide} />
           </mesh>
           <mesh position={[0, 0.37, 0]} rotation={[Math.PI / 2, 0, 0]}>
             <torusGeometry args={[0.45, 0.035, 6, 24]} />
@@ -439,7 +569,7 @@ function HandItem({ id }: { id: string }) {
         <group rotation={[0.2, -0.4, 0]}>
           <mesh>
             <boxGeometry args={[0.2, 0.26, 0.07]} />
-            <meshStandardMaterial color="#6f8fe6" roughness={0.7} />
+            <meshStandardMaterial color="#b8a0ec" roughness={0.7} />
           </mesh>
           <mesh position={[0.012, 0, 0]}>
             <boxGeometry args={[0.18, 0.24, 0.055]} />
@@ -452,7 +582,7 @@ function HandItem({ id }: { id: string }) {
         <group position={[0, 0.02, 0.02]}>
           <mesh>
             <cylinderGeometry args={[0.07, 0.06, 0.14, 14]} />
-            <meshStandardMaterial color="#fff6ea" roughness={0.5} />
+            <meshStandardMaterial color="#ffe3ec" roughness={0.5} />
           </mesh>
           <mesh position={[0, 0.071, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <circleGeometry args={[0.062, 14]} />
@@ -460,7 +590,7 @@ function HandItem({ id }: { id: string }) {
           </mesh>
           <mesh position={[0.08, 0, 0]}>
             <torusGeometry args={[0.035, 0.012, 6, 12]} />
-            <meshStandardMaterial color="#fff6ea" />
+            <meshStandardMaterial color="#ffe3ec" />
           </mesh>
           <Steam />
         </group>
@@ -483,11 +613,32 @@ function HandItem({ id }: { id: string }) {
         <group rotation={[0.2, 0, -0.3]}>
           <mesh position={[0, 0.08, 0]}>
             <boxGeometry args={[0.04, 0.26, 0.025]} />
-            <meshStandardMaterial color="#b9c2d6" metalness={0.6} roughness={0.35} />
+            <meshStandardMaterial color="#d6c2d6" metalness={0.6} roughness={0.35} />
           </mesh>
           <mesh position={[0, 0.24, 0]} rotation={[0, 0, Math.PI * 0.3]}>
             <torusGeometry args={[0.05, 0.022, 6, 14, Math.PI * 1.55]} />
-            <meshStandardMaterial color="#b9c2d6" metalness={0.6} roughness={0.35} />
+            <meshStandardMaterial color="#d6c2d6" metalness={0.6} roughness={0.35} />
+          </mesh>
+        </group>
+      );
+    case "parasol":
+      return (
+        <group position={[0, 0.05, 0.02]} rotation={[0.25, 0, 0.2]}>
+          <mesh position={[0, 0.45, 0]}>
+            <cylinderGeometry args={[0.015, 0.015, 1.0, 6]} />
+            <meshStandardMaterial color="#c497b4" />
+          </mesh>
+          <mesh position={[0, 0.98, 0]}>
+            <coneGeometry args={[0.55, 0.32, 10, 1, true]} />
+            <meshStandardMaterial color="#ffc4d8" roughness={0.8} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh position={[0, 0.83, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.55, 0.035, 6, 30]} />
+            <meshStandardMaterial color="#fff6fa" roughness={0.9} />
+          </mesh>
+          <mesh position={[0, 1.17, 0]}>
+            <sphereGeometry args={[0.04, 8, 6]} />
+            <meshStandardMaterial color="#ec88a8" />
           </mesh>
         </group>
       );

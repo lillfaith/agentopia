@@ -21,6 +21,7 @@ import {
   type BoxShell,
   type MatKey,
 } from "./architecture";
+import { PALETTE, TOKENS } from "./palette";
 import { brickTexture, grassTexture, plasterTexture, posterTexture, roofTileTexture, signTexture, stoneTexture, woodTexture } from "./textures";
 
 // ───────────── shared materials ─────────────
@@ -45,8 +46,8 @@ function sharedMaterials(): Partial<Record<MatKey, THREE.Material>> {
 
 /** Per-building window glass (lit by night and by work inside) and lanterns (lit by night). */
 function useLitMaterials(glow: number, activity: number) {
-  const glass = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, emissive: new THREE.Color("#ffc56b"), emissiveIntensity: 0, roughness: 0.15, metalness: 0.1 }), []);
-  const lamp = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, emissive: new THREE.Color("#ffd27a"), emissiveIntensity: 0.3, roughness: 0.3 }), []);
+  const glass = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, emissive: new THREE.Color(TOKENS.glow.window), emissiveIntensity: 0, roughness: 0.15, metalness: 0.1 }), []);
+  const lamp = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, emissive: new THREE.Color(TOKENS.glow.lamp), emissiveIntensity: 0.3, roughness: 0.3 }), []);
   useFrame((_, dt) => {
     const k = Math.min(1, dt * 2);
     const target = Math.max(glow * 1.5, activity ? 0.55 : 0);
@@ -120,8 +121,9 @@ function Smoke({ active }: { active: boolean }) {
   );
 }
 
-const PINKS = ["#ff9fc4", "#fff1a8", "#ffffff"];
-const LILACS = ["#c9b4ff", "#ffd1e3", "#9fd8ff"];
+const PINKS = TOKENS.flowers.sets[0];
+const LILACS = TOKENS.flowers.sets[1];
+const ROSES = TOKENS.flowers.sets[2];
 
 // ───────────── Town Hall (hq) ─────────────
 
@@ -131,40 +133,40 @@ function townHall(name: string) {
   yard(b, { doorZ: 1.75, flowers: PINKS });
   const ground: BoxShell = { W: 4.6, D: 3.2 };
   const upper: BoxShell = { W: 4.76, D: 3.34 };
-  b.box("stone", "#efe6df", [5.0, 0.3, 3.6], [0, 0.15, 0], undefined, 0.9);
-  b.box("stone", "#f4ece6", [4.6, 1.35, 3.2], [0, 0.975, 0], undefined, 0.9);
-  b.box("plaster", "#ffd6e5", [4.76, 1.3, 3.34], [0, 2.3, 0], undefined, 1.2);
+  b.box("stone", TOKENS.walls.hallStone, [5.0, 0.3, 3.6], [0, 0.15, 0], undefined, 0.9);
+  b.box("stone", TOKENS.walls.hallStone, [4.6, 1.35, 3.2], [0, 0.975, 0], undefined, 0.9);
+  b.box("plaster", TOKENS.walls.hall, [4.76, 1.3, 3.34], [0, 2.3, 0], undefined, 1.2);
   b.box("wood", TIMBER, [4.9, 0.14, 3.48], [0, 1.66, 0]);
   for (const f of ["front", "back"] as const) timberFace(b, upper, f, 1.65, 1.3, { posts: [-2.32, -0.75, 0.75, 2.32], braces: true });
   for (const f of ["left", "right"] as const) timberFace(b, upper, f, 1.65, 1.3, { posts: [-1.6, 1.6], braces: true });
-  gableRoof(b, { W: 4.76, D: 3.34, y: 2.95, pitch: 1.75, color: "#b9a2ff", wall: "#ffd6e5", gableTimber: false });
+  gableRoof(b, { W: 4.76, D: 3.34, y: 2.95, pitch: 1.75, color: TOKENS.roofs.hall, wall: TOKENS.walls.hall, gableTimber: false });
   // clock in the front gable (lit at night)
   b.add("glow", "#fffaf0", new THREE.CylinderGeometry(0.44, 0.44, 0.06, 28), { pos: [0, 3.62, 1.7], rot: [Math.PI / 2, 0, 0] });
-  b.add("solid", "#b9a2ff", new THREE.TorusGeometry(0.46, 0.05, 6, 28), { pos: [0, 3.62, 1.72] });
-  b.box("solid", "#5b4a6e", [0.04, 0.3, 0.02], [0.06, 3.72, 1.75], [0, 0, -0.5]);
-  b.box("solid", "#5b4a6e", [0.04, 0.2, 0.02], [-0.06, 3.66, 1.75], [0, 0, 1.0]);
-  doorOn(b, ground, "front", 0, { w: 1.1, h: 1.35, color: "#e889b0", double: true });
-  b.box("stone", "#e9dfd6", [2.0, 0.12, 0.5], [0, 0.06, 2.15], undefined, 0.5);
-  for (const u of [-1.55, 1.55]) windowOn(b, ground, "front", u, 0.95, { shutter: "#c9b6ff", flowers: PINKS });
+  b.add("solid", TOKENS.roofs.hall, new THREE.TorusGeometry(0.46, 0.05, 6, 28), { pos: [0, 3.62, 1.72] });
+  b.box("solid", PALETTE.inkPlum, [0.04, 0.3, 0.02], [0.06, 3.72, 1.75], [0, 0, -0.5]);
+  b.box("solid", PALETTE.inkPlum, [0.04, 0.2, 0.02], [-0.06, 3.66, 1.75], [0, 0, 1.0]);
+  doorOn(b, ground, "front", 0, { w: 1.1, h: 1.35, color: TOKENS.doors.hall, double: true });
+  b.box("stone", TOKENS.stone.step, [2.0, 0.12, 0.5], [0, 0.06, 2.15], undefined, 0.5);
+  for (const u of [-1.55, 1.55]) windowOn(b, ground, "front", u, 0.95, { shutter: TOKENS.shutters.hall, flowers: PINKS });
   for (const u of [-1.5, 0, 1.5]) windowOn(b, upper, "front", u, 2.3, { w: 0.55, h: 0.7, flowers: u === 0 ? undefined : LILACS });
   for (const f of ["left", "right"] as const) {
     windowOn(b, upper, f, 0, 2.3, { w: 0.55, h: 0.7 });
-    windowOn(b, ground, f, 0, 0.95, { w: 0.55, h: 0.7, shutter: "#c9b6ff" });
+    windowOn(b, ground, f, 0, 0.95, { w: 0.55, h: 0.7, shutter: TOKENS.shutters.hall, flowers: ROSES });
   }
   for (const u of [-0.85, 0.85]) wallLantern(b, ground, "front", u, 1.25);
   // banners between the upper windows
   for (const u of [-0.75, 0.75]) {
-    b.box("solid", "#ff8fb8", [0.36, 0.9, 0.03], [u, 2.25, 1.71]);
-    b.add("solid", "#ff8fb8", new THREE.ConeGeometry(0.255, 0.22, 3), { pos: [u, 1.73, 1.71], rot: [0, 0, Math.PI], scale: [1, 1, 0.12] });
-    b.box("metal", "#ffd86b", [0.46, 0.05, 0.05], [u, 2.72, 1.72]);
+    b.box("solid", TOKENS.banner, [0.36, 0.9, 0.03], [u, 2.25, 1.71]);
+    b.add("solid", TOKENS.banner, new THREE.ConeGeometry(0.255, 0.22, 3), { pos: [u, 1.73, 1.71], rot: [0, 0, Math.PI], scale: [1, 1, 0.12] });
+    b.box("metal", PALETTE.gold, [0.46, 0.05, 0.05], [u, 2.72, 1.72]);
   }
   // towers
   for (const x of [-2.15, 2.15]) {
-    b.cyl("stone", "#efe6df", 0.8, 0.86, 1.65, [x, 0.82, -1.1], { seg: 20, uvUnit: 0.9 });
-    b.cyl("plaster", "#fff1e8", 0.74, 0.74, 2.1, [x, 2.7, -1.1], { seg: 20, uvUnit: 1.2 });
+    b.cyl("stone", TOKENS.walls.hallStone, 0.8, 0.86, 1.65, [x, 0.82, -1.1], { seg: 20, uvUnit: 0.9 });
+    b.cyl("plaster", TOKENS.walls.towers, 0.74, 0.74, 2.1, [x, 2.7, -1.1], { seg: 20, uvUnit: 1.2 });
     b.cyl("wood", TIMBER, 0.78, 0.78, 0.12, [x, 1.68, -1.1], { seg: 20 });
     b.cyl("wood", TIMBER, 0.78, 0.78, 0.12, [x, 3.72, -1.1], { seg: 20 });
-    coneRoof(b, "#a993f0", 1.0, 1.75, [x, 4.6, -1.1]);
+    coneRoof(b, TOKENS.roofs.hallTowers, 1.0, 1.75, [x, 4.6, -1.1]);
     b.box("solid", TRIM, [0.4, 0.58, 0.06], [x, 2.75, -1.1 + 0.74]);
     b.box("glass", "#cfe9ff", [0.3, 0.48, 0.04], [x, 2.75, -1.1 + 0.77]);
   }
@@ -175,10 +177,10 @@ function townHall(name: string) {
     const r = 0.35;
     const at = (u: number, v: number, out = 0): [number, number, number] => [bx + u * Math.cos(r) + out * Math.sin(r), v, bz - u * Math.sin(r) + out * Math.cos(r)];
     for (const u of [-0.55, 0.55]) b.box("wood", TIMBER, [0.1, 1.6, 0.1], at(u, 0.8), [0, r, 0]);
-    b.box("wood", "#e7c39a", [1.2, 0.8, 0.06], at(0, 1.05), [0, r, 0]);
+    b.box("wood", TOKENS.wood.furniture, [1.2, 0.8, 0.06], at(0, 1.05), [0, r, 0]);
     const notes = ["#fffaf0", "#ffe3ef", "#e3f4ff", "#fff6c9", "#e9ffe3"];
     notes.forEach((c, i) => b.box("solid", c, [0.24, 0.2, 0.01], at(-0.42 + i * 0.21, 1.1 + (i % 2) * 0.17 - 0.08, 0.04), [0, r, (i % 3) * 0.08 - 0.08]));
-    b.add("roof", "#b9a2ff", new THREE.BoxGeometry(1.45, 0.06, 0.4), { pos: at(0, 1.62, 0.05), rot: [0.35, r, 0], uv: [2, 0.6] });
+    b.add("roof", TOKENS.roofs.hall, new THREE.BoxGeometry(1.45, 0.06, 0.4), { pos: at(0, 1.62, 0.05), rot: [0.35, r, 0], uv: [2, 0.6] });
   }
   const sign = signPost(b, 2.25, 2.05, -0.35);
   return { parts: b.build(), sign, name };
@@ -197,7 +199,7 @@ function Flag() {
       </mesh>
       <mesh ref={ref} position={[0.28, 0.25, 0]}>
         <boxGeometry args={[0.55, 0.32, 0.02]} />
-        <meshStandardMaterial color="#ff8fb8" side={THREE.DoubleSide} />
+        <meshStandardMaterial color={TOKENS.banner} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
@@ -215,16 +217,16 @@ function observatory(name: string) {
   const b = new Builder();
   yardGround(b, {});
   yard(b, { doorZ: 2.05, flowers: LILACS });
-  b.cyl("stone", "#efe7e2", 2.05, 2.15, 1.7, [0, 0.85, 0], { seg: 32, uvUnit: 0.9 });
+  b.cyl("stone", TOKENS.walls.observatoryStone, 2.05, 2.15, 1.7, [0, 0.85, 0], { seg: 32, uvUnit: 0.9 });
   // balcony
-  b.cyl("wood", "#d8b49a", 2.35, 2.35, 0.12, [0, 1.76, 0], { seg: 32 });
+  b.cyl("wood", TOKENS.wood.deck[0], 2.35, 2.35, 0.12, [0, 1.76, 0], { seg: 32 });
   for (let a = 0; a < Math.PI * 2; a += 0.3) {
     if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < 0.2) continue;
     b.box("wood", TRIM, [0.05, 0.48, 0.05], [Math.sin(a) * 2.27, 2.06, Math.cos(a) * 2.27]);
   }
   b.add("wood", TRIM, new THREE.TorusGeometry(2.27, 0.04, 6, 48), { pos: [0, 2.3, 0], rot: [Math.PI / 2, 0, 0] });
   // upper ring: plaster with timber posts
-  b.cyl("plaster", "#cdeee3", 1.72, 1.72, 1.35, [0, 2.5, 0], { seg: 32, uvUnit: 1.2 });
+  b.cyl("plaster", TOKENS.walls.observatory, 1.72, 1.72, 1.35, [0, 2.5, 0], { seg: 32, uvUnit: 1.2 });
   b.cyl("wood", TIMBER, 1.76, 1.76, 0.12, [0, 1.88, 0], { seg: 32 });
   b.cyl("wood", TIMBER, 1.76, 1.76, 0.12, [0, 3.12, 0], { seg: 32 });
   for (let i = 0; i < 10; i++) {
@@ -233,7 +235,7 @@ function observatory(name: string) {
   }
   for (const a of [-0.62, 0.62, Math.PI - 0.6, Math.PI + 0.6]) roundWindow(b, a, 1.75, 2.5, 0.25);
   for (const a of [-1.0, 1.0]) roundWindow(b, a, 2.08, 1.0, 0.22);
-  doorOn(b, { W: 4.2, D: 4.2 }, "front", 0, { w: 0.85, h: 1.15, color: "#7fc8b4" });
+  doorOn(b, { W: 4.2, D: 4.2 }, "front", 0, { w: 0.85, h: 1.15, color: TOKENS.doors.observatory });
   wallLantern(b, { W: 4.2, D: 4.2 }, "front", 0.75, 1.0);
   // tripod telescope in the yard
   {
@@ -242,8 +244,8 @@ function observatory(name: string) {
       const a = (i / 3) * Math.PI * 2;
       b.beam("wood", TIMBER, [tx + Math.cos(a) * 0.38, 0, tz + Math.sin(a) * 0.38], [tx, 1.05, tz], 0.05);
     }
-    b.add("metal", "#8a7dd8", new THREE.CylinderGeometry(0.08, 0.12, 0.95, 12), { pos: [tx - 0.05, 1.25, tz + 0.1], rot: [-0.9, 0.4, 0] });
-    b.add("metal", "#ffd86b", new THREE.CylinderGeometry(0.13, 0.13, 0.08, 12), { pos: [tx - 0.17, 1.55, tz + 0.4], rot: [-0.9, 0.4, 0] });
+    b.add("metal", PALETTE.deepLilac, new THREE.CylinderGeometry(0.08, 0.12, 0.95, 12), { pos: [tx - 0.05, 1.25, tz + 0.1], rot: [-0.9, 0.4, 0] });
+    b.add("metal", PALETTE.gold, new THREE.CylinderGeometry(0.13, 0.13, 0.08, 12), { pos: [tx - 0.17, 1.55, tz + 0.4], rot: [-0.9, 0.4, 0] });
   }
   // globe on a stand, and a stack of books by the door
   {
@@ -251,18 +253,18 @@ function observatory(name: string) {
     b.box("wood", TIMBER, [0.08, 0.7, 0.08], [gx, 0.35, gz]);
     b.cyl("wood", TIMBER, 0.28, 0.32, 0.06, [gx, 0.03, gz]);
     b.sphere("solid", "#8fd3e8", 0.34, [gx, 0.98, gz], [1, 1, 1], 2);
-    b.sphere("foliage", "#9fd68f", 0.16, [gx + 0.18, 1.08, gz + 0.18], [1, 0.5, 1], 0);
-    b.add("metal", "#ffd86b", new THREE.TorusGeometry(0.4, 0.02, 6, 24), { pos: [gx, 0.98, gz], rot: [0, 0.6, 0.4] });
-    ["#ff9fc4", "#9fd8ff", "#fff1a8", "#c9b4ff"].forEach((c, i) => b.box("solid", c, [0.42 - i * 0.04, 0.09, 0.3], [-0.85, 0.05 + i * 0.09, 2.45], [0, i * 0.3, 0]));
+    b.sphere("foliage", TOKENS.foliage.greens[0], 0.16, [gx + 0.18, 1.08, gz + 0.18], [1, 0.5, 1], 0);
+    b.add("metal", PALETTE.gold, new THREE.TorusGeometry(0.4, 0.02, 6, 24), { pos: [gx, 0.98, gz], rot: [0, 0.6, 0.4] });
+    [PALETTE.sakura, "#9fd8ff", PALETTE.butter, PALETTE.lilac].forEach((c, i) => b.box("solid", c, [0.42 - i * 0.04, 0.09, 0.3], [-0.85, 0.05 + i * 0.09, 2.45], [0, i * 0.3, 0]));
   }
   const sign = signPost(b, -2.25, 2.25, 0.35);
   // the rotating dome is built separately so it can turn
   const d = new Builder();
-  d.sphere("metal", "#9dbcf0", 1.74, [0, 0, 0], [1, 1, 1], 3);
-  for (let i = 0; i < 8; i++) d.add("metal", "#ffd86b", new THREE.TorusGeometry(1.75, 0.035, 6, 24, Math.PI / 2), { rot: [0, (i / 8) * Math.PI * 2, Math.PI / 2] });
-  d.box("solid", "#3f3a63", [0.42, 1.75, 0.2], [0, 0.95, 1.38], [-0.62, 0, 0]);
-  d.add("metal", "#8a7dd8", new THREE.CylinderGeometry(0.22, 0.3, 1.9, 16), { pos: [0, 0.8, 0.95], rot: [-0.95, 0, 0] });
-  d.add("metal", "#ffd86b", new THREE.CylinderGeometry(0.31, 0.31, 0.12, 16), { pos: [0, 1.5, 1.45], rot: [-0.95, 0, 0] });
+  d.sphere("metal", TOKENS.roofs.dome, 1.74, [0, 0, 0], [1, 1, 1], 3);
+  for (let i = 0; i < 8; i++) d.add("metal", PALETTE.gold, new THREE.TorusGeometry(1.75, 0.035, 6, 24, Math.PI / 2), { rot: [0, (i / 8) * Math.PI * 2, Math.PI / 2] });
+  d.box("solid", PALETTE.inkPlum, [0.42, 1.75, 0.2], [0, 0.95, 1.38], [-0.62, 0, 0]);
+  d.add("metal", PALETTE.deepLilac, new THREE.CylinderGeometry(0.22, 0.3, 1.9, 16), { pos: [0, 0.8, 0.95], rot: [-0.95, 0, 0] });
+  d.add("metal", PALETTE.gold, new THREE.CylinderGeometry(0.31, 0.31, 0.12, 16), { pos: [0, 1.5, 1.45], rot: [-0.95, 0, 0] });
   d.add("glow", "#ffe58a", new THREE.OctahedronGeometry(0.24, 0), { pos: [0, 1.95, 0] });
   // the lower half of the sphere is hidden inside the ring; keep only what shows
   return { parts: b.build(), dome: d.build(), sign, name };
@@ -299,7 +301,7 @@ function Spin({ speed, children, position }: { speed: number; children: ReactNod
 
 function cottage(b: Builder, o: { W: number; D: number; H: number; wall: string; roof: string; shutter: string; door: string; ridge: "x" | "z"; flowers: string[]; pitch?: number }) {
   const s: BoxShell = { W: o.W, D: o.D };
-  b.box("stone", "#ece3db", [o.W + 0.3, 0.32, o.D + 0.3], [0, 0.16, 0], undefined, 0.9);
+  b.box("stone", TOKENS.stone.foundation, [o.W + 0.3, 0.32, o.D + 0.3], [0, 0.16, 0], undefined, 0.9);
   b.box("plaster", o.wall, [o.W, o.H, o.D], [0, 0.32 + o.H / 2, 0], undefined, 1.2);
   const third = o.W / 2 - 0.06;
   for (const f of ["front", "back"] as const) timberFace(b, s, f, 0.32, o.H, { posts: [-third, -o.W * 0.15, o.W * 0.15, third], braces: true, mid: true });
@@ -316,27 +318,27 @@ function inkStudio(name: string) {
   const b = new Builder();
   yardGround(b, {});
   yard(b, { doorZ: 1.5, flowers: PINKS });
-  const s = cottage(b, { W: 4.0, D: 3.0, H: 2.2, wall: "#fff0c4", roof: "#ff9e9e", shutter: "#9fd8c4", door: "#7fc8b4", ridge: "x", flowers: PINKS });
+  const s = cottage(b, { W: 4.0, D: 3.0, H: 2.2, wall: TOKENS.walls.studio, roof: TOKENS.roofs.studio, shutter: TOKENS.shutters.studio, door: TOKENS.doors.studio, ridge: "x", flowers: ROSES });
   chimney(b, 1.15, -0.55, 2.4, 1.9);
   // striped awning over the door
-  for (let i = 0; i < 6; i++) b.box("solid", i % 2 ? "#ffffff" : "#ff9fb8", [0.2, 0.04, 0.62], [-0.5 + i * 0.2, 1.98, 1.78], [0.42, 0, 0]);
+  for (let i = 0; i < 6; i++) b.box("solid", i % 2 ? "#ffffff" : TOKENS.doors.atelier, [0.2, 0.04, 0.62], [-0.5 + i * 0.2, 1.98, 1.78], [0.42, 0, 0]);
   // writing desk with a typewriter and notebooks
   {
     const [dx, dz, r] = [2.45, 0.0, -Math.PI / 2];
     const at = (u: number, v: number, w: number): [number, number, number] => [dx + u * Math.cos(r) + w * Math.sin(r), v, dz - u * Math.sin(r) + w * Math.cos(r)];
-    b.box("wood", "#d9a37a", [1.0, 0.06, 0.55], at(0, 0.72, 0), [0, r, 0]);
+    b.box("wood", TOKENS.wood.furniture, [1.0, 0.06, 0.55], at(0, 0.72, 0), [0, r, 0]);
     for (const [u, w] of [
       [-0.43, -0.22],
       [0.43, -0.22],
       [-0.43, 0.22],
       [0.43, 0.22],
     ])
-      b.box("wood", "#c48f6e", [0.06, 0.72, 0.06], at(u, 0.36, w), [0, r, 0]);
-    b.box("solid", "#9fd8c4", [0.42, 0.14, 0.3], at(0.12, 0.82, 0), [0, r, 0]);
+      b.box("wood", TOKENS.wood.post, [0.06, 0.72, 0.06], at(u, 0.36, w), [0, r, 0]);
+    b.box("solid", PALETTE.mint, [0.42, 0.14, 0.3], at(0.12, 0.82, 0), [0, r, 0]);
     b.box("solid", "#5b5f7a", [0.36, 0.03, 0.14], at(0.12, 0.9, 0.06), [0.3, r, 0]);
     b.box("solid", "#fffaf0", [0.3, 0.24, 0.01], at(0.12, 1.0, -0.1), [-0.2, r, 0]);
-    ["#ff9fc4", "#c9b4ff"].forEach((c, i) => b.box("solid", c, [0.24, 0.04, 0.3], at(-0.3, 0.77 + i * 0.04, 0), [0, r + i * 0.2, 0]));
-    b.cyl("wood", "#d9a37a", 0.2, 0.2, 0.45, at(0, 0.23, 0.55));
+    [PALETTE.sakura, PALETTE.lilac].forEach((c, i) => b.box("solid", c, [0.24, 0.04, 0.3], at(-0.3, 0.77 + i * 0.04, 0), [0, r + i * 0.2, 0]));
+    b.cyl("wood", TOKENS.wood.furniture, 0.2, 0.2, 0.45, at(0, 0.23, 0.55));
   }
   const sign = signPost(b, -2.25, 2.1, 0.35);
   return { parts: b.build(), sign, name, shell: s };
@@ -351,11 +353,11 @@ function Quill({ activity }: { activity: number }) {
     <group position={[2.35, 0, 2.0]} scale={0.8}>
       <mesh castShadow position={[0, 0.35, 0]}>
         <cylinderGeometry args={[0.38, 0.45, 0.7, 20]} />
-        <meshStandardMaterial color="#6f7fd8" roughness={0.3} metalness={0.2} />
+        <meshStandardMaterial color={PALETTE.deepLilac} roughness={0.3} metalness={0.2} />
       </mesh>
       <mesh position={[0, 0.72, 0]}>
         <cylinderGeometry args={[0.22, 0.3, 0.12, 16]} />
-        <meshStandardMaterial color="#4b57b0" />
+        <meshStandardMaterial color="#7d64bf" />
       </mesh>
       <group ref={quill} position={[0, 0.7, 0]}>
         <mesh castShadow position={[0, 1.1, 0]} scale={[0.32, 1.25, 0.08]}>
@@ -364,7 +366,7 @@ function Quill({ activity }: { activity: number }) {
         </mesh>
         <mesh position={[0, 0.9, 0.05]} scale={[0.06, 1.3, 0.06]}>
           <sphereGeometry args={[1, 8, 8]} />
-          <meshStandardMaterial color="#ffb3c7" />
+          <meshStandardMaterial color={PALETTE.sakura} />
         </mesh>
       </group>
     </group>
@@ -376,49 +378,49 @@ function Quill({ activity }: { activity: number }) {
 function workshop(name: string) {
   const b = new Builder();
   yardGround(b, {});
-  yard(b, { doorZ: 1.62, flowers: ["#ffb38a", "#ffe08a", "#ff9fc4"] });
+  yard(b, { doorZ: 1.62, flowers: ["#ffb38a", "#ffe08a", PALETTE.sakura] });
   const s: BoxShell = { W: 4.2, D: 3.2 };
-  b.box("stone", "#ece3db", [4.5, 0.32, 3.5], [0, 0.16, 0], undefined, 0.9);
-  b.box("brick", "#f7d3c6", [4.2, 2.3, 3.2], [0, 1.47, 0], undefined, 0.9);
-  for (const x of [-1.05, 1.05]) gableRoof(b, { W: 2.1, D: 3.2, y: 2.62, pitch: 1.0, color: "#8fc9b8", wall: "#f7d3c6", cx: x, overhang: 0.22 });
+  b.box("stone", TOKENS.stone.foundation, [4.5, 0.32, 3.5], [0, 0.16, 0], undefined, 0.9);
+  b.box("brick", TOKENS.walls.workshopBrick, [4.2, 2.3, 3.2], [0, 1.47, 0], undefined, 0.9);
+  for (const x of [-1.05, 1.05]) gableRoof(b, { W: 2.1, D: 3.2, y: 2.62, pitch: 1.0, color: TOKENS.roofs.workshop, wall: TOKENS.walls.workshopBrick, cx: x, overhang: 0.22 });
   // big barn door with X braces
-  b.box("wood", "#9fd8c4", [1.6, 1.85, 0.08], [-0.55, 1.25, 1.64]);
-  b.beam("wood", shade("#9fd8c4", -0.3), [-1.3, 0.4, 1.7], [0.2, 2.1, 1.7], 0.09);
-  b.beam("wood", shade("#9fd8c4", -0.3), [0.2, 0.4, 1.7], [-1.3, 2.1, 1.7], 0.09);
-  b.box("wood", shade("#9fd8c4", -0.3), [1.7, 0.1, 0.1], [-0.55, 2.2, 1.7]);
+  b.box("wood", PALETTE.mint, [1.6, 1.85, 0.08], [-0.55, 1.25, 1.64]);
+  b.beam("wood", shade(PALETTE.mint, -0.3), [-1.3, 0.4, 1.7], [0.2, 2.1, 1.7], 0.09);
+  b.beam("wood", shade(PALETTE.mint, -0.3), [0.2, 0.4, 1.7], [-1.3, 2.1, 1.7], 0.09);
+  b.box("wood", shade(PALETTE.mint, -0.3), [1.7, 0.1, 0.1], [-0.55, 2.2, 1.7]);
   b.box("metal", IRON, [2.0, 0.06, 0.06], [-0.55, 2.3, 1.72]);
-  windowOn(b, s, "front", 1.35, 1.1, { w: 0.6, h: 0.6, shutter: "#ffd27a" });
+  windowOn(b, s, "front", 1.35, 1.1, { w: 0.6, h: 0.6, shutter: TOKENS.shutters.workshop, flowers: PINKS });
   for (const f of ["left", "right"] as const) for (const u of [-0.7, 0.7]) windowOn(b, s, f, u, 1.5, { w: 0.5, h: 0.6 });
   wallLantern(b, s, "front", 0.55, 1.7);
-  b.cyl("brick", "#f2c4bf", 0.24, 0.28, 1.6, [-1.5, 3.4, -1.0], { uvUnit: 0.6 });
+  b.cyl("brick", TOKENS.walls.chimney, 0.24, 0.28, 1.6, [-1.5, 3.4, -1.0], { uvUnit: 0.6 });
   // crates and a workbench with a little prototype robot
   [
     [2.35, 0.25, 1.6, 0.2],
     [2.6, 0.25, 0.95, -0.15],
     [2.45, 0.75, 1.35, 0.4],
   ].forEach(([x, y, z, r]) => {
-    b.box("wood", "#d9a37a", [0.5, 0.5, 0.5], [x, y, z], [0, r, 0]);
-    b.box("wood", shade("#d9a37a", -0.2), [0.52, 0.06, 0.52], [x, y + 0.18, z], [0, r, 0]);
+    b.box("wood", TOKENS.wood.furniture, [0.5, 0.5, 0.5], [x, y, z], [0, r, 0]);
+    b.box("wood", shade(TOKENS.wood.furniture, -0.2), [0.52, 0.06, 0.52], [x, y + 0.18, z], [0, r, 0]);
   });
   {
     const [wx, wz] = [-2.35, 0.6];
-    b.box("wood", "#c48f6e", [0.6, 0.08, 1.2], [wx, 0.78, wz]);
+    b.box("wood", TOKENS.wood.post, [0.6, 0.08, 1.2], [wx, 0.78, wz]);
     for (const [x, z] of [
       [-0.24, -0.52],
       [0.24, -0.52],
       [-0.24, 0.52],
       [0.24, 0.52],
     ])
-      b.box("wood", shade("#c48f6e", -0.15), [0.07, 0.78, 0.07], [wx + x, 0.39, wz + z]);
-    b.box("metal", "#b9c2d6", [0.2, 0.16, 0.14], [wx, 0.9, wz - 0.4]);
+      b.box("wood", shade(TOKENS.wood.post, -0.15), [0.07, 0.78, 0.07], [wx + x, 0.39, wz + z]);
+    b.box("metal", "#cdbfd6", [0.2, 0.16, 0.14], [wx, 0.9, wz - 0.4]);
     b.box("solid", "#ffd6e4", [0.26, 0.26, 0.2], [wx, 0.97, wz + 0.15]);
     b.box("solid", "#ffffff", [0.2, 0.16, 0.16], [wx, 1.18, wz + 0.15]);
     b.box("glow", "#9ff0c8", [0.12, 0.05, 0.02], [wx + 0.08, 1.2, wz + 0.15]);
     b.cyl("metal", IRON, 0.01, 0.01, 0.16, [wx, 1.33, wz + 0.15]);
-    b.sphere("glow", "#ff9fc4", 0.04, [wx, 1.42, wz + 0.15], [1, 1, 1], 0);
+    b.sphere("glow", PALETTE.sakura, 0.04, [wx, 1.42, wz + 0.15], [1, 1, 1], 0);
   }
   // terminal by the door
-  b.box("solid", "#b9a2ff", [0.5, 0.9, 0.4], [1.0, 0.45, 2.4]);
+  b.box("solid", TOKENS.roofs.hall, [0.5, 0.9, 0.4], [1.0, 0.45, 2.4]);
   b.box("glow", "#7cf0b0", [0.36, 0.3, 0.02], [1.0, 0.6, 2.61]);
   const sign = signPost(b, -2.25, 2.15, 0.35);
   return { parts: b.build(), sign, name };
@@ -456,7 +458,7 @@ function atelier(name: string) {
   const b = new Builder();
   yardGround(b, {});
   yard(b, { doorZ: 1.62, flowers: LILACS });
-  b.box("stone", "#f0e7e0", [4.0, 0.9, 3.2], [0, 0.45, 0], undefined, 0.9);
+  b.box("stone", TOKENS.stone.foundation, [4.0, 0.9, 3.2], [0, 0.45, 0], undefined, 0.9);
   for (const x of [-1.9, -0.95, 0, 0.95, 1.9]) {
     b.box("solid", "#ffffff", [0.08, 1.6, 0.08], [x, 1.7, 1.52]);
     b.box("solid", "#ffffff", [0.08, 1.6, 0.08], [x, 1.7, -1.52]);
@@ -468,27 +470,27 @@ function atelier(name: string) {
   b.box("solid", "#ffffff", [4.0, 0.1, 0.1], [0, 2.52, -1.55]);
   b.box("solid", "#ffffff", [0.1, 0.1, 3.3], [0, 3.42, 0]);
   for (const z of [-1.55, -0.52, 0.52, 1.55]) for (const side of [-1, 1]) b.beam("solid", "#ffffff", [side * 1.95, 2.55, z], [0, 3.42, z], 0.08);
-  doorOn(b, { W: 4.0, D: 3.2 }, "front", 0, { color: "#ff9fb8", h: 1.25 });
+  doorOn(b, { W: 4.0, D: 3.2 }, "front", 0, { color: TOKENS.doors.atelier, h: 1.25 });
   // easel with a canvas, paint pots, leaning canvases, potted plants
   {
     const [ex, ez, r] = [-2.4, 1.3, 0.5];
     const at = (u: number, v: number, w = 0): [number, number, number] => [ex + u * Math.cos(r) + w * Math.sin(r), v, ez - u * Math.sin(r) + w * Math.cos(r)];
-    b.beam("wood", "#d9a37a", at(-0.3, 0, 0.1), at(-0.05, 1.45, -0.05), 0.06);
-    b.beam("wood", "#d9a37a", at(0.3, 0, 0.1), at(0.05, 1.45, -0.05), 0.06);
-    b.beam("wood", "#d9a37a", at(0, 0, -0.4), at(0, 1.4, -0.05), 0.05);
+    b.beam("wood", TOKENS.wood.furniture, at(-0.3, 0, 0.1), at(-0.05, 1.45, -0.05), 0.06);
+    b.beam("wood", TOKENS.wood.furniture, at(0.3, 0, 0.1), at(0.05, 1.45, -0.05), 0.06);
+    b.beam("wood", TOKENS.wood.furniture, at(0, 0, -0.4), at(0, 1.4, -0.05), 0.05);
     b.box("solid", "#fffaf0", [0.8, 0.6, 0.04], at(0, 1.05, 0.06), [-0.12, r, 0]);
-    ["#ff8fb8", "#9bf6ff", "#ffd86b"].forEach((c, i) => b.add("solid", c, new THREE.CircleGeometry(0.1, 14), { pos: at(-0.2 + i * 0.2, 1.05 + (i % 2) * 0.1, 0.1), rot: [-0.12, r, 0] }));
-    ["#ff8fb8", "#9bf6ff", "#ffd86b", "#c9b4ff"].forEach((c, i) => {
+    [TOKENS.banner, "#9bf6ff", PALETTE.gold].forEach((c, i) => b.add("solid", c, new THREE.CircleGeometry(0.1, 14), { pos: at(-0.2 + i * 0.2, 1.05 + (i % 2) * 0.1, 0.1), rot: [-0.12, r, 0] }));
+    [TOKENS.banner, "#9bf6ff", PALETTE.gold, PALETTE.lilac].forEach((c, i) => {
       b.cyl("solid", "#ffffff", 0.1, 0.1, 0.16, at(0.5 + (i % 2) * 0.25, 0.08, 0.3 + Math.floor(i / 2) * 0.25));
       b.cyl("solid", c, 0.09, 0.09, 0.02, at(0.5 + (i % 2) * 0.25, 0.165, 0.3 + Math.floor(i / 2) * 0.25));
     });
   }
   for (const [x, z, c] of [
-    [2.35, 1.6, "#ff9fc4"],
-    [2.6, 0.9, "#fff1a8"],
+    [2.35, 1.6, PALETTE.sakura],
+    [2.6, 0.9, PALETTE.butter],
   ] as [number, number, string][]) {
-    b.cyl("solid", "#e8a07e", 0.22, 0.17, 0.35, [x, 0.17, z]);
-    b.sphere("foliage", "#86c98a", 0.3, [x, 0.5, z], [1, 0.9, 1]);
+    b.cyl("solid", "#eaa7a8", 0.22, 0.17, 0.35, [x, 0.17, z]);
+    b.sphere("foliage", TOKENS.foliage.bushes[0], 0.3, [x, 0.5, z], [1, 0.9, 1]);
     for (let i = 0; i < 4; i++) b.sphere("foliage", c, 0.08, [x + Math.cos(i * 1.6) * 0.2, 0.68, z + Math.sin(i * 1.6) * 0.2], [1, 0.8, 1], 0);
   }
   b.box("solid", "#fffaf0", [0.7, 0.9, 0.04], [2.1, 0.45, -0.6], [0.15, -Math.PI / 2, 0]);
@@ -505,11 +507,11 @@ function Brush({ activity }: { activity: number }) {
     <group ref={brush} position={[-1.95, 1.0, 1.7]}>
       <mesh position={[0, 0.2, 0]}>
         <cylinderGeometry args={[0.025, 0.025, 0.45, 6]} />
-        <meshStandardMaterial color="#8a7dd8" />
+        <meshStandardMaterial color={PALETTE.deepLilac} />
       </mesh>
       <mesh position={[0, 0.44, 0]}>
         <sphereGeometry args={[0.04, 8, 6]} />
-        <meshStandardMaterial color="#ff8fb8" />
+        <meshStandardMaterial color={TOKENS.banner} />
       </mesh>
     </group>
   );
@@ -521,8 +523,8 @@ function lab(name: string) {
   const b = new Builder();
   yardGround(b, {});
   yard(b, { doorZ: 2.1, flowers: LILACS });
-  b.cyl("stone", "#ebe4f2", 2.25, 2.45, 1.2, [0, 0.6, 0], { seg: 8, uvUnit: 0.9 });
-  doorOn(b, { W: 4.4, D: 4.4 }, "front", 0, { color: "#a58cff", h: 0.95, w: 0.75 });
+  b.cyl("stone", "#efe4f3", 2.25, 2.45, 1.2, [0, 0.6, 0], { seg: 8, uvUnit: 0.9 });
+  doorOn(b, { W: 4.4, D: 4.4 }, "front", 0, { color: TOKENS.doors.lab, h: 0.95, w: 0.75 });
   const sign = signPost(b, -2.25, 2.3, 0.35);
   return { parts: b.build(), sign, name };
 }
@@ -541,7 +543,7 @@ function CrystalTop({ glow, activity }: { glow: number; activity: number }) {
     <group>
       <mesh castShadow position={[0, 2.2, 0]}>
         <icosahedronGeometry args={[1.9, 1]} />
-        <meshStandardMaterial color="#c9b6ff" roughness={0.25} metalness={0.15} flatShading transparent opacity={0.92} emissive="#a58cff" emissiveIntensity={0.1 + glow * 0.4 + (activity ? 0.25 : 0)} />
+        <meshStandardMaterial color={TOKENS.roofs.lab} roughness={0.25} metalness={0.15} flatShading transparent opacity={0.92} emissive={TOKENS.doors.lab} emissiveIntensity={0.1 + glow * 0.4 + (activity ? 0.25 : 0)} />
       </mesh>
       <group ref={rings} position={[0, 2.4, 0]}>
         <mesh rotation={[Math.PI / 2, 0, 0]}>
@@ -563,19 +565,28 @@ function CrystalTop({ glow, activity }: { glow: number; activity: number }) {
 
 // ───────────── fallback cottage ─────────────
 
-function hashHue(seed: string) {
-  return [...seed].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+function hash(seed: string) {
+  return [...seed].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 }
+
+/** Unknown departments get a cottage in a pink-family colourway picked from their id. */
+const COTTAGE_WAYS = [
+  { wall: PALETTE.cream, roof: PALETTE.rose, shutter: PALETTE.lavender },
+  { wall: "#fdeef4", roof: PALETTE.lilac, shutter: PALETTE.sakura },
+  { wall: "#fff0e6", roof: PALETTE.apricot, shutter: PALETTE.pastelRose },
+  { wall: "#f6effd", roof: PALETTE.mauve, shutter: PALETTE.mint },
+  { wall: PALETTE.shell, roof: "#e996b8", shutter: PALETTE.babyBlue },
+  { wall: "#fff5ee", roof: PALETTE.pastelRose, shutter: PALETTE.butter },
+];
 
 function genericHouse(name: string, seed: string) {
   const b = new Builder();
-  const hue = hashHue(seed);
-  const wall = `#${new THREE.Color().setHSL(hue / 360, 0.7, 0.9).getHexString()}`;
-  const roof = `#${new THREE.Color().setHSL(((hue + 40) % 360) / 360, 0.55, 0.72).getHexString()}`;
-  const shutter = `#${new THREE.Color().setHSL(((hue + 180) % 360) / 360, 0.45, 0.78).getHexString()}`;
+  const h = hash(seed);
+  const way = COTTAGE_WAYS[h % COTTAGE_WAYS.length];
+  const { wall, roof, shutter } = way;
   yardGround(b, {});
   yard(b, { doorZ: 1.5, flowers: PINKS });
-  cottage(b, { W: 3.6, D: 2.9, H: 2.0, wall, roof, shutter, door: roof, ridge: hue % 2 ? "x" : "z", flowers: PINKS });
+  cottage(b, { W: 3.6, D: 2.9, H: 2.0, wall, roof, shutter, door: shade(roof, -0.15), ridge: (h >> 3) % 2 ? "x" : "z", flowers: h % 2 ? PINKS : ROSES });
   chimney(b, -0.9, -0.5, 2.2, 1.6);
   const sign = signPost(b, -2.25, 2.1, 0.35);
   return { parts: b.build(), sign, name };
@@ -584,12 +595,12 @@ function genericHouse(name: string, seed: string) {
 // ───────────── component ─────────────
 
 const SIGN: Record<string, { icon: string; color: string }> = {
-  hq: { icon: "🏛️", color: "#e9dcff" },
-  research: { icon: "🔭", color: "#d4f2ea" },
-  studio: { icon: "🪶", color: "#fff1c9" },
-  workshop: { icon: "⚙️", color: "#e2f5ea" },
-  atelier: { icon: "🎨", color: "#ffe3ef" },
-  lab: { icon: "🧊", color: "#ece6ff" },
+  hq: { icon: "🏛️", color: TOKENS.signs.hq },
+  research: { icon: "🔭", color: TOKENS.signs.research },
+  studio: { icon: "🪶", color: TOKENS.signs.studio },
+  workshop: { icon: "⚙️", color: TOKENS.signs.workshop },
+  atelier: { icon: "🎨", color: TOKENS.signs.atelier },
+  lab: { icon: "🧊", color: TOKENS.signs.lab },
 };
 
 function SelectionRing({ selected, hovered }: { selected: boolean; hovered: boolean }) {
@@ -601,7 +612,7 @@ function SelectionRing({ selected, hovered }: { selected: boolean; hovered: bool
   return (
     <mesh ref={ring} position={[0, 0.1, 0.1]} rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[4.3, 4.6, 48]} />
-      <meshBasicMaterial color={selected ? "#ff8fb8" : "#ffffff"} transparent opacity={0.6} />
+      <meshBasicMaterial color={selected ? TOKENS.banner : "#ffffff"} transparent opacity={0.6} />
     </mesh>
   );
 }
@@ -636,7 +647,7 @@ export function PastelBuilding({ building, glow, hovered, selected, activity }: 
     const s = group.current.scale.x + (target - group.current.scale.x) * Math.min(1, dt * 10);
     group.current.scale.setScalar(s);
   });
-  const sign = SIGN[building.kind] ?? { icon: "🏠", color: "#f3ecff" };
+  const sign = SIGN[building.kind] ?? { icon: "🏠", color: TOKENS.signs.other };
   const kind = building.kind;
   return (
     <group>
@@ -657,14 +668,14 @@ export function PastelBuilding({ building, glow, hovered, selected, activity }: 
             <group position={[1.15, 4.4, -0.55]}>
               <Smoke active={activity > 0} />
             </group>
-            <Poster position={[-2.04, 1.55, -0.55]} rotY={-Math.PI / 2} seed={3} palette={["#ff9fc4", "#9fd8ff", "#ffd86b"]} />
-            <Poster position={[-2.04, 1.5, 0.55]} rotY={-Math.PI / 2} seed={8} palette={["#c9b4ff", "#ffb38a", "#a8e6b0"]} size={[0.55, 0.7]} />
+            <Poster position={[-2.04, 1.55, -0.55]} rotY={-Math.PI / 2} seed={3} palette={[PALETTE.sakura, "#9fd8ff", PALETTE.gold]} />
+            <Poster position={[-2.04, 1.5, 0.55]} rotY={-Math.PI / 2} seed={8} palette={[PALETTE.lilac, "#ffb38a", "#a8e6b0"]} size={[0.55, 0.7]} />
           </>
         )}
         {kind === "workshop" && (
           <>
-            <Gear radius={0.5} teeth={10} color="#ffd86b" speed={activity ? 2.2 : 0.35} position={[1.25, 1.95, 1.66]} />
-            <Gear radius={0.32} teeth={8} color="#ff9fb8" speed={activity ? -3.3 : -0.5} position={[1.85, 2.3, 1.66]} />
+            <Gear radius={0.5} teeth={10} color={PALETTE.gold} speed={activity ? 2.2 : 0.35} position={[1.25, 1.95, 1.66]} />
+            <Gear radius={0.32} teeth={8} color={TOKENS.doors.atelier} speed={activity ? -3.3 : -0.5} position={[1.85, 2.3, 1.66]} />
             <group position={[-1.5, 4.25, -1.0]}>
               <Smoke active={activity > 0} />
             </group>

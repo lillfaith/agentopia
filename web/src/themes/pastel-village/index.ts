@@ -4,35 +4,18 @@ import { PastelBuilding } from "./Buildings";
 import { PastelCharacter } from "./Character";
 import { PastelEnvironment } from "./Environment";
 import { CAMERA, LIGHTING_KEYFRAMES, SLOTS, SLOT_LABELS, buildNav, fallbackSlot } from "./layout";
+import { UI_VARS } from "./palette";
 import { PastelWeather } from "./Weather";
 
 /** "Pastel Village" — the original default theme for Agentopia. */
 export const pastelVillage: ThemeManifest = {
   id: "pastel-village",
   name: "Pastel Village",
-  version: "1.1.0",
+  version: "1.2.0",
   author: "Agentopia",
-  description: "A cosy pastel island village: a flagstone square, winding cobble lanes, timber cottages, a hyacinth field, a beach and a lantern-lit pier.",
+  description: "A pink fantasy island village: a flagstone square, winding cobble lanes, timber cottages, a hyacinth field, a beach and a lantern-lit pier.",
   ui: {
-    cssVars: {
-      "--font": "'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif",
-      "--bg": "#fdf2f8",
-      "--panel": "rgba(255, 255, 255, 0.86)",
-      "--panel-solid": "#fffafd",
-      "--panel-border": "rgba(236, 180, 210, 0.55)",
-      "--text": "#4a3b5c",
-      "--muted": "#9a88ad",
-      "--accent": "#ff7eb3",
-      "--accent-2": "#8f7cff",
-      "--accent-soft": "#ffe1ef",
-      "--good": "#3fbf8f",
-      "--warn": "#f5a623",
-      "--bad": "#ef5f7a",
-      "--info": "#5aa9f0",
-      "--chip": "rgba(255, 255, 255, 0.9)",
-      "--radius": "18px",
-      "--shadow": "0 10px 30px rgba(170, 110, 160, 0.18), 0 2px 6px rgba(170, 110, 160, 0.12)",
-    },
+    cssVars: UI_VARS,
     fontStylesheet: "https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap",
     icons: {
       tasks: "📋",

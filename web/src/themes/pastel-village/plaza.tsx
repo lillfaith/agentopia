@@ -7,11 +7,12 @@ import type { Composition, Placement } from "./composition";
 import { PLAZA_RADIUS } from "./composition";
 import { Instanced, type Inst } from "./instancing";
 import { RING_RADIUS, seeded, type TownPath } from "./layout";
+import { PALETTE, TOKENS } from "./palette";
 import { grassTexture, radialTexture, stoneTexture, woodTexture } from "./textures";
 
-const STONES = ["#f4ebe2", "#efe3d8", "#f7efe8", "#eaded4", "#f3e5e8", "#ece2d9"];
-const COBBLES = ["#e9ddd0", "#ddd1c5", "#f0e6db", "#e8d6d1", "#d9cec6", "#e4dad0"];
-const MORTAR = "#d3c7bc";
+const STONES = TOKENS.stone.flag;
+const COBBLES = TOKENS.stone.cobble;
+const MORTAR = TOKENS.stone.mortar;
 
 // ───────────── plaza floor ─────────────
 
@@ -23,7 +24,8 @@ function Flagstones() {
     for (let r = 2.75; r < PLAZA_RADIUS - 0.1; r += 0.43, ring++) {
       const n = Math.round((2 * Math.PI * r) / 0.6);
       const off = rand() * 6;
-      const band = ring % 3 === 1; // a rosy band every third ring, as in a laid plaza
+      // Rosy and lavender bands, as in a laid square.
+      const band = ring % 3 === 1 ? TOKENS.stone.flagRose : ring % 3 === 2 && ring > 3 ? TOKENS.stone.flagLavender : null;
       for (let i = 0; i < n; i++) {
         const a = off + (i / n) * Math.PI * 2;
         const arc = ((2 * Math.PI * r) / n) * (0.86 + rand() * 0.06);
@@ -35,7 +37,7 @@ function Flagstones() {
           sx: arc,
           sy: 1,
           sz: 0.36 + rand() * 0.03,
-          color: band ? (rand() < 0.5 ? "#f1d9de" : "#ecd1d8") : STONES[Math.floor(rand() * STONES.length)],
+          color: band ? band[Math.floor(rand() * band.length)] : STONES[Math.floor(rand() * STONES.length)],
         });
       }
     }
@@ -55,11 +57,11 @@ function Flagstones() {
       {/* curb between plaza and cobble ring */}
       <mesh position={[0, 0.07, 0]} receiveShadow>
         <cylinderGeometry args={[PLAZA_RADIUS + 0.32, PLAZA_RADIUS + 0.32, 0.1, 72, 1, true]} />
-        <meshStandardMaterial color="#d8ccc2" roughness={0.9} side={THREE.DoubleSide} />
+        <meshStandardMaterial color={TOKENS.stone.curb} roughness={0.9} side={THREE.DoubleSide} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.115, 0]} receiveShadow>
         <ringGeometry args={[PLAZA_RADIUS + 0.05, PLAZA_RADIUS + 0.32, 72]} />
-        <meshStandardMaterial color="#e9dfd6" roughness={0.9} />
+        <meshStandardMaterial color={TOKENS.stone.curbTop} roughness={0.9} />
       </mesh>
     </group>
   );
@@ -91,28 +93,28 @@ function Medallion() {
     <group>
       <mesh position={[0, 0.07, 0]} receiveShadow>
         <cylinderGeometry args={[2.62, 2.66, 0.08, 64]} />
-        <meshStandardMaterial color="#f6eee6" roughness={0.8} />
+        <meshStandardMaterial color={TOKENS.stone.medallion} roughness={0.8} />
       </mesh>
       {[2.5, 2.05].map((r) => (
         <mesh key={r} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.112, 0]}>
           <ringGeometry args={[r - 0.05, r, 72]} />
-          <meshStandardMaterial color="#c9b3c9" roughness={0.9} />
+          <meshStandardMaterial color={TOKENS.stone.medallionRing} roughness={0.9} />
         </mesh>
       ))}
       <mesh rotation={[-Math.PI / 2, 0, Math.PI / 8]} position={[0, 0.113, 0]}>
         <shapeGeometry args={[star]} />
-        <meshStandardMaterial color="#e9dcf3" roughness={0.7} />
+        <meshStandardMaterial color={TOKENS.stone.medallionStar} roughness={0.7} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.116, 0]}>
         <shapeGeometry args={[star2]} />
-        <meshStandardMaterial color="#f7d9e4" roughness={0.7} />
+        <meshStandardMaterial color={TOKENS.stone.medallionStarInner} roughness={0.7} />
       </mesh>
       {Array.from({ length: 16 }, (_, i) => {
         const a = (i / 16) * Math.PI * 2;
         return (
           <mesh key={i} position={[Math.cos(a) * 2.28, 0.118, Math.sin(a) * 2.28]} rotation={[-Math.PI / 2, 0, 0]}>
             <circleGeometry args={[i % 2 ? 0.05 : 0.08, 12]} />
-            <meshStandardMaterial color="#c9b3c9" />
+            <meshStandardMaterial color={TOKENS.stone.medallionRing} />
           </mesh>
         );
       })}
@@ -130,11 +132,11 @@ function Fountain({ stoneMap }: { stoneMap: THREE.Texture }) {
     <group>
       <mesh castShadow receiveShadow position={[0, 0.32, 0]}>
         <cylinderGeometry args={[1.25, 1.36, 0.42, 40]} />
-        <meshStandardMaterial map={stoneMap} color="#fbf3ee" roughness={0.75} />
+        <meshStandardMaterial map={stoneMap} color="#fdf0f2" roughness={0.75} />
       </mesh>
       <mesh position={[0, 0.54, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[1.25, 0.07, 8, 40]} />
-        <meshStandardMaterial color="#f8efe8" roughness={0.6} />
+        <meshStandardMaterial color="#fbeef1" roughness={0.6} />
       </mesh>
       <mesh position={[0, 0.5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[1.2, 40]} />
@@ -142,11 +144,11 @@ function Fountain({ stoneMap }: { stoneMap: THREE.Texture }) {
       </mesh>
       <mesh castShadow position={[0, 1.0, 0]}>
         <cylinderGeometry args={[0.2, 0.32, 1.0, 16]} />
-        <meshStandardMaterial color="#f3dde6" roughness={0.6} />
+        <meshStandardMaterial color={PALETTE.blush} roughness={0.6} />
       </mesh>
       <mesh castShadow position={[0, 1.52, 0]}>
         <cylinderGeometry args={[0.62, 0.36, 0.2, 28]} />
-        <meshStandardMaterial color="#fbf3ee" roughness={0.6} />
+        <meshStandardMaterial color="#fdf0f2" roughness={0.6} />
       </mesh>
       <mesh position={[0, 1.63, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[0.55, 28]} />
@@ -174,7 +176,7 @@ function cobblesAlong(paths: TownPath[]): Inst[] {
       ry: rand() * 3,
       s: edge ? 1.15 : 0.9 + rand() * 0.25,
       sx: 1 + rand() * 0.3,
-      color: edge ? (rand() < 0.5 ? "#d6c9bd" : "#cfc2b6") : COBBLES[Math.floor(rand() * COBBLES.length)],
+      color: edge ? TOKENS.stone.cobbleEdge[Math.floor(rand() * 2)] : COBBLES[Math.floor(rand() * COBBLES.length)],
     });
   // the plaza ring
   for (let r = RING_RADIUS - 0.72; r <= RING_RADIUS + 0.75; r += 0.29) {
@@ -269,6 +271,19 @@ export function Cobbles({ paths }: { paths: TownPath[] }) {
 
 export function Hedges({ hedges }: { hedges: Placement[] }) {
   const items = useMemo<Inst[]>(() => hedges.map((h) => ({ x: h.x, y: 0.28, z: h.z, ry: h.rot, sx: h.s, color: h.color })), [hedges]);
+  // Little blossoms dotted along the top of the hedge: flower edging around the square.
+  const blooms = useMemo<Inst[]>(() => {
+    const rand = seeded(611);
+    const out: Inst[] = [];
+    hedges.forEach((h) => {
+      for (let k = 0; k < 4; k++) {
+        const u = (rand() - 0.5) * h.s * 0.9;
+        const v = (rand() - 0.5) * 0.4;
+        out.push({ x: h.x + Math.cos(h.rot) * u + Math.sin(h.rot) * v, y: 0.57, z: h.z - Math.sin(h.rot) * u + Math.cos(h.rot) * v, s: 0.06 + rand() * 0.03, sy: 0.7, color: TOKENS.foliage.hedgeBlooms[Math.floor(rand() * 4)] });
+      }
+    });
+    return out;
+  }, [hedges]);
   const geom = useMemo(() => new RoundedBoxGeometry(1, 0.56, 0.6, 2, 0.2), []);
   const map = useMemo(() => {
     const t = grassTexture().clone();
@@ -277,16 +292,59 @@ export function Hedges({ hedges }: { hedges: Placement[] }) {
     return t;
   }, []);
   return (
-    <Instanced items={items} castShadow receiveShadow>
-      <primitive object={geom} attach="geometry" />
-      <meshStandardMaterial map={map} roughness={0.95} />
-    </Instanced>
+    <group>
+      <Instanced items={items} castShadow receiveShadow>
+        <primitive object={geom} attach="geometry" />
+        <meshStandardMaterial map={map} roughness={0.95} />
+      </Instanced>
+      <Instanced items={blooms}>
+        <icosahedronGeometry args={[1, 0]} />
+        <meshStandardMaterial roughness={0.7} flatShading />
+      </Instanced>
+    </group>
+  );
+}
+
+/** Round stone planters overflowing with pink flowers. */
+export function Planters({ planters }: { planters: Placement[] }) {
+  const pots = useMemo<Inst[]>(() => planters.map((p) => ({ x: p.x, y: 0.28, z: p.z, color: TOKENS.wood.planter })), [planters]);
+  const rims = useMemo<Inst[]>(() => planters.map((p) => ({ x: p.x, y: 0.55, z: p.z, rx: Math.PI / 2, color: "#f6dbe3" })), [planters]);
+  const greens = useMemo<Inst[]>(() => planters.map((p) => ({ x: p.x, y: 0.62, z: p.z, s: 0.42, sy: 0.5, color: TOKENS.foliage.leaf })), [planters]);
+  const blooms = useMemo<Inst[]>(() => {
+    const rand = seeded(612);
+    return planters.flatMap((p) =>
+      Array.from({ length: 9 }, (_, i) => {
+        const a = (i / 9) * Math.PI * 2 + rand();
+        const r = 0.1 + rand() * 0.26;
+        return { x: p.x + Math.cos(a) * r, y: 0.74 + rand() * 0.08, z: p.z + Math.sin(a) * r, s: 0.08 + rand() * 0.03, sy: 0.7, color: TOKENS.flowers.sets[i % 3][Math.floor(rand() * 3)] };
+      }),
+    );
+  }, [planters]);
+  return (
+    <group>
+      <Instanced items={pots} castShadow receiveShadow>
+        <cylinderGeometry args={[0.46, 0.34, 0.56, 14]} />
+        <meshStandardMaterial roughness={0.85} />
+      </Instanced>
+      <Instanced items={rims}>
+        <torusGeometry args={[0.46, 0.06, 6, 18]} />
+        <meshStandardMaterial roughness={0.8} />
+      </Instanced>
+      <Instanced items={greens} castShadow>
+        <icosahedronGeometry args={[1, 1]} />
+        <meshStandardMaterial roughness={0.9} flatShading />
+      </Instanced>
+      <Instanced items={blooms}>
+        <icosahedronGeometry args={[1, 0]} />
+        <meshStandardMaterial roughness={0.7} flatShading />
+      </Instanced>
+    </group>
   );
 }
 
 export function Flowers({ flowers }: { flowers: Placement[] }) {
   const blooms = useMemo<Inst[]>(() => flowers.map((f) => ({ x: f.x, y: 0.26 * f.s, z: f.z, ry: f.rot, s: f.s, color: f.color })), [flowers]);
-  const leaves = useMemo<Inst[]>(() => flowers.map((f) => ({ x: f.x, y: 0.07, z: f.z, ry: f.rot, s: f.s, color: "#7cc47f" })), [flowers]);
+  const leaves = useMemo<Inst[]>(() => flowers.map((f) => ({ x: f.x, y: 0.07, z: f.z, ry: f.rot, s: f.s, color: TOKENS.foliage.leaf })), [flowers]);
   const bloomGeom = useMemo(() => {
     const g = new THREE.IcosahedronGeometry(0.1, 0);
     g.scale(1, 0.6, 1);
@@ -333,11 +391,11 @@ export function Benches({ benches }: { benches: Placement[] }) {
             <group key={x} position={[x, 0, 0]}>
               <mesh castShadow position={[0, 0.22, 0]}>
                 <boxGeometry args={[0.07, 0.44, 0.42]} />
-                <meshStandardMaterial color="#6f6480" roughness={0.5} metalness={0.4} />
+                <meshStandardMaterial color={TOKENS.iron} roughness={0.5} metalness={0.4} />
               </mesh>
               <mesh castShadow position={[0, 0.62, -0.25]} rotation={[-0.15, 0, 0]}>
                 <boxGeometry args={[0.06, 0.45, 0.05]} />
-                <meshStandardMaterial color="#6f6480" roughness={0.5} metalness={0.4} />
+                <meshStandardMaterial color={TOKENS.iron} roughness={0.5} metalness={0.4} />
               </mesh>
             </group>
           ))}
@@ -368,23 +426,23 @@ export function Lamps({ lamps, glow }: { lamps: Placement[]; glow: number }) {
     <group>
       <Instanced items={base} castShadow>
         <cylinderGeometry args={[0.16, 0.2, 0.24, 8]} />
-        <meshStandardMaterial color="#6f6480" roughness={0.45} metalness={0.45} />
+        <meshStandardMaterial color={TOKENS.iron} roughness={0.45} metalness={0.45} />
       </Instanced>
       <Instanced items={post} castShadow>
         <cylinderGeometry args={[0.05, 0.07, 1.9, 8]} />
-        <meshStandardMaterial color="#6f6480" roughness={0.45} metalness={0.45} />
+        <meshStandardMaterial color={TOKENS.iron} roughness={0.45} metalness={0.45} />
       </Instanced>
       <Instanced items={glass}>
         <boxGeometry args={[0.32, 0.42, 0.32]} />
-        <meshStandardMaterial ref={glassMat} color="#fff6dc" emissive="#ffd27a" emissiveIntensity={0.3} roughness={0.3} />
+        <meshStandardMaterial ref={glassMat} color={TOKENS.glow.lampGlass} emissive={TOKENS.glow.lamp} emissiveIntensity={0.3} roughness={0.3} />
       </Instanced>
       <Instanced items={cap} castShadow>
         <coneGeometry args={[0.3, 0.26, 4]} />
-        <meshStandardMaterial color="#6f6480" roughness={0.45} metalness={0.45} />
+        <meshStandardMaterial color={PALETTE.rose} roughness={0.45} metalness={0.45} />
       </Instanced>
       <Instanced items={pools} frustumCulled={false}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial ref={poolMat} map={radialTexture()} color="#ffcf7a" transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <meshBasicMaterial ref={poolMat} map={radialTexture()} color={TOKENS.glow.lampPool} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} />
       </Instanced>
     </group>
   );
@@ -398,12 +456,13 @@ export function Plaza({ composition, glow }: { composition: Composition; glow: n
       <Cobbles paths={composition.paths} />
       <Hedges hedges={composition.hedges} />
       <Benches benches={composition.benches} />
+      <Planters planters={composition.planters} />
       <Lamps lamps={composition.lamps} glow={glow} />
       {/* two real lights over the plaza at night; everything else uses glow pools */}
       {glow > 0.25 && (
         <>
-          <pointLight position={[4.5, 2.6, 4.5]} color="#ffd98a" intensity={glow * 9} distance={11} decay={2} />
-          <pointLight position={[-4.5, 2.6, -4.5]} color="#ffd98a" intensity={glow * 9} distance={11} decay={2} />
+          <pointLight position={[4.5, 2.6, 4.5]} color={TOKENS.glow.lamp} intensity={glow * 9} distance={11} decay={2} />
+          <pointLight position={[-4.5, 2.6, -4.5]} color={TOKENS.glow.lamp} intensity={glow * 9} distance={11} decay={2} />
         </>
       )}
     </group>

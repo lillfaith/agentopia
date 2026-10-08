@@ -71,11 +71,16 @@ It then appears in **Settings → Theme**. The choice is saved server-side in `s
 
 ## How Pastel Village is built (a template for packs)
 
+**Art direction:** a pink fantasy town. Pink is carried by a family of hues (blush, rose, sakura,
+mauve, lavender, peach, cream) so objects stay separable; mint, baby blue and butter are sparing
+accents. Value contrast comes from deep rose timber, plum ironwork and plum text against creams.
+
 The default theme is organised so its pieces can ship separately later (environment, buildings,
 characters, wearables):
 
 | File | Role |
 |---|---|
+| `palette.ts` | Every colour in the theme: base swatches (`PALETTE`), semantic roles for the world (`TOKENS`: ground, stone, foliage, flowers, wood, roofs, walls, glow…) and the UI CSS variables (`UI_VARS`, AA-contrast notes inline). A colourway variant only needs a new palette file |
 | `layout.ts` | Pure data: plots, island outline, landmarks (pier, field, picnic, pond, garden), winding paths that steer around every plot, the walk graph, lighting keyframes |
 | `composition.ts` | Pure placement of scenery in zones (plaza ring, forest belt, groves, beach, field). Everything yields to plots and paths. Unit-tested |
 | `architecture.ts` | Building kit (walls, half-timbering, tiled roofs, windows with shutters and flower boxes, doors, lanterns, fenced yards). Parts are merged into one mesh per material |

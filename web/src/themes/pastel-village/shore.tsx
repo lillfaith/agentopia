@@ -4,11 +4,12 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { Instanced, type Inst } from "./instancing";
 import { FEATURES, pierStart, seeded } from "./layout";
+import { TOKENS } from "./palette";
 import { ginghamTexture, radialTexture, woodTexture } from "./textures";
 
 type V3 = [number, number, number];
-const BULB_COLORS = ["#fff4c9", "#ffd6e6", "#ffe9a8", "#d9f2ff"];
-const BUNTING = ["#ff9fc4", "#ffd86b", "#9fe0ff", "#c9b4ff", "#a8e6b0"];
+const BULB_COLORS = TOKENS.glow.bulbs;
+const BUNTING = TOKENS.bunting;
 
 /** Points along a sagging wire between a and b. */
 export function catenary(a: V3, b: V3, sag: number, n: number): V3[] {
@@ -38,11 +39,11 @@ export function StringLights({ spans, glow, perSpan = 7 }: { spans: [V3, V3][]; 
   return (
     <group>
       <lineSegments geometry={wire}>
-        <lineBasicMaterial color="#6f6480" />
+        <lineBasicMaterial color={TOKENS.iron} />
       </lineSegments>
       <Instanced items={bulbs}>
         <sphereGeometry args={[0.06, 8, 6]} />
-        <meshStandardMaterial ref={mat} emissive="#ffe7a8" emissiveIntensity={0.4} roughness={0.4} />
+        <meshStandardMaterial ref={mat} emissive="#ffd9c4" emissiveIntensity={0.4} roughness={0.4} />
       </Instanced>
     </group>
   );
@@ -77,9 +78,9 @@ export function Pier({ glow }: { glow: number }) {
   const planks = useMemo<Inst[]>(() => {
     const rand = seeded(303);
     const out: Inst[] = [];
-    for (let z = -0.6; z < L; z += 0.3) out.push({ x: (rand() - 0.5) * 0.04, y: deckY, z, ry: (rand() - 0.5) * 0.02, color: ["#e8c9ad", "#dfbd9f", "#ecd2b8"][Math.floor(rand() * 3)] });
+    for (let z = -0.6; z < L; z += 0.3) out.push({ x: (rand() - 0.5) * 0.04, y: deckY, z, ry: (rand() - 0.5) * 0.02, color: TOKENS.wood.deck[Math.floor(rand() * 3)] });
     // wider landing at the end
-    for (let z = L; z < L + 2.6; z += 0.3) out.push({ x: 0, y: deckY, z, sx: 1.6, color: "#e3c3a6" });
+    for (let z = L; z < L + 2.6; z += 0.3) out.push({ x: 0, y: deckY, z, sx: 1.6, color: TOKENS.wood.deck[0] });
     return out;
   }, [L]);
   const postZ = useMemo(() => {
@@ -91,7 +92,7 @@ export function Pier({ glow }: { glow: number }) {
     () =>
       postZ.flatMap((z) => {
         const half = z > L ? 1.65 : 1.05;
-        return [-half, half].map((x) => ({ x, y: -0.9, z, color: "#c49a7c" }));
+        return [-half, half].map((x) => ({ x, y: -0.9, z, color: TOKENS.wood.post }));
       }),
     [postZ, L],
   );
@@ -134,17 +135,17 @@ export function Pier({ glow }: { glow: number }) {
         <group key={side}>
           <mesh castShadow position={[side * 1.05, 0.95, L / 2 - 0.1]}>
             <boxGeometry args={[0.07, 0.07, L + 0.2]} />
-            <meshStandardMaterial color="#c49a7c" roughness={0.8} />
+            <meshStandardMaterial color={TOKENS.wood.post} roughness={0.8} />
           </mesh>
           <mesh castShadow position={[side * 1.65, 0.95, L + 1.2]}>
             <boxGeometry args={[0.07, 0.07, 2.4]} />
-            <meshStandardMaterial color="#c49a7c" roughness={0.8} />
+            <meshStandardMaterial color={TOKENS.wood.post} roughness={0.8} />
           </mesh>
         </group>
       ))}
       <mesh castShadow position={[0, 0.95, L + 2.4]}>
         <boxGeometry args={[3.3, 0.07, 0.07]} />
-        <meshStandardMaterial color="#c49a7c" roughness={0.8} />
+        <meshStandardMaterial color={TOKENS.wood.post} roughness={0.8} />
       </mesh>
       <StringLights spans={spans} glow={glow} />
       {/* entrance arch with bunting */}
@@ -159,25 +160,25 @@ export function Pier({ glow }: { glow: number }) {
       <group position={[1.3, 0, L + 2.0]}>
         <mesh castShadow position={[0, 1.3, 0]}>
           <cylinderGeometry args={[0.05, 0.07, 2.0, 8]} />
-          <meshStandardMaterial color="#6f6480" metalness={0.4} roughness={0.45} />
+          <meshStandardMaterial color={TOKENS.iron} metalness={0.4} roughness={0.45} />
         </mesh>
         <mesh position={[0, 2.45, 0]}>
           <boxGeometry args={[0.34, 0.44, 0.34]} />
-          <meshStandardMaterial ref={lantern} color="#fff6dc" emissive="#ffd27a" emissiveIntensity={0.3} />
+          <meshStandardMaterial ref={lantern} color={TOKENS.glow.lampGlass} emissive={TOKENS.glow.lamp} emissiveIntensity={0.3} />
         </mesh>
         <mesh position={[0, 2.78, 0]} rotation={[0, Math.PI / 4, 0]}>
           <coneGeometry args={[0.32, 0.26, 4]} />
-          <meshStandardMaterial color="#6f6480" />
+          <meshStandardMaterial color={TOKENS.iron} />
         </mesh>
       </group>
       <mesh position={[1.3, -1.2, L + 2.6]} rotation={[-Math.PI / 2, 0, 0]} scale={[1.6, 3.6, 1]}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial ref={reflection} map={radialTexture()} color="#ffc76b" transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <meshBasicMaterial ref={reflection} map={radialTexture()} color={TOKENS.glow.lampPool} transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
       {/* steps down to the sand */}
       <mesh receiveShadow position={[0, 0.12, -0.95]}>
         <boxGeometry args={[1.9, 0.12, 0.5]} />
-        <meshStandardMaterial map={wood} color="#e3c3a6" roughness={0.9} />
+        <meshStandardMaterial map={wood} color={TOKENS.wood.deck[0]} roughness={0.9} />
       </mesh>
       <Rowboat position={[-2.7, -1.22, L - 1.5]} />
     </group>
@@ -203,7 +204,7 @@ function Rowboat({ position }: { position: V3 }) {
       </mesh>
       <mesh position={[0, 0.06, 0.2]}>
         <boxGeometry args={[1.3, 0.06, 0.3]} />
-        <meshStandardMaterial color="#e3c3a6" />
+        <meshStandardMaterial color={TOKENS.wood.deck[0]} />
       </mesh>
     </group>
   );
@@ -297,7 +298,7 @@ export function Picnic({ x, z, rot, glow }: { x: number; z: number; rot: number;
       {/* log seat */}
       <mesh castShadow position={[0, 0.2, 1.35]} rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.2, 0.22, 1.6, 10]} />
-        <meshStandardMaterial color="#b58a6c" roughness={1} />
+        <meshStandardMaterial color={TOKENS.foliage.trunk} roughness={1} />
       </mesh>
       <Bicycle position={[2.0, 0, 0.6]} rotation={-1.0} />
       {/* poles with bunting and fairy lights over the blanket */}
@@ -368,7 +369,7 @@ export function Tent({ position, rotation }: { position: V3; rotation: number })
       </mesh>
       <mesh position={[0, 1.6, 0]}>
         <cylinderGeometry args={[0.02, 0.02, 0.4, 6]} />
-        <meshStandardMaterial color="#6f6480" />
+        <meshStandardMaterial color={TOKENS.iron} />
       </mesh>
       <mesh position={[0.12, 1.72, 0]}>
         <planeGeometry args={[0.24, 0.14]} />

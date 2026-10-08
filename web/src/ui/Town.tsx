@@ -126,7 +126,7 @@ function Hire({ onDone }: { onDone: () => void }) {
     systemPrompt: "",
     responsibilities: "",
     skills: ["writing"] as string[],
-    color: "#ffd6a5",
+    color: "#ffc9d9",
     accessory: "sprout",
     model: snap.status.models[0]?.id ?? "claude-opus-5-5",
     effort: "medium" as Effort,

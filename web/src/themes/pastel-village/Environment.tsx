@@ -6,6 +6,7 @@ import { composeTown } from "./composition";
 import { Flora } from "./flora";
 import { KitchenGarden, Pond } from "./garden";
 import { pierStart, seeded } from "./layout";
+import { TOKENS } from "./palette";
 import { Flowers, Plaza } from "./plaza";
 import { Picnic, Pier, Tent } from "./shore";
 import { Terrain } from "./terrain";
@@ -106,7 +107,7 @@ function Cloud({ seed }: { seed: number }) {
       ].map(([x, y, z, r], i) => (
         <mesh key={i} position={[x, y, z]}>
           <sphereGeometry args={[r, 16, 12]} />
-          <meshStandardMaterial color="#ffffff" roughness={1} transparent opacity={0.92} />
+          <meshStandardMaterial color={TOKENS.cloud} roughness={1} transparent opacity={0.92} />
         </mesh>
       ))}
     </group>

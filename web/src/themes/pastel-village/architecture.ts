@@ -12,12 +12,14 @@
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { PALETTE, TOKENS } from "./palette";
 
 export type MatKey = "plaster" | "stone" | "brick" | "roof" | "wood" | "solid" | "foliage" | "metal" | "glass" | "glow" | "grass";
 
-export const TIMBER = "#a8775d";
-export const TRIM = "#fff8f0";
-export const IRON = "#6f6480";
+export const TIMBER = TOKENS.wood.timber;
+export const TRIM = TOKENS.trim;
+export const IRON = TOKENS.iron;
+const GLASS = "#dfe6fb";
 
 type V3 = [number, number, number];
 
@@ -186,12 +188,12 @@ export function windowOn(b: Builder, s: BoxShell, face: Face, u: number, v: numb
   const frame = o.frame ?? TRIM;
   if (o.round) {
     b.add("solid", frame, new THREE.TorusGeometry(w / 2, 0.06, 6, 20), { pos: at(0, 0, 0.03).pos, rot: [0, rotY, 0] });
-    b.add("glass", "#cfe9ff", new THREE.CircleGeometry(w / 2, 20), { pos: at(0, 0, 0.02).pos, rot: [0, rotY, 0] });
+    b.add("glass", GLASS, new THREE.CircleGeometry(w / 2, 20), { pos: at(0, 0, 0.02).pos, rot: [0, rotY, 0] });
     b.box("solid", frame, [w, 0.04, 0.04], at(0, 0, 0.05).pos, [0, rotY, 0]);
     return;
   }
   b.box("solid", frame, [w + 0.16, h + 0.16, 0.06], at(0, 0, 0.01).pos, [0, rotY, 0]);
-  b.box("glass", "#cfe9ff", [w, h, 0.02], at(0, 0, 0.045).pos, [0, rotY, 0]);
+  b.box("glass", GLASS, [w, h, 0.02], at(0, 0, 0.045).pos, [0, rotY, 0]);
   b.box("solid", frame, [0.045, h, 0.03], at(0, 0, 0.065).pos, [0, rotY, 0]);
   b.box("solid", frame, [w, 0.045, 0.03], at(0, 0.04, 0.065).pos, [0, rotY, 0]);
   b.box("solid", frame, [w + 0.26, 0.07, 0.16], at(0, -h / 2 - 0.08, 0.07).pos, [0, rotY, 0]);
@@ -203,11 +205,11 @@ export function windowOn(b: Builder, s: BoxShell, face: Face, u: number, v: numb
     }
   }
   if (o.flowers) {
-    b.box("wood", "#c48f6e", [w + 0.18, 0.17, 0.2], at(0, -h / 2 - 0.22, 0.14).pos, [0, rotY, 0]);
+    b.box("wood", TOKENS.wood.planter, [w + 0.18, 0.17, 0.2], at(0, -h / 2 - 0.22, 0.14).pos, [0, rotY, 0]);
     const n = 5;
     for (let i = 0; i < n; i++) {
       const du = -w / 2 + (i + 0.5) * (w / n);
-      b.sphere("foliage", "#7cc47f", 0.085, at(du, -h / 2 - 0.1, 0.15).pos, [1, 0.8, 1], 0);
+      b.sphere("foliage", TOKENS.foliage.leaf, 0.085, at(du, -h / 2 - 0.1, 0.15).pos, [1, 0.8, 1], 0);
       b.sphere("foliage", o.flowers[i % o.flowers.length], 0.065, at(du + 0.02, -h / 2 - 0.02, 0.2).pos, [1, 0.8, 1], 0);
     }
   }
@@ -217,20 +219,20 @@ export function windowOn(b: Builder, s: BoxShell, face: Face, u: number, v: numb
 export function doorOn(b: Builder, s: BoxShell, face: Face, u: number, o: { w?: number; h?: number; color?: string; double?: boolean } = {}) {
   const w = o.w ?? 0.85;
   const h = o.h ?? 1.3;
-  const color = o.color ?? "#d98fa8";
+  const color = o.color ?? TOKENS.doors.studio;
   const at = (du: number, dv: number, out: number) => facePoint(face, s.W, s.D, u + du, dv, out, s.cx, s.cz);
   const { rotY } = at(0, 0, 0);
   // stone surround
-  b.box("stone", "#efe6de", [w + 0.3, h + 0.15, 0.08], at(0, (h + 0.15) / 2, 0.0).pos, [0, rotY, 0], 0.5);
-  b.add("stone", "#efe6de", halfDisc((w + 0.3) / 2, 0.08), { pos: at(0, h + 0.15, 0).pos, rot: [0, rotY, 0] });
+  b.box("stone", TOKENS.stone.doorFrame, [w + 0.3, h + 0.15, 0.08], at(0, (h + 0.15) / 2, 0.0).pos, [0, rotY, 0], 0.5);
+  b.add("stone", TOKENS.stone.doorFrame, halfDisc((w + 0.3) / 2, 0.08), { pos: at(0, h + 0.15, 0).pos, rot: [0, rotY, 0] });
   b.box("wood", color, [w, h, 0.06], at(0, h / 2, 0.05).pos, [0, rotY, 0]);
   b.add("wood", color, halfDisc(w / 2, 0.06), { pos: at(0, h, 0.05).pos, rot: [0, rotY, 0] });
   // plank grooves
   for (const du of [-w / 4, 0, w / 4]) b.box("wood", shade(color, -0.25), [0.025, h + w / 2 - 0.12, 0.02], at(du, (h + w / 2) / 2 - 0.06, 0.085).pos, [0, rotY, 0]);
   if (o.double) b.box("wood", shade(color, -0.3), [0.04, h + w / 2 - 0.05, 0.03], at(0, (h + w / 2) / 2, 0.09).pos, [0, rotY, 0]);
-  b.sphere("metal", "#ffd86b", 0.045, at(w * 0.3, h * 0.5, 0.11).pos, [1, 1, 1], 0);
+  b.sphere("metal", PALETTE.gold, 0.045, at(w * 0.3, h * 0.5, 0.11).pos, [1, 1, 1], 0);
   // step
-  b.box("stone", "#e9dfd6", [w + 0.5, 0.14, 0.45], at(0, 0.07, 0.25).pos, [0, rotY, 0], 0.5);
+  b.box("stone", TOKENS.stone.step, [w + 0.5, 0.14, 0.45], at(0, 0.07, 0.25).pos, [0, rotY, 0], 0.5);
 }
 
 /** Upper half of a disc of thickness t, facing +z (for arched doors). */
@@ -245,14 +247,14 @@ export function wallLantern(b: Builder, s: BoxShell, face: Face, u: number, v: n
   const at = (dv: number, out: number) => facePoint(face, s.W, s.D, u, v + dv, out, s.cx, s.cz);
   const { rotY } = at(0, 0);
   b.box("metal", IRON, [0.05, 0.05, 0.28], at(0.1, 0.14).pos, [0, rotY, 0]);
-  b.box("glow", "#fff4d6", [0.18, 0.24, 0.18], at(-0.05, 0.28).pos, [0, rotY, 0]);
+  b.box("glow", TOKENS.glow.lampGlass, [0.18, 0.24, 0.18], at(-0.05, 0.28).pos, [0, rotY, 0]);
   b.add("metal", IRON, new THREE.ConeGeometry(0.17, 0.14, 4), { pos: at(0.14, 0.28).pos, rot: [0, rotY + Math.PI / 4, 0] });
 }
 
 export function shade(hex: string, t: number): string {
   const c = new THREE.Color(hex);
   if (t > 0) c.lerp(new THREE.Color("#ffffff"), t);
-  else c.lerp(new THREE.Color("#3a2e45"), -t);
+  else c.lerp(new THREE.Color(PALETTE.inkPlum), -t);
   return `#${c.getHexString()}`;
 }
 
@@ -319,12 +321,12 @@ export function coneRoof(b: Builder, color: string, r: number, h: number, pos: V
   const uv = g.attributes.uv as THREE.BufferAttribute;
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * ((Math.PI * 2 * r) / 0.62), uv.getY(i) * (h / 0.62) * 1.2);
   b.add("roof", color, g, { pos });
-  b.sphere("metal", "#ffd86b", 0.09, [pos[0], pos[1] + h / 2 + 0.05, pos[2]], [1, 1, 1], 0);
+  b.sphere("metal", PALETTE.gold, 0.09, [pos[0], pos[1] + h / 2 + 0.05, pos[2]], [1, 1, 1], 0);
 }
 
 export function chimney(b: Builder, x: number, z: number, yBase: number, h: number) {
-  b.box("brick", "#f2c4bf", [0.5, h, 0.5], [x, yBase + h / 2, z], undefined, 0.6);
-  b.box("stone", "#e8ddd4", [0.62, 0.12, 0.62], [x, yBase + h + 0.06, z], undefined, 0.5);
+  b.box("brick", TOKENS.walls.chimney, [0.5, h, 0.5], [x, yBase + h / 2, z], undefined, 0.6);
+  b.box("stone", TOKENS.stone.foundation, [0.62, 0.12, 0.62], [x, yBase + h + 0.06, z], undefined, 0.5);
 }
 
 /** Freestanding signpost; returns where to put the painted board (drawn separately, with text). */
@@ -345,7 +347,7 @@ export function yard(b: Builder, o: { doorZ: number; halfW?: number; zMin?: numb
   const hw = o.halfW ?? 3.15;
   const z0 = o.zMin ?? -2.95;
   const z1 = o.zMax ?? 2.6;
-  const fence = o.fence ?? "#fff3ea";
+  const fence = o.fence ?? TOKENS.wood.fence;
   const picket = (x: number, z: number, rotY: number) => {
     b.box("wood", fence, [0.09, 0.62, 0.05], [x, 0.31, z], [0, rotY, 0]);
     b.add("wood", fence, new THREE.ConeGeometry(0.065, 0.1, 4), { pos: [x, 0.66, z], rot: [0, rotY + Math.PI / 4, 0] });
@@ -370,18 +372,18 @@ export function yard(b: Builder, o: { doorZ: number; halfW?: number; zMin?: numb
     b.sphere("wood", shade(fence, -0.05), 0.09, [x, 0.84, z], [1, 1, 1], 0);
   }
   // front corner bushes and flowers along the fence
-  const flowers = o.flowers ?? ["#ff9fc4", "#fff1a8", "#c9b4ff"];
+  const flowers = o.flowers ?? TOKENS.flowers.sets[0];
   for (const side of [-1, 1]) {
-    b.sphere("foliage", "#86c98a", 0.42, [side * (hw - 0.45), 0.36, z1 - 0.35], [1, 0.85, 1]);
-    b.sphere("foliage", "#9bd69a", 0.3, [side * (hw - 0.95), 0.27, z1 - 0.2], [1, 0.85, 1]);
+    b.sphere("foliage", TOKENS.foliage.bushes[0], 0.42, [side * (hw - 0.45), 0.36, z1 - 0.35], [1, 0.85, 1]);
+    b.sphere("foliage", TOKENS.foliage.flowering[side > 0 ? 0 : 2], 0.3, [side * (hw - 0.95), 0.27, z1 - 0.2], [1, 0.85, 1]);
     for (let z = z0 + 0.5; z < z1 - 1.2; z += 0.42) {
-      b.sphere("foliage", "#7cc47f", 0.1, [side * (hw - 0.25), 0.1, z], [1, 0.8, 1], 0);
+      b.sphere("foliage", TOKENS.foliage.leaf, 0.1, [side * (hw - 0.25), 0.1, z], [1, 0.8, 1], 0);
       b.sphere("foliage", flowers[Math.abs(Math.round(z * 3)) % flowers.length], 0.075, [side * (hw - 0.25), 0.22, z + 0.05], [1, 0.8, 1], 0);
     }
   }
   // stepping stones from the door to the gate
   for (let z = o.doorZ + 0.55, i = 0; z < z1 + 0.5; z += 0.48, i++) {
-    b.add("stone", i % 2 ? "#ebe1d8" : "#f2e9e1", new THREE.CylinderGeometry(0.26, 0.28, 0.06, 9), { pos: [(i % 2 ? 0.08 : -0.06), 0.04, z], rot: [0, i, 0], uv: [0.4, 0.4] });
+    b.add("stone", i % 2 ? TOKENS.stone.flag[3] : TOKENS.stone.flag[0], new THREE.CylinderGeometry(0.26, 0.28, 0.06, 9), { pos: [(i % 2 ? 0.08 : -0.06), 0.04, z], rot: [0, i, 0], uv: [0.4, 0.4] });
   }
 }
 
@@ -391,5 +393,5 @@ export function yardGround(b: Builder, o: { halfW?: number; zMin?: number; zMax?
   const z0 = o.zMin ?? -2.95;
   const z1 = o.zMax ?? 2.6;
   const g = new THREE.PlaneGeometry(hw * 2, z1 - z0);
-  b.add("grass", o.color ?? "#a3d68e", g, { pos: [0, 0.012, (z0 + z1) / 2], rot: [-Math.PI / 2, 0, 0], uv: [(hw * 2) / 4.5, (z1 - z0) / 4.5] });
+  b.add("grass", o.color ?? TOKENS.ground.yard, g, { pos: [0, 0.012, (z0 + z1) / 2], rot: [-Math.PI / 2, 0, 0], uv: [(hw * 2) / 4.5, (z1 - z0) / 4.5] });
 }

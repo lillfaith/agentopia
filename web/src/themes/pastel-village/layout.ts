@@ -248,18 +248,18 @@ type Preset = LightingPreset;
 const P = (p: Omit<Preset, "sun"> & { sun: { color: string; intensity: number } }): Preset => ({ ...p, sun: { ...p.sun, position: [0, 30, 0] } });
 
 const NIGHT = P({
-  skyTop: "#1f2862", skyBottom: "#584a98", fog: "#3f4384",
-  ambient: { color: "#a3b0ff", intensity: 0.42 },
-  sun: { color: "#c8d4ff", intensity: 0.95 },
-  hemi: { sky: "#8a96ee", ground: "#33545a", intensity: 0.62 },
+  skyTop: "#2a1d5e", skyBottom: "#7a4a9c", fog: "#523a84",
+  ambient: { color: "#d4b2ff", intensity: 0.46 },
+  sun: { color: "#e2c9ff", intensity: 0.95 },
+  hemi: { sky: "#b48cec", ground: "#57405f", intensity: 0.66 },
   glow: 1, stars: 1, fireflies: 1, petals: 0,
 });
 
 /**
- * Lighting at local hours. The engine eases between neighbouring keyframes, so
- * every minute of the day looks slightly different. Low ambient + a strong key
- * light give shape and contrast by day; night stays bright enough to read the
- * town (moonlit blues, glowing windows, lanterns and fairy lights).
+ * Lighting at local hours, tuned for a pink town. The engine eases between
+ * neighbouring keyframes. Low ambient + a strong key light keep shape and value
+ * contrast so pinks never wash out; sunrise and golden hour lean rosy, sunset
+ * pink/peach/mauve, and night a magical pink-purple with warm windows.
  */
 export const LIGHTING_KEYFRAMES: LightingKeyframe[] = [
   { hour: 0, preset: NIGHT },
@@ -267,70 +267,70 @@ export const LIGHTING_KEYFRAMES: LightingKeyframe[] = [
   {
     hour: 6.1,
     preset: P({
-      skyTop: "#97a9f5", skyBottom: "#ffc3a0", fog: "#f1c9bb",
-      ambient: { color: "#ffdccc", intensity: 0.42 },
-      sun: { color: "#ffb388", intensity: 2.2 },
-      hemi: { sky: "#ffd6e2", ground: "#a2c993", intensity: 0.75 },
-      glow: 0.45, stars: 0.12, fireflies: 0.1, petals: 0.5,
+      skyTop: "#a9a3f0", skyBottom: "#ffb9c8", fog: "#f5c6d3",
+      ambient: { color: "#ffd8e2", intensity: 0.56 },
+      sun: { color: "#ffb0a6", intensity: 2.4 },
+      hemi: { sky: "#ffd4e6", ground: "#c4bfa4", intensity: 0.9 },
+      glow: 0.45, stars: 0.12, fireflies: 0.1, petals: 0.6,
     }),
   },
   {
     hour: 7.6,
     preset: P({
-      skyTop: "#7cc2fb", skyBottom: "#fde3ee", fog: "#e4ecfb",
-      ambient: { color: "#fff6ee", intensity: 0.26 },
-      sun: { color: "#ffeed2", intensity: 2.6 },
-      hemi: { sky: "#e0eeff", ground: "#9fc88e", intensity: 0.72 },
+      skyTop: "#8ac2fb", skyBottom: "#ffdeea", fog: "#f2e2ef",
+      ambient: { color: "#fff0f4", intensity: 0.28 },
+      sun: { color: "#fff0e6", intensity: 2.6 },
+      hemi: { sky: "#ebe6ff", ground: "#b6c89c", intensity: 0.74 },
       glow: 0.05, stars: 0, fireflies: 0, petals: 1,
     }),
   },
   {
     hour: 12.5,
     preset: P({
-      skyTop: "#62b2f6", skyBottom: "#e2f0ff", fog: "#d6e8f8",
-      ambient: { color: "#ffffff", intensity: 0.24 },
-      sun: { color: "#fff6e6", intensity: 3.0 },
-      hemi: { sky: "#dcecff", ground: "#9ec58a", intensity: 0.78 },
+      skyTop: "#72b7f5", skyBottom: "#fbe5f1", fog: "#ecdfef",
+      ambient: { color: "#fff5f8", intensity: 0.26 },
+      sun: { color: "#fff7f0", intensity: 2.9 },
+      hemi: { sky: "#e8e6ff", ground: "#bfc7a2", intensity: 0.78 },
       glow: 0, stars: 0, fireflies: 0, petals: 1,
     }),
   },
   {
     hour: 16.4,
     preset: P({
-      skyTop: "#6bb2f0", skyBottom: "#fdebd8", fog: "#e9e2ea",
-      ambient: { color: "#fff3e4", intensity: 0.24 },
-      sun: { color: "#ffe6c0", intensity: 2.8 },
-      hemi: { sky: "#efe6ff", ground: "#a3c483", intensity: 0.72 },
+      skyTop: "#79b4f0", skyBottom: "#ffe3e6", fog: "#eedfe9",
+      ambient: { color: "#fff2ee", intensity: 0.26 },
+      sun: { color: "#ffe9d6", intensity: 2.75 },
+      hemi: { sky: "#f0e4ff", ground: "#bcc39a", intensity: 0.74 },
       glow: 0, stars: 0, fireflies: 0, petals: 0.9,
     }),
   },
   {
     hour: 18.0,
     preset: P({
-      skyTop: "#7ea6ea", skyBottom: "#ffc97a", fog: "#f2cfa4",
-      ambient: { color: "#ffe2c4", intensity: 0.32 },
-      sun: { color: "#ffb766", intensity: 2.6 },
-      hemi: { sky: "#ffe0b4", ground: "#a2c486", intensity: 0.72 },
-      glow: 0.3, stars: 0, fireflies: 0.1, petals: 0.7,
+      skyTop: "#9aa2ec", skyBottom: "#ffbfa8", fog: "#f5c8bd",
+      ambient: { color: "#ffdcd4", intensity: 0.34 },
+      sun: { color: "#ffac88", intensity: 2.5 },
+      hemi: { sky: "#ffd2c8", ground: "#b4b88e", intensity: 0.72 },
+      glow: 0.3, stars: 0, fireflies: 0.1, petals: 0.8,
     }),
   },
   {
     hour: 19.3,
     preset: P({
-      skyTop: "#6c6ccb", skyBottom: "#ff9483", fog: "#de9fb3",
-      ambient: { color: "#ffc0cf", intensity: 0.3 },
-      sun: { color: "#ff8a74", intensity: 1.7 },
-      hemi: { sky: "#c4a0ff", ground: "#86ad85", intensity: 0.6 },
+      skyTop: "#866dcf", skyBottom: "#ff9db2", fog: "#e3a2c2",
+      ambient: { color: "#ffc8dc", intensity: 0.52 },
+      sun: { color: "#ffa09a", intensity: 2.1 },
+      hemi: { sky: "#e6b0ff", ground: "#b29aa6", intensity: 0.86 },
       glow: 0.75, stars: 0.25, fireflies: 0.35, petals: 0.3,
     }),
   },
   {
     hour: 20.5,
     preset: P({
-      skyTop: "#353a88", skyBottom: "#9f77ba", fog: "#635494",
-      ambient: { color: "#b8b0ff", intensity: 0.4 },
-      sun: { color: "#bcb6ff", intensity: 0.9 },
-      hemi: { sky: "#8c8ae2", ground: "#3f6058", intensity: 0.6 },
+      skyTop: "#3c3389", skyBottom: "#b076c0", fog: "#6c4f97",
+      ambient: { color: "#d8b6ff", intensity: 0.46 },
+      sun: { color: "#dcb8ff", intensity: 0.95 },
+      hemi: { sky: "#b590ea", ground: "#5a4766", intensity: 0.66 },
       glow: 0.95, stars: 0.75, fireflies: 0.8, petals: 0,
     }),
   },

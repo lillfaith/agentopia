@@ -4,6 +4,7 @@ import * as THREE from "three";
 import type { Composition } from "./composition";
 import { Instanced, type Inst } from "./instancing";
 import { seeded } from "./layout";
+import { PALETTE, TOKENS } from "./palette";
 import { woodTexture } from "./textures";
 
 /** A lily pond ringed with stones and reeds. */
@@ -14,7 +15,7 @@ export function Pond({ pond }: { pond: NonNullable<Composition["pond"]> }) {
     const out: Inst[] = [];
     for (let a = 0; a < Math.PI * 2; a += 0.2) {
       const k = 1.06 + rand() * 0.05;
-      out.push({ x: Math.cos(a) * rx * k, y: 0.06, z: Math.sin(a) * rz * k, ry: rand() * 3, s: 0.2 + rand() * 0.12, sx: 1.4, sy: 0.6, color: rand() < 0.5 ? "#e3dbe9" : "#ece2d6" });
+      out.push({ x: Math.cos(a) * rx * k, y: 0.06, z: Math.sin(a) * rz * k, ry: rand() * 3, s: 0.2 + rand() * 0.12, sx: 1.4, sy: 0.6, color: TOKENS.stone.rocks[Math.floor(rand() * 3)] });
     }
     return out;
   }, [rx, rz]);
@@ -48,11 +49,11 @@ export function Pond({ pond }: { pond: NonNullable<Composition["pond"]> }) {
     <group position={[pond.x, 0, pond.z]} rotation={[0, pond.rot, 0]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]} scale={[rx * 1.12, rz * 1.12, 1]}>
         <circleGeometry args={[1, 40]} />
-        <meshStandardMaterial color="#c9b9a6" roughness={1} />
+        <meshStandardMaterial color="#e6cbc6" roughness={1} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]} scale={[rx, rz, 1]}>
         <circleGeometry args={[1, 40]} />
-        <meshStandardMaterial color="#7fcfe6" roughness={0.12} metalness={0.1} />
+        <meshStandardMaterial color={TOKENS.ground.water} roughness={0.12} metalness={0.1} />
       </mesh>
       <mesh ref={ripple} rotation={[-Math.PI / 2, 0, 0]} position={[0.3, 0.04, -0.2]}>
         <ringGeometry args={[0.35, 0.4, 32]} />
@@ -114,12 +115,12 @@ export function KitchenGarden({ garden }: { garden: NonNullable<Composition["gar
     const hw = w / 2 + 0.25;
     const hd = d / 2 + 0.3;
     for (let x = -hw; x <= hw + 0.01; x += 0.28) {
-      out.push({ x, y: 0.25, z: -hd, color: "#fff3ea" });
-      if (Math.abs(x) > 0.45) out.push({ x, y: 0.25, z: hd, color: "#fff3ea" });
+      out.push({ x, y: 0.25, z: -hd, color: TOKENS.wood.fence });
+      if (Math.abs(x) > 0.45) out.push({ x, y: 0.25, z: hd, color: TOKENS.wood.fence });
     }
     for (let z = -hd + 0.28; z < hd; z += 0.28) {
-      out.push({ x: -hw, y: 0.25, z, ry: Math.PI / 2, color: "#fff3ea" });
-      out.push({ x: hw, y: 0.25, z, ry: Math.PI / 2, color: "#fff3ea" });
+      out.push({ x: -hw, y: 0.25, z, ry: Math.PI / 2, color: TOKENS.wood.fence });
+      out.push({ x: hw, y: 0.25, z, ry: Math.PI / 2, color: TOKENS.wood.fence });
     }
     return out;
   }, [w, d]);
@@ -127,17 +128,17 @@ export function KitchenGarden({ garden }: { garden: NonNullable<Composition["gar
     <group position={[garden.x, 0, garden.z]} rotation={[0, garden.rot, 0]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
         <planeGeometry args={[w + 0.5, d + 0.6]} />
-        <meshStandardMaterial color="#d9c6a8" roughness={1} />
+        <meshStandardMaterial color="#ecd3cb" roughness={1} />
       </mesh>
       {beds.map((b) => (
         <group key={b.z} position={[0, 0, b.z]}>
           <mesh castShadow receiveShadow position={[0, 0.14, 0]}>
             <boxGeometry args={[b.len, 0.28, 0.5]} />
-            <meshStandardMaterial map={wood} color="#d8a983" roughness={0.9} />
+            <meshStandardMaterial map={wood} color={TOKENS.wood.planter} roughness={0.9} />
           </mesh>
           <mesh position={[0, 0.285, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[b.len - 0.1, 0.4]} />
-            <meshStandardMaterial color="#8a6a58" roughness={1} />
+            <meshStandardMaterial color="#8f6a68" roughness={1} />
           </mesh>
         </group>
       ))}
@@ -153,15 +154,15 @@ export function KitchenGarden({ garden }: { garden: NonNullable<Composition["gar
       <group position={[w / 2 - 0.2, 0, d / 2 + 0.05]} rotation={[0, -0.6, 0]}>
         <mesh castShadow position={[0, 0.13, 0]}>
           <cylinderGeometry args={[0.11, 0.12, 0.24, 12]} />
-          <meshStandardMaterial color="#9fd8ff" metalness={0.3} roughness={0.4} />
+          <meshStandardMaterial color={PALETTE.babyBlue} metalness={0.3} roughness={0.4} />
         </mesh>
         <mesh position={[0.16, 0.2, 0]} rotation={[0, 0, -0.9]}>
           <cylinderGeometry args={[0.02, 0.03, 0.26, 6]} />
-          <meshStandardMaterial color="#9fd8ff" metalness={0.3} roughness={0.4} />
+          <meshStandardMaterial color={PALETTE.babyBlue} metalness={0.3} roughness={0.4} />
         </mesh>
         <mesh position={[0, 0.28, 0]} rotation={[0, Math.PI / 2, 0]}>
           <torusGeometry args={[0.08, 0.015, 6, 12, Math.PI]} />
-          <meshStandardMaterial color="#9fd8ff" />
+          <meshStandardMaterial color={PALETTE.babyBlue} />
         </mesh>
       </group>
     </group>

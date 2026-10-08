@@ -2,12 +2,13 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import type { Composition, Placement, TreePlacement } from "./composition";
 import { Instanced, type Inst } from "./instancing";
+import { TOKENS } from "./palette";
 import { radialTexture } from "./textures";
 
 function shade(hex: string, t: number): string {
   const c = new THREE.Color(hex);
   if (t > 0) c.lerp(new THREE.Color("#ffffff"), t);
-  else c.lerp(new THREE.Color("#3d4a5c"), -t);
+  else c.lerp(new THREE.Color("#4d3a55"), -t); // shade toward plum, not grey
   return `#${c.getHexString()}`;
 }
 
@@ -32,26 +33,26 @@ function treeParts(trees: TreePlacement[], bushes: Placement[]): Parts {
     p.shadows.push({ x: t.x, y: 0.012, z: t.z, rx: -Math.PI / 2, s: 2.7 * t.s });
     switch (t.kind) {
       case "round":
-        p.trunks.push({ x: t.x, y: 0.65 * t.s, z: t.z, s: t.s, sy: 1.3, color: "#b58a6c" });
+        p.trunks.push({ x: t.x, y: 0.65 * t.s, z: t.z, s: t.s, sy: 1.3, color: TOKENS.foliage.trunk });
         blob(t, 0, 1.78, 0, 0.95, t.color);
         blob(t, 0.58, 1.4, 0.25, 0.62, shade(t.color, -0.12));
         blob(t, -0.38, 2.2, -0.2, 0.6, shade(t.color, 0.14));
         blob(t, -0.5, 1.45, 0.35, 0.5, shade(t.color, -0.05));
         break;
       case "blossom":
-        p.trunks.push({ x: t.x, y: 0.6 * t.s, z: t.z, s: t.s, sy: 1.2, color: "#a7806b" });
+        p.trunks.push({ x: t.x, y: 0.6 * t.s, z: t.z, s: t.s, sy: 1.2, color: TOKENS.foliage.trunkBlossom });
         blob(t, 0, 1.45, 0, 1.1, t.color, 0.55);
         blob(t, 0.1, 1.95, 0.05, 0.82, shade(t.color, 0.1), 0.6);
         blob(t, 0, 2.38, 0, 0.55, shade(t.color, 0.22), 0.7);
         blob(t, 0.7, 1.35, -0.4, 0.42, shade(t.color, -0.06));
         break;
       case "poplar":
-        p.trunks.push({ x: t.x, y: 0.35 * t.s, z: t.z, s: t.s * 0.8, sy: 0.7, color: "#b58a6c" });
+        p.trunks.push({ x: t.x, y: 0.35 * t.s, z: t.z, s: t.s * 0.8, sy: 0.7, color: TOKENS.foliage.trunk });
         blob(t, 0, 2.0, 0, 0.72, t.color, 2.0);
         blob(t, 0.12, 2.9, 0.1, 0.42, shade(t.color, 0.15), 1.6);
         break;
       case "pine":
-        p.trunks.push({ x: t.x, y: 0.4 * t.s, z: t.z, s: t.s * 0.9, sy: 0.8, color: "#9e765e" });
+        p.trunks.push({ x: t.x, y: 0.4 * t.s, z: t.z, s: t.s * 0.9, sy: 0.8, color: TOKENS.foliage.trunk });
         p.cones.push({ x: t.x, y: 1.25 * t.s, z: t.z, ry: t.rot, s: t.s, color: shade(t.color, -0.06) });
         p.cones.push({ x: t.x, y: 1.95 * t.s, z: t.z, ry: t.rot + 0.4, s: t.s * 0.78, color: t.color });
         p.cones.push({ x: t.x, y: 2.55 * t.s, z: t.z, ry: t.rot + 0.8, s: t.s * 0.54, color: shade(t.color, 0.12) });
@@ -73,7 +74,7 @@ export function Trees({ trees, bushes }: { trees: TreePlacement[]; bushes: Place
     <group>
       <Instanced items={parts.shadows}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial map={radialTexture()} color="#2e3a2e" transparent opacity={0.28} depthWrite={false} polygonOffset polygonOffsetFactor={-2} />
+        <meshBasicMaterial map={radialTexture()} color="#4a3350" transparent opacity={0.28} depthWrite={false} polygonOffset polygonOffsetFactor={-2} />
       </Instanced>
       <Instanced items={parts.trunks} castShadow>
         <cylinderGeometry args={[0.12, 0.19, 1, 7]} />
@@ -92,7 +93,7 @@ export function Trees({ trees, bushes }: { trees: TreePlacement[]; bushes: Place
 }
 
 export function Mushrooms({ mushrooms }: { mushrooms: Placement[] }) {
-  const stems = useMemo<Inst[]>(() => mushrooms.map((m) => ({ x: m.x, y: 0.5 * m.s, z: m.z, s: m.s, color: "#fff6ea" })), [mushrooms]);
+  const stems = useMemo<Inst[]>(() => mushrooms.map((m) => ({ x: m.x, y: 0.5 * m.s, z: m.z, s: m.s, color: "#fff4f2" })), [mushrooms]);
   const caps = useMemo<Inst[]>(() => mushrooms.map((m) => ({ x: m.x, y: 1.0 * m.s, z: m.z, ry: m.rot, s: m.s, sy: 0.62, color: m.color })), [mushrooms]);
   const dots = useMemo<Inst[]>(
     () =>
@@ -135,8 +136,8 @@ export function Rocks({ rocks }: { rocks: Placement[] }) {
 /** Rows of hyacinths: a stem, a floret spike and a leaf tuft each. */
 export function HyacinthField({ hyacinths }: { hyacinths: Placement[] }) {
   const spikes = useMemo<Inst[]>(() => hyacinths.map((h) => ({ x: h.x, y: 0.5 * h.s, z: h.z, ry: h.rot, s: h.s, color: h.color })), [hyacinths]);
-  const stems = useMemo<Inst[]>(() => hyacinths.map((h) => ({ x: h.x, y: 0.17 * h.s, z: h.z, s: h.s, color: "#6fb879" })), [hyacinths]);
-  const leaves = useMemo<Inst[]>(() => hyacinths.map((h) => ({ x: h.x, y: 0.1 * h.s, z: h.z, ry: h.rot, s: h.s, color: "#86c98a" })), [hyacinths]);
+  const stems = useMemo<Inst[]>(() => hyacinths.map((h) => ({ x: h.x, y: 0.17 * h.s, z: h.z, s: h.s, color: TOKENS.foliage.leaf })), [hyacinths]);
+  const leaves = useMemo<Inst[]>(() => hyacinths.map((h) => ({ x: h.x, y: 0.1 * h.s, z: h.z, ry: h.rot, s: h.s, color: TOKENS.foliage.bushes[0] })), [hyacinths]);
   const spikeGeom = useMemo(() => {
     const g = new THREE.IcosahedronGeometry(1, 1);
     g.scale(0.1, 0.24, 0.1);
@@ -160,9 +161,21 @@ export function HyacinthField({ hyacinths }: { hyacinths: Placement[] }) {
   );
 }
 
+/** Soft pink petal carpets under the sakura and in meadow drifts. */
+export function PetalCarpets({ carpets }: { carpets: Placement[] }) {
+  const items = useMemo<Inst[]>(() => carpets.map((p) => ({ x: p.x, y: 0.009, z: p.z, rx: -Math.PI / 2, rz: p.rot, s: p.s, sy: 0.75, color: p.color })), [carpets]);
+  return (
+    <Instanced items={items}>
+      <planeGeometry args={[1, 1]} />
+      <meshBasicMaterial map={radialTexture()} transparent opacity={0.55} depthWrite={false} polygonOffset polygonOffsetFactor={-1} />
+    </Instanced>
+  );
+}
+
 export function Flora({ composition }: { composition: Composition }) {
   return (
     <group>
+      <PetalCarpets carpets={composition.petalCarpets} />
       <Trees trees={composition.trees} bushes={composition.bushes} />
       <Mushrooms mushrooms={composition.mushrooms} />
       <Rocks rocks={composition.rocks} />

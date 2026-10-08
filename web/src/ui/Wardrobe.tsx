@@ -32,7 +32,8 @@ const EYE_LABEL: Record<string, string> = { round: "Round", sparkle: "Sparkly", 
 const MOUTH_LABEL: Record<string, string> = { smile: "Smile", grin: "Grin", calm: "Calm", cat: "Cat", surprised: "Ooh" };
 const EAR_LABEL: Record<string, string> = { none: "None", bear: "Bear", bunny: "Bunny", cat: "Cat", floppy: "Floppy", horns: "Horns", antenna: "Antennae" };
 const TAIL_LABEL: Record<string, string> = { none: "None", puff: "Puff", cat: "Cat", fox: "Fox", curly: "Curly" };
-const SWATCHES = ["#f59ab8", "#ffb4a2", "#ffd6a5", "#fdffb6", "#caffbf", "#9bf6ff", "#8ccbf2", "#a0c4ff", "#b9a7fa", "#ffc6ff", "#e8d5c4", "#c9c9d9"];
+// Pink-first body colours (blush, rose, sakura, mauve, lavender, peach, cream), plus a few accents.
+const SWATCHES = ["#f9c4d4", "#f59ab8", "#ec7fa3", "#ffbcd2", "#d8a6c4", "#c497b4", "#dccbf3", "#b9a7fa", "#ffd2bd", "#f8b79c", "#fff1ea", "#ffe3ec", "#a9e3c9", "#b7dcf5", "#fff0a8", "#e8d5c4"];
 const POSES: { anim: CharacterAnim; label: string; moving?: boolean }[] = [
   { anim: "idle", label: "Idle" },
   { anim: "walk", label: "Walk", moving: true },

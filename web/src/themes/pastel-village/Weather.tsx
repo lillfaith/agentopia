@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { EnvironmentState } from "../../environment/dayCycle";
 import { seeded } from "./layout";
+import { TOKENS } from "./palette";
 
 const PETALS = 140;
 const FIREFLIES = 90;
@@ -54,7 +55,7 @@ function Petals({ amount }: { amount: number }) {
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, PETALS]}>
       <planeGeometry args={[0.14, 0.1]} />
-      <meshStandardMaterial color="#ffc4d8" side={THREE.DoubleSide} transparent opacity={0.85} />
+      <meshStandardMaterial color={TOKENS.petals[0]} side={THREE.DoubleSide} transparent opacity={0.85} />
     </instancedMesh>
   );
 }
@@ -81,7 +82,7 @@ function Fireflies({ amount }: { amount: number }) {
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, FIREFLIES]}>
       <sphereGeometry args={[0.055, 6, 6]} />
-      <meshBasicMaterial color="#fff3a0" toneMapped={false} />
+      <meshBasicMaterial color={TOKENS.fireflies} toneMapped={false} />
     </instancedMesh>
   );
 }
