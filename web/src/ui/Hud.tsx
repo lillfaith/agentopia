@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { DEMO } from "../api/client";
 import { eventListeners, useTown, type PanelId } from "../state/store";
 import { TownClock } from "./TownClock";
 import { useTheme } from "../theme-engine/ThemeContext";
@@ -136,6 +137,12 @@ export function ProviderBanner() {
   const status = useTown((s) => s.snapshot?.status);
   const open = useTown((s) => s.openPanel);
   if (!status) return null;
+  if (DEMO)
+    return (
+      <div className="banner banner-simulation">
+        🎬 <b>Live demo</b>: a recorded simulation replaying in your browser. No AI is called and nothing is saved to a server. You can still customise villagers in the 👗 wardrobe.
+      </div>
+    );
   if (status.provider.mode === "live") return null;
   return (
     <div className={`banner banner-${status.provider.mode}`} onClick={() => open("settings")} role="button">

@@ -1,5 +1,10 @@
 import type { Agent, Building, Schedule, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
 
+import { DemoError, demoCall, demoSubscribe } from "../demo/demoServer";
+
+/** True in the static demo build (`npm run build:demo`), which replays a recorded session in the browser. */
+export const DEMO = import.meta.env.VITE_DEMO === "1";
+
 const TOKEN_KEY = "agentopia.adminToken";
 
 export function getToken(): string {
@@ -29,6 +34,14 @@ export class ApiError extends Error {
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (DEMO) {
+    try {
+      return (await demoCall(path, init.method ?? "GET", init.body ? JSON.parse(String(init.body)) : undefined)) as T;
+    } catch (err) {
+      if (err instanceof DemoError) throw new ApiError(err.status, err.message);
+      throw err;
+    }
+  }
   const token = getToken();
   const res = await fetch(path, {
     ...init,
@@ -93,6 +106,7 @@ export function subscribe(
   onStatus: (s: "connecting" | "live" | "offline") => void,
   getLastId: () => number,
 ): () => void {
+  if (DEMO) return demoSubscribe(onEvent, onStatus);
   let stopped = false;
   let controller: AbortController | null = null;
   let attempt = 0;

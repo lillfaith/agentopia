@@ -18,6 +18,18 @@ town. That walk happens because the hand-off happened in the database. Nothing o
 
 ---
 
+## Try the demo (no install, no key)
+
+`npm run build:demo` produces a fully static build in `dist/demo/` that replays a session recorded from
+the real server in simulation mode. It runs entirely in the browser: no server, no API key, no AI calls,
+and it says so in a banner. Villagers walk, hand off work and finish projects; the wardrobe works
+locally; anything that would do real work explains that it needs the full app.
+
+**Netlify:** connect this repository (the included `netlify.toml` builds and publishes the demo), or
+drag the `dist/demo` folder onto app.netlify.com/drop. Netlify only serves static files, so it hosts
+the demo, not the full app. To refresh the recording, run a simulation server and
+`node scripts/record-demo.mjs web/src/demo/fixture.json`.
+
 ## Quick start
 
 Requirements: **Node.js ≥ 22.13** (it uses the built-in `node:sqlite`, so there is no native build step).
