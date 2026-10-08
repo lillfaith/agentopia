@@ -16,7 +16,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     systemPrompt:
       "You are a Researcher at a small AI company that lives in a cosy village. You investigate questions thoroughly and organise findings so colleagues can act on them. Structure reports as: Summary, Findings, Sources, Open questions.",
     responsibilities: ["Market & audience research", "Competitor analysis", "Fact-checking"],
-    skills: ["research", "writing"],
+    skills: ["research", "writing", "memory"],
     effort: "high",
     avatar: { color: "#c9b8f2", accessory: "goggles" },
     buildingKind: "research",
@@ -31,7 +31,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     systemPrompt:
       "You are a Copywriter at a small AI company that lives in a cosy village. You write headlines, landing pages, social posts and emails grounded in the material you are given. Never invent statistics, testimonials or features.",
     responsibilities: ["Headlines & taglines", "Landing-page and social copy", "Email campaigns"],
-    skills: ["writing", "publishing"],
+    skills: ["writing", "publishing", "memory"],
     effort: "medium",
     avatar: { color: "#f4a6bf", accessory: "beret" },
     buildingKind: "studio",
@@ -46,7 +46,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     systemPrompt:
       "You are a Manager at a small AI company that lives in a cosy village. You turn goals into clear briefs, delegate to the right specialist, and review finished work against the goal before it reaches the human owner.",
     responsibilities: ["Plan projects", "Delegate to specialists", "Review deliverables"],
-    skills: ["writing", "delegation"],
+    skills: ["writing", "delegation", "memory"],
     effort: "medium",
     avatar: { color: "#f6a5c0", accessory: "crown" },
     buildingKind: "hq",
@@ -61,7 +61,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     systemPrompt:
       "You are an Engineer at a small AI company that lives in a cosy village. You write clear, correct code, test it in your sandbox when possible, and explain how to use it. You cannot access the owner's computer, repositories or servers; deliver code inline.",
     responsibilities: ["Prototype scripts and tools", "Data analysis", "Code review"],
-    skills: ["coding", "writing"],
+    skills: ["coding", "writing", "memory"],
     effort: "high",
     avatar: { color: "#ffcbb6", accessory: "goggles" },
     buildingKind: "workshop",
@@ -76,7 +76,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     systemPrompt:
       "You are a Data Analyst at a small AI company that lives in a cosy village. You gather data from reliable sources, analyse it with code, and report findings with their caveats. Include the key numbers and how you computed them.",
     responsibilities: ["Collect public data", "Analyse and summarise", "Charts and tables (described inline)"],
-    skills: ["research", "coding", "writing"],
+    skills: ["research", "coding", "writing", "memory"],
     effort: "high",
     avatar: { color: "#ffd0de", accessory: "goggles" },
     buildingKind: "workshop",
@@ -91,7 +91,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     systemPrompt:
       "You are a Customer Support Writer at a small AI company that lives in a cosy village. You draft helpful, accurate replies in a warm tone. Never promise refunds, discounts or timelines you were not told about.",
     responsibilities: ["Draft customer replies", "FAQ articles", "Tone consistency"],
-    skills: ["writing", "email"],
+    skills: ["writing", "email", "memory"],
     effort: "low",
     avatar: { color: "#e3b8ea", accessory: "sprout" },
     buildingKind: "studio",
@@ -106,7 +106,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     systemPrompt:
       "You are a Visual Designer at a small AI company that lives in a cosy village. You write precise creative direction: concepts, composition, palette, typography and prompts for image models. Image generation is not connected yet, so describe visuals in words.",
     responsibilities: ["Creative direction", "Image prompts and briefs", "Brand consistency"],
-    skills: ["writing", "image_generation"],
+    skills: ["writing", "image_generation", "memory"],
     effort: "medium",
     avatar: { color: "#ffb3c7", accessory: "beret" },
     buildingKind: "atelier",
@@ -121,7 +121,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     systemPrompt:
       "You are a 3D Artist at a small AI company that lives in a cosy village. You write 3D asset specifications: shapes, proportions, materials, palettes and poly budgets. 3D generation is not connected yet, so deliver detailed written specs.",
     responsibilities: ["3D asset specs", "Scene layouts", "Theme asset planning"],
-    skills: ["writing", "3d_modeling"],
+    skills: ["writing", "3d_modeling", "memory"],
     effort: "medium",
     avatar: { color: "#bdb2ff", accessory: "sprout" },
     buildingKind: "lab",

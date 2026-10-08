@@ -466,6 +466,17 @@ export interface Project {
   updatedAt: ISODate;
 }
 
+// ───────────────────────── Memory ─────────────────────────
+
+/** A note an agent chose to remember; shown to it in later briefs. The owner can read and delete every note. */
+export interface AgentMemory {
+  id: string;
+  agentId: string;
+  content: string;
+  sourceTaskId: string | null;
+  createdAt: ISODate;
+}
+
 // ───────────────────────── Rewards ─────────────────────────
 
 /** Town coins: earned only for verified work, spent on cosmetics. No cash value; never purchasable or withdrawable. */

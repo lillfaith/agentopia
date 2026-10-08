@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Agent, Effort, Task } from "../../../shared/types";
+import type { Agent, AgentMemory, Effort, Task } from "../../../shared/types";
 import { PRIORITY_LABELS } from "../../../shared/types";
-import { api } from "../api/client";
+import { DEMO, api } from "../api/client";
 import { STATUS_LABEL, levelFor, statsFor, useTown } from "../state/store";
 import { Badge, Drawer, Empty, EventBadge, ExecutionBadge, ExecutionProof, Markdown, StatusDot, TASK_LABEL, TASK_TONE, clock, fmtTokens, fmtUsd, timeAgo } from "./common";
 import { SkillPicker } from "./Town";
@@ -215,12 +215,53 @@ export function AssignTask({ agent }: { agent: Agent }) {
   );
 }
 
+/** Notes the villager keeps between tasks; the owner can delete any of them. */
+function Memories({ agent }: { agent: Agent }) {
+  const push = useTown((s) => s.pushToast);
+  const [notes, setNotes] = useState<AgentMemory[] | null>(null);
+  const done = useTown((s) => s.snapshot!.tasks.filter((t) => t.agentId === agent.id && t.status === "completed").length);
+  useEffect(() => {
+    if (DEMO) return setNotes([]);
+    api.memories(agent.id).then(setNotes, () => setNotes([]));
+  }, [agent.id, done]);
+  if (!notes?.length) return null;
+  const forget = async (id: string) => {
+    try {
+      await api.forget(agent.id, id);
+      setNotes((n) => n?.filter((m) => m.id !== id) ?? null);
+    } catch (e) {
+      push({ tone: "bad", text: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  return (
+    <section className="card">
+      <h3>📝 {agent.name} remembers</h3>
+      {notes.map((m) => (
+        <div key={m.id} className="row between">
+          <span>{m.content}</span>
+          <button className="btn ghost" onClick={() => forget(m.id)} title="Delete this note">
+            Forget
+          </button>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function WorkHistory({ agent }: { agent: Agent }) {
   const tasks = useTown((s) => s.snapshot!.tasks.filter((t) => t.agentId === agent.id && ["completed", "failed", "cancelled"].includes(t.status)));
   const [open, setOpen] = useState<string | null>(tasks[0]?.id ?? null);
-  if (!tasks.length) return <Empty>No finished work yet.</Empty>;
+  if (!tasks.length) {
+    return (
+      <div className="stack">
+        <Memories agent={agent} />
+        <Empty>No finished work yet.</Empty>
+      </div>
+    );
+  }
   return (
     <div className="stack">
+      <Memories agent={agent} />
       {tasks.map((t) => (
         <TaskOutputCard key={t.id} task={t} open={open === t.id} onToggle={() => setOpen(open === t.id ? null : t.id)} />
       ))}

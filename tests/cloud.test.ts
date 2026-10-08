@@ -114,7 +114,7 @@ describe("upgrades & configuration", () => {
     raw.close();
     const db = openDatabase(dbPath);
     const row = db.prepare("SELECT skills, archived FROM agents WHERE id = 'old'").get() as { skills: string; archived: number };
-    expect(JSON.parse(row.skills).sort()).toEqual(["delegation", "research", "writing"]);
+    expect(JSON.parse(row.skills).sort()).toEqual(["delegation", "memory", "research", "writing"]);
     expect(row.archived).toBe(0);
     expect((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(MIGRATIONS.length);
     db.close();

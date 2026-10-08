@@ -281,6 +281,30 @@ export const MIGRATIONS: Migration[] = [
     unlocked_at  TEXT NOT NULL
   );
   `,
+
+  /* 7 — agent memory: short notes an agent keeps between tasks (owner-visible, deletable) */ (db) => {
+    db.exec(`
+      CREATE TABLE agent_memories (
+        id              TEXT PRIMARY KEY,
+        agent_id        TEXT NOT NULL REFERENCES agents(id),
+        content         TEXT NOT NULL,
+        source_task_id  TEXT,
+        created_at      TEXT NOT NULL
+      );
+      CREATE INDEX idx_agent_memories_agent ON agent_memories(agent_id, created_at);
+    `);
+    // Every existing villager gets the memory skill.
+    const rows = db.prepare("SELECT id, skills FROM agents").all() as { id: string; skills: string }[];
+    for (const r of rows) {
+      let skills: string[] = [];
+      try {
+        skills = JSON.parse(r.skills);
+      } catch {
+        /* keep empty */
+      }
+      if (!skills.includes("memory")) db.prepare("UPDATE agents SET skills = ? WHERE id = ?").run(JSON.stringify([...skills, "memory"]), r.id);
+    }
+  },
 ];
 
 export type Database = DatabaseSync;

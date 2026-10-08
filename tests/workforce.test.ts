@@ -83,7 +83,7 @@ describe("hiring, archiving and departments", () => {
     });
     expect(hire.status).toBe(201);
     const bolt = await hire.json();
-    expect(bolt).toMatchObject({ id: "bolt", model: h.config.defaultModel, skills: ["coding", "writing"], buildingId: building.id, archived: false });
+    expect(bolt).toMatchObject({ id: "bolt", model: h.config.defaultModel, skills: ["coding", "writing", "memory"], buildingId: building.id, archived: false });
 
     // The new villager works like any other.
     const task = h.store.createTask({ agentId: "bolt", title: "Script", instructions: "x", createdBy: "user" });

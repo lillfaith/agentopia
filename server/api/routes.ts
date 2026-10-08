@@ -257,7 +257,7 @@ export function createApi(deps: ApiDeps): Hono {
   api.get("/api/agents/:id", (c) => {
     const agent = store.getAgent(c.req.param("id"));
     if (!agent) return c.json(err("Agent not found"), 404);
-    return c.json({ agent, tasks: store.listTasks({ agentId: agent.id, limit: 50 }), events: store.listEvents({ agentId: agent.id, limit: 100 }) });
+    return c.json({ agent, tasks: store.listTasks({ agentId: agent.id, limit: 50 }), events: store.listEvents({ agentId: agent.id, limit: 100 }), memories: store.listMemories(agent.id) });
   });
 
   const modelNotAllowed = (model: string | undefined) =>
@@ -291,6 +291,13 @@ export function createApi(deps: ApiDeps): Hono {
     });
     store.addEvent({ type: "agent.created", agentId: agent.id, message: `${agent.name} the ${agent.role} moved into town`, data: { buildingId: agent.buildingId } });
     return c.json(agent, 201);
+  });
+
+  // The owner can read and delete everything an agent remembers.
+  api.get("/api/agents/:id/memories", (c) => c.json(store.listMemories(c.req.param("id"))));
+  api.delete("/api/agents/:id/memories/:memoryId", (c) => {
+    const ok = store.deleteMemory(c.req.param("id"), c.req.param("memoryId"));
+    return ok ? c.json({ ok: true }) : c.json(err("Note not found"), 404);
   });
 
   api.patch("/api/agents/:id", async (c) => {

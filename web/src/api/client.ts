@@ -1,4 +1,4 @@
-import type { Achievement, Agent, Building, CoinEntry, Project, Schedule, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
+import type { Achievement, Agent, AgentMemory, Building, CoinEntry, Project, Schedule, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
 
 import { DemoError, demoCall, demoSubscribe } from "../demo/demoServer";
 
@@ -115,6 +115,8 @@ export const api = {
   billing: () => call<any>("/api/billing"),
   checkout: (plan: string) => post<{ url: string }>("/api/billing/checkout", { plan }),
   billingPortal: () => post<{ url: string }>("/api/billing/portal", {}),
+  memories: (agentId: string) => call<AgentMemory[]>(`/api/agents/${agentId}/memories`),
+  forget: (agentId: string, memoryId: string) => del<{ ok: true }>(`/api/agents/${agentId}/memories/${memoryId}`),
   rewards: () => call<{ ledger: CoinEntry[]; achievements: Achievement[] }>("/api/rewards"),
   buyItem: (itemId: string) => post<{ ok: true; balance: number }>("/api/shop/buy", { itemId }),
   emergencyStop: () => post<{ ok: true; cancelled: number }>("/api/system/stop", {}),

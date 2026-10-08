@@ -49,6 +49,37 @@ export interface ProviderHostedTool extends BaseTool {
 
 export type ToolDefinition = LocalTool | ProviderHostedTool;
 
+// ───────────────────────── remember (real) ─────────────────────────
+
+export const MAX_MEMORIES_PER_AGENT = 30;
+export const MAX_MEMORY_CHARS = 500;
+const rememberSchema = z.object({ note: z.string().trim().min(3).max(MAX_MEMORY_CHARS) });
+
+const rememberTool: LocalTool<typeof rememberSchema> = {
+  kind: "local",
+  id: "remember",
+  label: "Remember",
+  description: `Save one short note (max ${MAX_MEMORY_CHARS} characters) that you will see in future tasks. Use it for durable facts and the owner's preferences, not for task output.`,
+  sensitivity: "none",
+  implementation: "real",
+  schema: rememberSchema,
+  inputSchema: () => ({
+    type: "object",
+    properties: { note: { type: "string", description: "The note, written so it makes sense on its own later." } },
+    required: ["note"],
+    additionalProperties: false,
+  }),
+  summarize: (i) => `Remember: ${i.note.slice(0, 80)}${i.note.length > 80 ? "…" : ""}`,
+  async run(input, ctx) {
+    const existing = ctx.store.listMemories(ctx.agent.id, MAX_MEMORIES_PER_AGENT + 1);
+    if (existing.length >= MAX_MEMORIES_PER_AGENT) return { content: `Your memory is full (${MAX_MEMORIES_PER_AGENT} notes). The owner can clear old notes; continue without saving.`, isError: true };
+    if (existing.some((m) => m.content.toLowerCase() === input.note.toLowerCase())) return { content: "You already remember that." };
+    ctx.store.addMemory(ctx.agent.id, input.note, ctx.task.id);
+    return { content: "Saved to your memory." };
+  },
+};
+export const remember: LocalTool = rememberTool as unknown as LocalTool;
+
 // ───────────────────────── delegate_task (real) ─────────────────────────
 
 const delegateSchema = z.object({

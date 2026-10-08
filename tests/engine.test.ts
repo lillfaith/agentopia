@@ -123,7 +123,7 @@ describe("tool permissions", () => {
     expect(h.store.listTasks()).toHaveLength(1); // nothing was delegated
     expect(h.store.getTask(task.id)?.status).toBe("completed");
     // Only authorised tools are offered to the model at all.
-    expect(provider.calls[0].tools.map((t) => t.name)).toEqual([]);
+    expect(provider.calls[0].tools.map((t) => t.name)).toEqual(["remember"]);
     expect(provider.calls[0].hostedTools).toEqual(["web_search", "web_fetch"]);
   });
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type {
   Agent,
+  AgentMemory,
   AgentStats,
   AgentStatus,
   Approval,
@@ -447,6 +448,27 @@ export class Store {
   }
 
   // ── tasks ──
+  // ── agent memory ──
+  addMemory(agentId: string, content: string, sourceTaskId: string | null): AgentMemory {
+    const m: AgentMemory = { id: randomUUID(), agentId, content, sourceTaskId, createdAt: now() };
+    this.db.prepare("INSERT INTO agent_memories (id, agent_id, content, source_task_id, created_at) VALUES (?, ?, ?, ?, ?)").run(m.id, agentId, content, sourceTaskId, m.createdAt);
+    return m;
+  }
+
+  listMemories(agentId: string, limit = 100): AgentMemory[] {
+    return (this.db.prepare("SELECT * FROM agent_memories WHERE agent_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?").all(agentId, limit) as Row[]).map((r) => ({
+      id: r.id as string,
+      agentId: r.agent_id as string,
+      content: r.content as string,
+      sourceTaskId: (r.source_task_id as string) ?? null,
+      createdAt: r.created_at as string,
+    }));
+  }
+
+  deleteMemory(agentId: string, id: string): boolean {
+    return Number(this.db.prepare("DELETE FROM agent_memories WHERE id = ? AND agent_id = ?").run(id, agentId).changes) > 0;
+  }
+
   // ── projects ──
   createProject(p: { title: string; goal: string }): Project {
     const id = randomUUID();
