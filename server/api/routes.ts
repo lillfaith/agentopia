@@ -258,9 +258,14 @@ export function createApi(deps: ApiDeps): Hono {
     return c.json({ agent, tasks: store.listTasks({ agentId: agent.id, limit: 50 }), events: store.listEvents({ agentId: agent.id, limit: 100 }) });
   });
 
+  const modelNotAllowed = (model: string | undefined) =>
+    model && config.allowedModels && !config.allowedModels.includes(model) ? `Your plan includes ${config.allowedModels.join(", ")}; ${model} needs an upgrade.` : null;
+
   api.post("/api/agents", async (c) => {
     const b = await body(c, agentCreate);
     if (!b.ok) return b.res;
+    const blocked = modelNotAllowed(b.data.model);
+    if (blocked) return c.json(err(blocked), 403);
     if (!store.getBuilding(b.data.buildingId)) return c.json(err("Unknown building"), 400);
     let id = slugify(b.data.name);
     if (store.getAgent(id)) id = `${id}-${randomUUID().slice(0, 4)}`;
@@ -291,6 +296,8 @@ export function createApi(deps: ApiDeps): Hono {
     if (current.archived) return c.json(err("Restore this villager before editing"), 409);
     const b = await body(c, agentPatch);
     if (!b.ok) return b.res;
+    const blocked = modelNotAllowed(b.data.model);
+    if (blocked) return c.json(err(blocked), 403);
     if (b.data.buildingId && !store.getBuilding(b.data.buildingId)) return c.json(err("Unknown building"), 400);
     const { avatar, ...rest } = b.data;
     const patch = { ...rest } as Parameters<Store["updateAgent"]>[1];
@@ -512,6 +519,13 @@ export function createApi(deps: ApiDeps): Hono {
     if (!b.ok) return b.res;
     const r = runner.decideApproval(c.req.param("id"), b.data.approve, b.data.note ?? null);
     return r.ok ? c.json({ ok: true }) : c.json(err(r.error!), 409);
+  });
+
+  // ── system: emergency stop ──
+  api.post("/api/system/stop", (c) => c.json({ ok: true, ...runner.emergencyStop() }));
+  api.post("/api/system/resume", (c) => {
+    runner.resume();
+    return c.json({ ok: true });
   });
 
   // ── system: live connection test ──

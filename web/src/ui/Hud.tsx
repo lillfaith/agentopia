@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { DEMO } from "../api/client";
+import { DEMO, api } from "../api/client";
 import { eventListeners, useTown, type PanelId } from "../state/store";
 import { TownClock } from "./TownClock";
 import { useTheme } from "../theme-engine/ThemeContext";
@@ -62,6 +62,11 @@ export function TopBar() {
               ⛔ budget paused
             </span>
           )}
+          {snap.settings.paused && (
+            <span className="chip chip-bad" title="Emergency stop is on: nothing starts until you resume">
+              ⏸ all paused
+            </span>
+          )}
           {s.account && !s.account.plan.canRun && (
             <span className="chip chip-bad" title={s.account.plan.reason ?? ""}>
               ⛔ plan paused
@@ -101,6 +106,20 @@ export function TopBar() {
         <button className={`pill ${s.sound ? "on" : ""}`} onClick={() => s.toggle("sound")} title="Sound effects">
           {s.sound ? icons.soundOn : icons.soundOff}
         </button>
+        {!DEMO && (
+          <button
+            className={`pill ${snap.settings.paused ? "on" : "danger"}`}
+            onClick={() =>
+              (snap.settings.paused ? api.resumeAll() : api.emergencyStop()).then(
+                () => void s.load(),
+                (e) => s.pushToast({ tone: "bad", text: e instanceof Error ? e.message : String(e) }),
+              )
+            }
+            title={snap.settings.paused ? "Let villagers start work again" : "Emergency stop: cancel running tasks and pause all villagers and schedules"}
+          >
+            {snap.settings.paused ? "▶️ Resume" : "🛑 Stop all"}
+          </button>
+        )}
         {s.account && (
           <button className="pill" onClick={() => void s.signOut()} title={`Signed in as ${s.account.user.email} · ${s.account.plan.label}`}>
             👤 Sign out

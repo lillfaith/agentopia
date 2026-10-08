@@ -51,6 +51,16 @@ export const ACCOUNT_MIGRATIONS: Migration[] = [
   );
   CREATE INDEX idx_audit_user ON audit_log(user_id, id);
   `,
+
+  /* 2 — model spend per user per UTC day (operator-wide cap, cost reporting) */ `
+  CREATE TABLE usage_daily (
+    day       TEXT NOT NULL,
+    user_id   TEXT NOT NULL,
+    cost_usd  REAL NOT NULL DEFAULT 0,
+    calls     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, user_id)
+  );
+  `,
 ];
 
 export interface Account {
@@ -197,6 +207,19 @@ export class AccountsStore {
 
   pruneSessions(): number {
     return Number(this.db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now()).changes);
+  }
+
+  // ── usage ──
+
+  addUsage(userId: string, costUsd: number, at = new Date()): void {
+    this.db
+      .prepare("INSERT INTO usage_daily (day, user_id, cost_usd, calls) VALUES (?, ?, ?, 1) ON CONFLICT(day, user_id) DO UPDATE SET cost_usd = cost_usd + excluded.cost_usd, calls = calls + 1")
+      .run(at.toISOString().slice(0, 10), userId, costUsd);
+  }
+
+  /** Total model spend across all users on a UTC day. */
+  spendOn(day: string): number {
+    return Number((this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM usage_daily WHERE day = ?").get(day) as { c: number }).c);
   }
 
   // ── audit ──

@@ -84,6 +84,8 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .pill.on { background: var(--accent-gradient, var(--accent)); color: white; border-color: transparent; box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 30%, transparent); text-shadow: 0 1px 1px rgba(80, 20, 50, 0.25); }
 .pill:not(.on):not(:disabled):hover { background: var(--accent-soft); }
 .pill:disabled { opacity: 0.45; cursor: default; }
+.pill.danger { color: color-mix(in srgb, var(--bad) 80%, black); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.pill.danger:not(:disabled):hover { background: color-mix(in srgb, var(--bad) 12%, white); }
 
 .banner { position: absolute; top: var(--hud-top, 110px); left: 50%; transform: translateX(-50%); z-index: 19; padding: 8px 16px; border-radius: 999px; font-weight: 700; font-size: 13px; cursor: pointer; box-shadow: var(--shadow); max-width: calc(100vw - 32px); text-align: center; }
 .banner-simulation { background: #fff4d6; color: #8a5a00; border: 1.5px solid #ffd98a; }

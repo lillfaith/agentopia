@@ -35,6 +35,10 @@ export interface Config {
   /** SaaS: tasks running at once across all towns. */
   globalConcurrency: number;
   sessionDays: number;
+  /** SaaS: operator ceiling on model spend across ALL users per UTC day (0 = none). */
+  globalDailyBudgetUsd: number;
+  /** Models villagers may use (null = any). Set per town from the owner's plan in SaaS mode. */
+  allowedModels: string[] | null;
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -98,6 +102,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicOrigin: env.AGENTOPIA_PUBLIC_ORIGIN?.trim().replace(/\/$/, "") || null,
     globalConcurrency: Math.max(1, num(env.AGENTOPIA_GLOBAL_CONCURRENCY, 8)),
     sessionDays: Math.max(1, num(env.AGENTOPIA_SESSION_DAYS, 30)),
+    globalDailyBudgetUsd: num(env.AGENTOPIA_GLOBAL_DAILY_BUDGET_USD, 0),
+    allowedModels: null,
   };
   if (config.mode === "saas") {
     if (config.role !== "all") throw new Error("AGENTOPIA_MODE=saas runs the API and worker in one process; leave AGENTOPIA_ROLE unset (all).");

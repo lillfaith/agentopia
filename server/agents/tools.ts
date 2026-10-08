@@ -59,6 +59,8 @@ const delegateSchema = z.object({
 });
 
 const PRIORITY = { low: 0, normal: 1, high: 2, urgent: 3 } as const;
+/** Caps fan-out (and cost) if an agent is talked into delegating in a loop. */
+const MAX_DELEGATIONS_PER_TASK = 5;
 
 const delegateTask: LocalTool<typeof delegateSchema> = {
   kind: "local",
@@ -92,6 +94,9 @@ const delegateTask: LocalTool<typeof delegateSchema> = {
     const target = ctx.store.getAgent(input.agent_id);
     if (!target || !target.enabled) return { content: `No enabled agent with id "${input.agent_id}".`, isError: true };
     if (target.id === ctx.agent.id) return { content: "You cannot delegate to yourself.", isError: true };
+    if (ctx.store.countChildren(ctx.task.id) >= MAX_DELEGATIONS_PER_TASK) {
+      return { content: `You have already delegated ${MAX_DELEGATIONS_PER_TASK} tasks from this one; finish the rest yourself.`, isError: true };
+    }
     const depth = ctx.task.delegationDepth + 1;
     if (depth > ctx.maxDelegationDepth) {
       return { content: `Delegation depth limit (${ctx.maxDelegationDepth}) reached; finish this task yourself.`, isError: true };

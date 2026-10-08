@@ -225,7 +225,11 @@ export function createSaasApp(config: Config, opts: SaasOptions = {}) {
     const townId = c.get("townId");
     const town = towns.get(townId);
     const res = await town.app.api.fetch(c.req.raw);
-    if (c.req.method !== "GET" && res.status < 400) towns.wake(townId);
+    if (c.req.method !== "GET") {
+      // Every change to a town is attributable: who, what, when, from where (never request bodies).
+      accounts.audit(c.get("account").id, "town.change", clientIp(c), { method: c.req.method, path: c.req.path, status: res.status });
+      if (res.status < 400) towns.wake(townId);
+    }
     return res;
   });
 

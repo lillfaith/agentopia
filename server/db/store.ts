@@ -50,6 +50,7 @@ export const DEFAULT_SETTINGS: TownSettings = {
   budget: { dailyUsd: null, monthlyUsd: null, perTaskUsd: null },
   timezone: "UTC",
   timezoneMode: "auto",
+  paused: false,
 };
 
 const NO_EXECUTION: TaskExecution = { mode: "none", calls: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, models: [], lastRequestId: null };
@@ -547,6 +548,11 @@ export class Store {
     vals.push(opts.limit ?? 200);
     const sql = `SELECT * FROM tasks ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC, rowid DESC LIMIT ?`;
     return this.withExecution((this.db.prepare(sql).all(...vals) as Row[]).map(toTask));
+  }
+
+  /** Tasks a parent task has delegated so far. */
+  countChildren(parentTaskId: string): number {
+    return Number((this.db.prepare("SELECT COUNT(*) AS n FROM tasks WHERE parent_task_id = ?").get(parentTaskId) as { n: number }).n);
   }
 
   /** Earliest pending task time (run_after, or creation if due now) and next schedule run. Used to decide when to reopen a closed town. */

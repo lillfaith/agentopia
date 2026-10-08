@@ -145,7 +145,7 @@ export class TaskRunner {
       for (const t of this.store.requeueExpiredLeases()) {
         this.store.addEvent({ type: "system.notice", taskId: t.id, agentId: t.agentId, message: `Recovered “${t.title}” from a worker that stopped responding — re-queued.` });
       }
-      if (this.hold?.()) return;
+      if (this.hold?.() || this.store.getSettings().paused) return;
       try {
         this.scheduler.tick();
       } catch (err) {
@@ -188,7 +188,7 @@ export class TaskRunner {
 
   /** Is there work this worker could start right now (respecting budget holds)? */
   hasClaimableWork(): boolean {
-    if (this.hold?.()) return false;
+    if (this.hold?.() || this.store.getSettings().paused) return false;
     const budget = budgetStatus(this.store, this.config, this.provider.simulated);
     if (budget.globalHold) return false;
     if (!budget.agentHolds.length) return this.store.claimNextTaskPreview();
@@ -381,6 +381,23 @@ export class TaskRunner {
     if (agent?.currentTaskId === taskId) this.store.setAgentStatus(task.agentId, "idle", null, null, this.provider.simulated);
     this.cascade(task, "cancelled", `Dependency “${task.title}” was cancelled`);
     return { ok: true };
+  }
+
+  /** Emergency stop: nothing new starts, schedules stop firing, and running tasks are cancelled. */
+  emergencyStop(): { cancelled: number } {
+    this.store.updateSettings({ paused: true });
+    let cancelled = 0;
+    for (const t of this.store.listTasks({ limit: 1000 })) {
+      if (t.status === "running" && this.cancelTask(t.id).ok) cancelled += 1;
+    }
+    this.store.addEvent({ type: "system.notice", message: `🛑 Emergency stop: all villagers paused${cancelled ? `, ${cancelled} running task(s) cancelled` : ""}. Queued work waits until you resume.`, data: { paused: true, cancelled } });
+    return { cancelled };
+  }
+
+  resume(): void {
+    this.store.updateSettings({ paused: false });
+    this.store.addEvent({ type: "system.notice", message: "▶️ Resumed: villagers are back to work.", data: { paused: false } });
+    if (this.timer) void this.tick();
   }
 
   /** Manually re-run a failed or cancelled task from scratch. */

@@ -37,8 +37,11 @@ export class AgentExecutor {
   ) {}
 
   async execute(task: Task, signal: AbortSignal): Promise<ExecOutcome> {
-    const agent = this.store.getAgent(task.agentId);
-    if (!agent) return { kind: "failed", error: `Agent ${task.agentId} no longer exists`, retryable: false };
+    const stored = this.store.getAgent(task.agentId);
+    if (!stored) return { kind: "failed", error: `Agent ${task.agentId} no longer exists`, retryable: false };
+    // A model outside the owner's plan (e.g. after a downgrade) runs on the plan's default instead.
+    const allowed = this.config.allowedModels;
+    const agent = allowed && !allowed.includes(stored.model) ? { ...stored, model: this.config.defaultModel } : stored;
     const sim = this.provider.simulated;
     const { local, specs, hosted, prompts } = capabilitiesFor(this.store, agent);
     const system = buildSystemPrompt(agent, prompts);

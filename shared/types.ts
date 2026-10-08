@@ -447,6 +447,8 @@ export interface TownSettings {
   timezone: string;
   /** "auto" = follow the owner's browser timezone; "manual" = keep `timezone` as chosen. */
   timezoneMode: "auto" | "manual";
+  /** Emergency stop: when true no task starts and no schedule fires until the owner resumes. */
+  paused: boolean;
 }
 
 // ───────────────────────── Projects ─────────────────────────

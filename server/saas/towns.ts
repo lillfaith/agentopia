@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { Config } from "../config.js";
 import { createApp } from "../app.js";
+import type { TownEvent } from "../../shared/types.js";
 import type { LLMProvider } from "../llm/provider.js";
 import type { ConcurrencyGate } from "../engine/runner.js";
 import type { AccountsStore } from "./accounts.js";
@@ -17,6 +18,8 @@ export interface TownHandle {
   config: Config;
   app: ReturnType<typeof createApp>;
   lastUsed: number;
+  /** Event listeners the registry itself attached (anything beyond these is a live stream). */
+  ownListeners: number;
 }
 
 export interface TownsOptions {
@@ -117,6 +120,7 @@ export class Towns {
       monthlyBudgetUsd: ent.plan.monthlyUsd,
       maxTaskCostUsd: ent.plan.perTaskUsd,
       workerConcurrency: ent.plan.concurrency,
+      allowedModels: ent.plan.models,
       role: "all",
     };
   }
@@ -140,11 +144,18 @@ export class Towns {
         gate: this.gate,
         hold: () => {
           const ent = this.entitlements(ownerId);
-          return ent.canRun ? null : ent.reason;
+          if (!ent.canRun) return ent.reason;
+          return this.globalHold();
         },
       },
     });
-    const handle: TownHandle = { id: townId, ownerId, config, app, lastUsed: Date.now() };
+    // Mirror every model call's cost into the accounts database (operator cap, per-user cost reporting).
+    app.store.bus.on("event", (e: TownEvent) => {
+      if (e.type !== "usage.recorded" || e.simulated) return;
+      const cost = Number(e.data.costUsd ?? 0);
+      if (cost > 0) this.accounts.addUsage(ownerId, cost);
+    });
+    const handle: TownHandle = { id: townId, ownerId, config, app, lastUsed: Date.now(), ownListeners: app.store.bus.listenerCount("event") };
     this.open.set(townId, handle);
     // Until this town is closed cleanly, a crash must bring it back on the next boot.
     this.accounts.setWake(townId, new Date().toISOString());
@@ -155,6 +166,19 @@ export class Towns {
   /** Something changed in this town (a new task, an approval…): look for work now. */
   wake(townId: string): void {
     this.get(townId).app.runner.poke();
+  }
+
+  private globalCache = { at: 0, reason: null as string | null };
+
+  /** Operator-wide daily spend ceiling across every user (AGENTOPIA_GLOBAL_DAILY_BUDGET_USD). */
+  globalHold(): string | null {
+    const cap = this.base.globalDailyBudgetUsd;
+    if (!cap) return null;
+    if (Date.now() - this.globalCache.at < 10_000) return this.globalCache.reason;
+    const spent = this.accounts.spendOn(new Date().toISOString().slice(0, 10));
+    const reason = spent >= cap ? "Agentopia is at its daily capacity. Queued work will resume automatically tomorrow (UTC)." : null;
+    this.globalCache = { at: Date.now(), reason };
+    return reason;
   }
 
   /** Re-read the owner's plan and apply its limits to an open town. */
@@ -169,6 +193,7 @@ export class Towns {
         monthlyBudgetUsd: next.monthlyBudgetUsd,
         maxTaskCostUsd: next.maxTaskCostUsd,
         workerConcurrency: next.workerConcurrency,
+        allowedModels: next.allowedModels,
       });
       h.app.runner.poke();
     }
@@ -193,7 +218,7 @@ export class Towns {
       for (const h of [...this.open.values()]) {
         if (now - h.lastUsed < this.idleMs) continue;
         if (h.app.runner.activeCount > 0 || now - h.app.runner.lastActivityAt < this.graceMs || h.app.runner.hasClaimableWork()) continue;
-        if (h.app.store.bus.listenerCount("event") > 0) continue; // a live event stream is attached
+        if (h.app.store.bus.listenerCount("event") > h.ownListeners) continue; // a live event stream is attached
         this.close(h);
       }
     } catch (err) {
