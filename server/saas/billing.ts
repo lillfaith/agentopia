@@ -1,6 +1,7 @@
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import type { Config } from "../config.js";
+import { log } from "../log.js";
 import { body } from "../api/security.js";
 import type { Account, AccountsStore } from "./accounts.js";
 import { PLANS, type PlanId } from "./plans.js";
@@ -49,7 +50,7 @@ export function registerStripeWebhook(app: Hono<Env>, deps: BillingDeps): void {
       handleEvent(event, deps);
     } catch (err) {
       accounts.forgetStripeEvent(event.id); // let Stripe's retry process it again
-      console.error("[billing] webhook handling failed", event.type, err);
+      log.error("Stripe webhook handling failed", err, { scope: "billing", event: event.type });
       return c.json({ error: "Webhook handling failed" }, 500);
     }
     return c.json({ received: true });
@@ -70,12 +71,12 @@ export function registerStripeWebhook(app: Hono<Env>, deps: BillingDeps): void {
       case "customer.subscription.deleted": {
         const user = (typeof obj.metadata?.user_id === "string" && accounts.getUser(obj.metadata.user_id)) || (typeof obj.customer === "string" ? accounts.findByStripeCustomer(obj.customer) : null);
         if (!user) {
-          console.warn(`[billing] ${event.type} for unknown customer ${obj.customer}`);
+          log.warn("Stripe event for unknown customer", { scope: "billing", event: event.type, customer: obj.customer });
           return;
         }
         // Never trust metadata alone: the subscription's customer must be this user's customer.
         if (user.stripeCustomerId && obj.customer !== user.stripeCustomerId) {
-          console.warn(`[billing] ${event.type}: customer mismatch for user ${user.id}`);
+          log.warn("Stripe event customer mismatch", { scope: "billing", event: event.type, userId: user.id });
           return;
         }
         const item = obj.items?.data?.[0];
@@ -162,7 +163,7 @@ export function registerBilling(app: Hono<Env>, deps: BillingDeps): void {
       accounts.audit(account.id, "billing.checkout_started", deps.clientIp(c), { plan: b.data.plan });
       return c.json({ url: session.url });
     } catch (err) {
-      console.error("[billing] checkout", err);
+      log.error("Stripe checkout failed", err, { scope: "billing" });
       return c.json({ error: err instanceof StripeError ? `Billing error: ${err.message}` : "Could not start checkout" }, 502);
     }
   });
@@ -176,7 +177,7 @@ export function registerBilling(app: Hono<Env>, deps: BillingDeps): void {
       accounts.audit(account.id, "billing.portal_opened", deps.clientIp(c));
       return c.json({ url: session.url });
     } catch (err) {
-      console.error("[billing] portal", err);
+      log.error("Stripe portal failed", err, { scope: "billing" });
       return c.json({ error: err instanceof StripeError ? `Billing error: ${err.message}` : "Could not open billing" }, 502);
     }
   });

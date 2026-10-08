@@ -140,8 +140,11 @@ image and 3D generation.
 
 | Step | State | Evidence |
 |---|---|---|
-| 1. Vertical slice | **Done** | `tests/saas.test.ts` (auth, isolation, background run, restart persistence, idle close and wake, plan hold); `npm run e2e:live` against the real Claude API in the `e2e-live` workflow |
-| 2. Safety | Next | |
-| 3–6 | Planned | |
+| 1. Vertical slice | **Done** | `tests/saas.test.ts` (auth, isolation, background run, restart persistence, idle close and wake, plan hold); `npm run e2e:live` passed 10/10 against the real Claude API in the `e2e-live` workflow |
+| 2. Safety | **Done** | `tests/safety.test.ts`: emergency stop, plan model allowlist, global spend cap, audit log, injection hardening, delegation cap |
+| 3. Billing | **Done** (needs your Stripe account) | `tests/billing.test.ts`: signature verification, replay and order safety, lifecycle, checkout; costs and prices in `docs/PRICING.md` |
+| 4. Gamification | **Done** | `tests/rewards.test.ts`: verified-only rewards, idempotency, anti-farming, shop |
+| 5. Agent memory | **Done** | `tests/memory.test.ts` |
+| 6. Production | **Ready to deploy, not deployed** | `railway.json`, `docs/SAAS_DEPLOYMENT.md` (environment variables, Stripe setup, go-live checklist), `npm run migrate`, scheduled backups, JSON logs, error webhook |
 
 Run it locally: `npm run dev:saas` (add `AGENTOPIA_SIMULATION=true` to try it without an API key), then open http://127.0.0.1:5173 and create an account.

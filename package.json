@@ -25,7 +25,8 @@
     "backup": "tsx scripts/backup.ts",
     "start:saas": "NODE_ENV=production AGENTOPIA_MODE=saas tsx server/index.ts",
     "dev:saas": "AGENTOPIA_MODE=saas concurrently -k -n server,web -c magenta,cyan \"npm:dev:server\" \"npm:dev:web\"",
-    "e2e:live": "tsx scripts/e2e-live.ts"
+    "e2e:live": "tsx scripts/e2e-live.ts",
+    "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.0",

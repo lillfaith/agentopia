@@ -34,5 +34,5 @@ VOLUME ["/data"]
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["node_modules/.bin/tsx", "server/healthcheck.ts"]
-# Binding to 0.0.0.0 REQUIRES AGENTOPIA_ADMIN_TOKEN (or AGENTOPIA_ADMIN_TOKEN_FILE); the server refuses to start otherwise.
+# Single-town mode: binding to 0.0.0.0 REQUIRES AGENTOPIA_ADMIN_TOKEN (or _FILE). SaaS mode (AGENTOPIA_MODE=saas) uses user sessions instead.
 CMD ["node_modules/.bin/tsx", "server/index.ts"]

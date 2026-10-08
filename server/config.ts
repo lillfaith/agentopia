@@ -39,6 +39,9 @@ export interface Config {
   globalDailyBudgetUsd: number;
   /** Models villagers may use (null = any). Set per town from the owner's plan in SaaS mode. */
   allowedModels: string[] | null;
+  /** SaaS: hours between automatic backups of every town and the accounts database (0 = off). */
+  backupIntervalHours: number;
+  backupKeep: number;
   /** SaaS billing. Enabled only when the key, webhook secret and both price ids are set. */
   stripe: { secretKey: string; webhookSecret: string; prices: { starter: string; pro: string } } | null;
 }
@@ -106,6 +109,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionDays: Math.max(1, num(env.AGENTOPIA_SESSION_DAYS, 30)),
     globalDailyBudgetUsd: num(env.AGENTOPIA_GLOBAL_DAILY_BUDGET_USD, 0),
     allowedModels: null,
+    backupIntervalHours: num(env.AGENTOPIA_BACKUP_INTERVAL_HOURS, env.NODE_ENV === "production" ? 24 : 0),
+    backupKeep: Math.max(1, num(env.AGENTOPIA_BACKUP_KEEP, 7)),
     stripe: null,
   };
   const stripeKey = readSecret(env, "STRIPE_SECRET_KEY");

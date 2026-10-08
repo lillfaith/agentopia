@@ -274,3 +274,20 @@ describe("SaaS vertical slice", () => {
     expect((await browser.json<{ task: Task }>(`/api/tasks/${task.id}`)).body.task.status).toBe("completed");
   });
 });
+
+describe("SaaS backups", () => {
+  it("snapshots the accounts database and every town, keeping the newest N", async () => {
+    const { backupSaas } = await import("../server/saas/backup.js");
+    const s = saas(new ScriptedProvider([]));
+    await client(s.app, "10.1.0.1").json("/api/auth/signup", { body: { email: "b1@example.com", password: "correct horse battery" } });
+    await client(s.app, "10.1.0.2").json("/api/auth/signup", { body: { email: "b2@example.com", password: "correct horse battery" } });
+    const first = backupSaas(s.dataDir, 2);
+    expect(first.files).toBe(3);
+    expect(fs.readdirSync(path.join(first.dir, "towns"))).toHaveLength(2);
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+      backupSaas(s.dataDir, 2);
+    }
+    expect(fs.readdirSync(path.join(s.dataDir, "backups"))).toHaveLength(2);
+  });
+});

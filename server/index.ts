@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import { loadConfig } from "./config.js";
 import { createApp } from "./app.js";
 import { createSaasApp } from "./saas/server.js";
+import { installProcessHandlers } from "./log.js";
 
 /**
  * Entrypoint for every role:
@@ -16,6 +17,7 @@ import { createSaasApp } from "./saas/server.js";
  * AGENTOPIA_MODE=saas serves many users, each with a private town (role "all" only).
  */
 const config = loadConfig();
+installProcessHandlers();
 
 /** Add the built web client to an app whose /api routes are already in place. */
 function withWebClient<A extends Hono<any>>(app: A): A {

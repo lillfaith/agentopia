@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { Config } from "../config.js";
+import { log } from "../log.js";
 import { createApp } from "../app.js";
 import type { TownEvent } from "../../shared/types.js";
 import type { LLMProvider } from "../llm/provider.js";
@@ -222,7 +223,7 @@ export class Towns {
         this.close(h);
       }
     } catch (err) {
-      console.error("[towns]", err);
+      log.error("Town pool loop failed", err, { scope: "towns" });
     }
   }
 

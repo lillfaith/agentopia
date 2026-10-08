@@ -55,13 +55,25 @@ Open **http://127.0.0.1:5173** and:
 **24/7 on a server:** `docker compose up -d` runs an API container and a separate worker container.
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
+**As a multi-user SaaS:** `AGENTOPIA_MODE=saas` adds:
+- accounts, with a private town per user;
+- Stripe subscriptions;
+- coins and a cosmetics shop;
+- a background worker for every town.
+
+Try it locally with `AGENTOPIA_SIMULATION=true npm run dev:saas`. To host it on Railway, see
+[docs/SAAS_DEPLOYMENT.md](docs/SAAS_DEPLOYMENT.md).
+
 | Script | What it does |
 |---|---|
 | `npm run dev` | API + worker (auto-reload) + Vite dev client |
 | `npm run build` / `npm start` | Build the client; run everything in one production process |
 | `npm run start:api` / `npm run start:worker` | Run the HTTP API and the background worker as separate processes |
 | `npm run verify:live` | Real, budget-capped checks of every Claude capability plus an end-to-end agent task |
-| `npm run backup` | Consistent online backup of the database |
+| `npm run backup` | Consistent online backup of the database (SaaS mode: accounts and every town) |
+| `npm run dev:saas` / `npm run start:saas` | Multi-user mode: accounts, private towns, billing |
+| `npm run migrate` | Apply schema migrations to every database now (pre-deploy step) |
+| `npm run e2e:live` | SaaS end-to-end check against the real Claude API (`-- --simulate` runs it offline) |
 | `npm test` / `npm run typecheck` | 97 automated tests / TypeScript across server, client, scripts and tests |
 
 ---
@@ -108,7 +120,8 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Docs: [Architecture](docs/ARCHITECTURE.md) · [Deployment](docs/DEPLOYMENT.md) · [Costs](docs/COSTS.md) ·
 [Security](docs/SECURITY.md) · [Install](docs/INSTALL.md) · [Themes](docs/THEMES.md) ·
-[Phase 2 report](docs/PHASE2.md) · [Roadmap](docs/ROADMAP.md)
+[Phase 2 report](docs/PHASE2.md) · [Roadmap](docs/ROADMAP.md) · [SaaS plan](docs/SAAS_PLAN.md) ·
+[SaaS deployment](docs/SAAS_DEPLOYMENT.md) · [Pricing](docs/PRICING.md)
 
 ---
 

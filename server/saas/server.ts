@@ -7,12 +7,14 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { secureHeaders } from "hono/secure-headers";
 import { z } from "zod";
 import type { Config } from "../config.js";
+import { log } from "../log.js";
 import { createProvider, UnconfiguredProvider } from "../app.js";
 import { VERSION } from "../api/routes.js";
 import { body } from "../api/security.js";
 import type { LLMProvider } from "../llm/provider.js";
 import { AccountsStore, type Account } from "./accounts.js";
 import { registerBilling, registerStripeWebhook } from "./billing.js";
+import { backupSaas } from "./backup.js";
 import { dummyHash, hashPassword, verifyPassword } from "./passwords.js";
 import { RateLimiter } from "./rateLimit.js";
 import { Towns, type TownsOptions } from "./towns.js";
@@ -242,13 +244,24 @@ export function createSaasApp(config: Config, opts: SaasOptions = {}) {
   });
 
   app.onError((e, c) => {
-    console.error("[saas]", e);
+    log.error("Unhandled API error", e, { scope: "saas", path: c.req.path });
     return c.json({ error: "Internal server error" }, 500);
   });
 
   if (opts.startWorker !== false) towns.start();
   const pruner = setInterval(() => accounts.pruneSessions(), 60 * 60_000);
   pruner.unref();
+  const backups = config.backupIntervalHours > 0 && opts.startWorker !== false
+    ? setInterval(() => {
+        try {
+          const b = backupSaas(config.dataDir, config.backupKeep);
+          log.info("Backup written", { scope: "backup", dir: b.dir, files: b.files, bytes: b.bytes });
+        } catch (err) {
+          log.error("Backup failed", err, { scope: "backup" });
+        }
+      }, config.backupIntervalHours * 3_600_000)
+    : null;
+  backups?.unref();
 
   let stopped = false;
   return {
@@ -260,6 +273,7 @@ export function createSaasApp(config: Config, opts: SaasOptions = {}) {
       if (stopped) return;
       stopped = true;
       clearInterval(pruner);
+      if (backups) clearInterval(backups);
       await towns.stop();
       accounts.db.close();
     },
