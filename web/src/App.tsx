@@ -11,6 +11,7 @@ import { SettingsPanel, TreasuryPanel } from "./ui/Admin";
 import { SchedulesPanel } from "./ui/Schedules";
 import { TownPanel } from "./ui/Town";
 import { Wardrobe } from "./ui/Wardrobe";
+import { CameraPad } from "./ui/CameraPad";
 import { Dock, ProviderBanner, Toasts, TopBar, useSoundEffects } from "./ui/Hud";
 
 function Hud() {
@@ -46,6 +47,7 @@ function Hud() {
       {wardrobeId && <Wardrobe agentId={wardrobeId} />}
       {agentId && <AgentPanel agentId={agentId} />}
       {buildingId && !agentId && <BuildingPanel buildingId={buildingId} />}
+      <CameraPad />
       <Dock />
       <Toasts />
     </>

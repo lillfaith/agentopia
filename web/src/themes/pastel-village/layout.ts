@@ -329,10 +329,12 @@ export const CAMERA = {
   fov: 32,
   overviewPosition: [38, 44, 46] as [number, number, number],
   overviewTarget: [2, 0, 3] as [number, number, number],
-  minDistance: 10,
-  maxDistance: 85,
-  minPolar: 0.35,
-  maxPolar: 1.18,
+  // Wide limits: from a close look at a villager to the whole island, and from
+  // nearly top-down to almost street level.
+  minDistance: 5,
+  maxDistance: 115,
+  minPolar: 0.12,
+  maxPolar: 1.42,
 };
 
 /** Deterministic PRNG so the village looks the same on every load. */

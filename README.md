@@ -43,6 +43,7 @@ npm run dev                   # API + worker on :8787, web client on http://127.
 
 Open **http://127.0.0.1:5173** and:
 
+- **Move around**: drag to move, right-drag or Shift-drag to rotate, scroll to zoom. Keyboard: WASD/arrows move, Q/E rotate, R/F tilt, +/− zoom. The 🎥 pad (bottom left) does the same with buttons.
 - **✨ New project**: pick a team, describe a product, and watch brief → research → copy → review become a deliverable.
 - **🏘️ Town**: hire villagers from templates (Engineer, Analyst, Designer, …) and build departments for them.
 - **📅 Schedules**: make work recur daily, weekly or every N minutes. It runs on the server with the browser closed.
