@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { Agent } from "../../../shared/types";
-import { animForStatus, type NavGraph, type SlotLayout, type ThemeManifest } from "../theme-engine/types";
+import { animForStatus, type CharacterAnim, type NavGraph, type SlotLayout, type ThemeManifest } from "../theme-engine/types";
 import { STATUS_LABEL, levelFor, statsFor, useTown, type Errand } from "../state/store";
 import { route } from "./navigation";
 import { agentPositions } from "./positions";
@@ -16,17 +16,24 @@ interface Props {
   theme: ThemeManifest;
   nav: NavGraph;
   slotForBuilding: (buildingId: string) => SlotLayout | undefined;
+  /** Visual night (from the day cycle). Idle villagers go home and sleep; purely decorative. */
+  night: boolean;
 }
 
 const BUSY = new Set(["planning", "working", "waiting_approval", "completed", "failed", "delivering"]);
 const ERRAND_PAUSE_MS = 2200;
+const CHAT_DISTANCE = 1.9;
+
+/** Decorative idle behaviours. They never imply task progress and make no API calls. */
+type IdleAnim = Extract<CharacterAnim, "idle" | "rest" | "sleep" | "converse">;
 
 /**
  * Moves one villager around the world. Where it goes is derived ONLY from real
  * system state: its agent status (from the server) and hand-off events. Nothing
- * here fabricates progress.
+ * here fabricates progress. When idle, it shows decorative behaviour only
+ * (wandering, resting, chatting with a neighbour, sleeping at night).
  */
-export function AgentActor({ agent, index, theme, nav, slotForBuilding }: Props) {
+export function AgentActor({ agent, index, theme, nav, slotForBuilding, night }: Props) {
   const group = useRef<THREE.Group>(null);
   const facing = useRef<THREE.Group>(null);
   const home = slotForBuilding(agent.buildingId);
@@ -42,6 +49,8 @@ export function AgentActor({ agent, index, theme, nav, slotForBuilding }: Props)
   const [moving, setMoving] = useState(false);
   const [carrying, setCarrying] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [idleAnim, setIdleAnim] = useState<IdleAnim>("idle");
+  const wantsRest = useRef(false);
 
   const selected = useTown((s) => s.selectedAgentId === agent.id);
   const showNames = useTown((s) => s.showNames);
@@ -114,15 +123,36 @@ export function AgentActor({ agent, index, theme, nav, slotForBuilding }: Props)
       if (BUSY.has(agent.status) && workSpot) {
         goal = workSpot;
         key = "work";
+      } else if (home && night) {
+        goal = start;
+        key = "sleep";
       } else if (home) {
         if (now > idleUntil.current) {
           const spots = home.idleSpots;
           const r = Math.random();
-          idleGoal.current = r < 0.25 ? nav.nodes[`r${Math.floor(Math.random() * 12)}`] ?? spots[0] : spots[Math.floor(Math.random() * spots.length)];
+          // Sometimes stroll over to another idle villager for a (decorative) chat.
+          const friend = agents.find((o) => o.id !== agent.id && o.status === "idle" && o.enabled && !o.archived && Math.random() < 0.5);
+          const fp = friend ? agentPositions.get(friend.id) : undefined;
+          if (fp && r < 0.3) idleGoal.current = [fp.x + 1.1, fp.z + 0.5];
+          else idleGoal.current = r < 0.5 ? nav.nodes[`r${Math.floor(Math.random() * 12)}`] ?? spots[0] : spots[Math.floor(Math.random() * spots.length)];
+          wantsRest.current = Math.random() < 0.35;
           idleUntil.current = now + 7000 + Math.random() * 9000;
         }
         goal = idleGoal.current;
         key = `idle:${goal[0].toFixed(2)},${goal[1].toFixed(2)}`;
+      }
+    }
+
+    // Nearby idle neighbour → decorative conversation (both face each other).
+    let partner: THREE.Vector3 | null = null;
+    if (agent.status === "idle" && !er && !night) {
+      for (const o of agents) {
+        if (o.id === agent.id || o.status !== "idle") continue;
+        const op = agentPositions.get(o.id);
+        if (op && op.distanceTo(p) < CHAT_DISTANCE) {
+          partner = op;
+          break;
+        }
       }
     }
 
@@ -156,9 +186,13 @@ export function AgentActor({ agent, index, theme, nav, slotForBuilding }: Props)
         }
       }
     } else if (facing.current && home) {
-      // Idle: face the plaza. Working: face the building.
+      // Chatting: face the partner. Idle: face the plaza. Working: face the building.
       const [bx, , bz] = home.position;
-      const target = BUSY.has(agent.status) && !er ? Math.atan2(bx - p.x, bz - p.z) : Math.atan2(-p.x, -p.z);
+      const target = partner
+        ? Math.atan2(partner.x - p.x, partner.z - p.z)
+        : BUSY.has(agent.status) && !er
+          ? Math.atan2(bx - p.x, bz - p.z)
+          : Math.atan2(-p.x, -p.z);
       let delta = target - facing.current.rotation.y;
       delta = Math.atan2(Math.sin(delta), Math.cos(delta));
       facing.current.rotation.y += delta * Math.min(1, dt * 3);
@@ -177,13 +211,16 @@ export function AgentActor({ agent, index, theme, nav, slotForBuilding }: Props)
     if (isMoving !== moving) setMoving(isMoving);
     const isCarrying = !!er && er.stage === "going";
     if (isCarrying !== carrying) setCarrying(isCarrying);
+    const deco: IdleAnim = isMoving || agent.status !== "idle" || er ? "idle" : night ? "sleep" : partner ? "converse" : wantsRest.current ? "rest" : "idle";
+    if (deco !== idleAnim) setIdleAnim(deco);
     void clock;
   });
 
   const stats = statsFor(snapshot, agent.id);
   const { level } = levelFor(stats);
   const Character = theme.components.Character;
-  const anim = moving ? "walk" : animForStatus(agent.status);
+  // Real states come only from the server status; idle flavour is decorative.
+  const anim: CharacterAnim = moving ? "walk" : agent.status === "idle" ? idleAnim : animForStatus(agent.status);
 
   const recentActivity = activity && activity.taskId === agent.currentTaskId && Date.now() - activity.ts < 120_000 ? activity.text : null;
   let bubble: string | null = null;
@@ -210,7 +247,7 @@ export function AgentActor({ agent, index, theme, nav, slotForBuilding }: Props)
       }}
     >
       <group ref={facing}>
-        <Character color={agent.avatar.color} accessory={agent.avatar.accessory} anim={anim} moving={moving} carrying={carrying} selected={selected} hovered={hovered} />
+        <Character appearance={agent.appearance} anim={anim} moving={moving} carrying={carrying} selected={selected} hovered={hovered} />
       </group>
       {/* invisible, larger hit target for easy clicking */}
       <mesh position={[0, 0.7, 0]} visible={false}>

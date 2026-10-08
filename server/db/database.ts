@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { defaultAppearance, defaultVoice } from "../../shared/cosmetics.js";
+import { SEED_LOOKS } from "../agents/looks.js";
 
 /**
  * Schema migrations, applied in order and tracked with PRAGMA user_version.
@@ -219,6 +221,25 @@ export const MIGRATIONS: Migration[] = [
       const skills = new Set<string>(["writing"]);
       for (const t of tools) if (TOOL_TO_SKILL[t]) skills.add(TOOL_TO_SKILL[t]);
       db.prepare("UPDATE agents SET skills = ? WHERE id = ?").run(JSON.stringify([...skills]), r.id);
+    }
+  },
+
+  /* 4 — cosmetic identity: appearance (body, face, features, wearables) and voice */ (db) => {
+    db.exec("ALTER TABLE agents ADD COLUMN appearance TEXT");
+    db.exec("ALTER TABLE agents ADD COLUMN voice TEXT");
+    const OLD_ACCESSORY: Record<string, string> = { crown: "crown", beret: "beret", goggles: "goggles", sprout: "sprout" };
+    const rows = db.prepare("SELECT id, avatar FROM agents").all() as { id: string; avatar: string }[];
+    for (const r of rows) {
+      let avatar = { color: "#f6a5c0", accessory: "none" };
+      try {
+        avatar = { ...avatar, ...JSON.parse(r.avatar) };
+      } catch {
+        /* keep default */
+      }
+      const seeded = SEED_LOOKS[r.id];
+      const appearance = seeded?.appearance ?? defaultAppearance(avatar.color, OLD_ACCESSORY[avatar.accessory]);
+      const voice = seeded?.voice ?? defaultVoice();
+      db.prepare("UPDATE agents SET appearance = ?, voice = ? WHERE id = ?").run(JSON.stringify(appearance), JSON.stringify(voice), r.id);
     }
   },
 ];

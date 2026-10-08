@@ -3,6 +3,7 @@ import type { TownTaxSettings, TreasurySummary } from "../../../shared/types";
 import { api, getToken, setToken } from "../api/client";
 import { useTown } from "../state/store";
 import { listThemes } from "../theme-engine/registry";
+import { browserTimezone } from "../environment/dayCycle";
 import { useTheme } from "../theme-engine/ThemeContext";
 import { AgentName, Badge, Drawer, Empty, fmtTokens, fmtUsd, timeAgo } from "./common";
 
@@ -238,6 +239,14 @@ function TownTax({ t }: { t: TreasurySummary }) {
 
 // ───────────────────────── settings ─────────────────────────
 
+const TIMEZONES: string[] = (() => {
+  try {
+    return (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
+  } catch {
+    return [];
+  }
+})();
+
 const CHECK_LABELS: Record<string, string> = {
   messages: "Basic Claude call",
   client_tools: "Tool use loop (delegation)",
@@ -426,15 +435,32 @@ export function SettingsPanel() {
             </button>
           </div>
         </label>
-        <label>
-          Default timezone for schedules
-          <div className="row gap-s">
-            <input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g. Europe/London" />
-            <button className="btn" onClick={() => save({ timezone })}>
-              Save
-            </button>
-          </div>
-        </label>
+        <fieldset>
+          <legend>Town time zone</legend>
+          <small className="muted">Drives the in-game clock and lighting, and is the default for new schedules.</small>
+          <label className="check">
+            <input type="radio" checked={snap.settings.timezoneMode === "auto"} onChange={() => save({ timezoneMode: "auto", timezone: browserTimezone() })} />
+            <span>Follow this device ({browserTimezone()})</span>
+          </label>
+          <label className="check">
+            <input type="radio" checked={snap.settings.timezoneMode === "manual"} onChange={() => save({ timezoneMode: "manual" })} />
+            <span>Choose manually</span>
+          </label>
+          {snap.settings.timezoneMode === "manual" && (
+            <div className="row gap-s">
+              <input list="tz-list" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g. Europe/London" />
+              <datalist id="tz-list">
+                {TIMEZONES.map((z) => (
+                  <option key={z} value={z} />
+                ))}
+              </datalist>
+              <button className="btn" onClick={() => save({ timezone, timezoneMode: "manual" })}>
+                Save
+              </button>
+            </div>
+          )}
+          <small className="muted">Current: {snap.settings.timezone}</small>
+        </fieldset>
         <label>
           Theme
           <select value={snap.settings.themeId} onChange={(e) => save({ themeId: e.target.value })}>

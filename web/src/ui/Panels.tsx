@@ -29,7 +29,7 @@ export function BuildingPanel({ buildingId }: { buildingId: string }) {
         <h3>Who works here</h3>
         {residents.map((a) => (
           <button key={a.id} className="resident" onClick={() => selectAgent(a.id)}>
-            <span className="avatar-dot big" style={{ background: a.avatar.color }} />
+            <span className="avatar-dot big" style={{ background: a.appearance.bodyColor }} />
             <span>
               <b>{a.name}</b> <small className="muted">{a.role}</small>
               <br />

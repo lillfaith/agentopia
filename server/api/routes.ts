@@ -16,6 +16,7 @@ import { treasurySummary } from "../engine/treasury.js";
 import { runVerification } from "../engine/verify.js";
 import { startCampaignWorkflow } from "../engine/workflows.js";
 import { body, security } from "./security.js";
+import { EAR_STYLES, EXPRESSIONS, EYE_STYLES, TAIL_STYLES, VOICE_PRESET_IDS, WEARABLE_SLOTS, defaultAppearance, defaultVoice, wearable } from "../../shared/cosmetics.js";
 
 export const VERSION = "0.2.0";
 
@@ -32,6 +33,7 @@ const skillIds = z
   .array(z.string().refine((id) => !!getSkill(id), "Unknown skill id"))
   .max(20)
   .transform((ids) => [...new Set(ids)]);
+const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a #rrggbb colour");
 const slugish = z.string().regex(/^[a-z0-9-]{1,30}$/, "Use lowercase letters, numbers and dashes");
 const priority = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
 const money = z.number().min(0).max(100000);
@@ -45,7 +47,32 @@ const agentFields = {
   model: modelId,
   effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
   skills: skillIds,
+  /** Legacy look (colour + one accessory); prefer `appearance`. */
   avatar: z.object({ color: z.string().regex(/^#[0-9a-fA-F]{6}$/), accessory: z.string().regex(/^[a-z-]{1,30}$/) }),
+  appearance: z
+    .object({
+      bodyColor: hex,
+      accentColor: hex,
+      cheekColor: hex,
+      eyes: z.enum(EYE_STYLES),
+      expression: z.enum(EXPRESSIONS),
+      ears: z.enum(EAR_STYLES),
+      tail: z.enum(TAIL_STYLES),
+      size: z.number().min(0.85).max(1.2),
+      wearables: z
+        .object(Object.fromEntries(WEARABLE_SLOTS.map((slot) => [slot, z.string().refine((id) => wearable(id)?.slot === slot, `Not a ${slot} item`).optional()])))
+        .strict(),
+    })
+    .strict(),
+  voice: z
+    .object({
+      preset: z.enum(VOICE_PRESET_IDS),
+      pitch: z.number().min(-12).max(12),
+      speed: z.number().min(0.5).max(2),
+      tone: z.number().min(0).max(1),
+      texture: z.number().min(0).max(1),
+    })
+    .strict(),
   buildingId: z.string().min(1),
   dailyBudgetUsd: money.nullable(),
 };
@@ -53,8 +80,10 @@ const agentFields = {
 const agentPatch = z.object({ ...agentFields, enabled: z.boolean() }).partial().strict();
 const agentCreate = z
   .object({ ...agentFields, personality: agentFields.personality.default(""), responsibilities: agentFields.responsibilities.default([]), dailyBudgetUsd: money.nullable().default(null) })
-  .partial({ model: true, effort: true })
+  .partial({ model: true, effort: true, avatar: true, appearance: true, voice: true })
   .strict();
+
+const LEGACY_ACCESSORY: Record<string, string> = { crown: "crown", beret: "beret", goggles: "goggles", sprout: "sprout" };
 
 const buildingCreate = z
   .object({
@@ -105,6 +134,7 @@ const settingsPatch = z
     townName: z.string().trim().min(1).max(40),
     themeId: z.string().regex(/^[a-z0-9-]{1,40}$/),
     timezone: z.string().refine(isValidTimezone, "Unknown IANA timezone"),
+    timezoneMode: z.enum(["auto", "manual"]),
     townTax: z
       .object({
         enabled: z.boolean(),
@@ -236,7 +266,8 @@ export function createApi(deps: ApiDeps): Hono {
       model: b.data.model ?? config.defaultModel,
       effort: b.data.effort ?? "medium",
       skills: b.data.skills,
-      avatar: b.data.avatar,
+      appearance: (b.data.appearance as never) ?? defaultAppearance(b.data.avatar?.color, LEGACY_ACCESSORY[b.data.avatar?.accessory ?? ""]),
+      voice: b.data.voice ?? defaultVoice(),
       buildingId: b.data.buildingId,
       enabled: true,
       dailyBudgetUsd: b.data.dailyBudgetUsd,
@@ -253,8 +284,18 @@ export function createApi(deps: ApiDeps): Hono {
     const b = await body(c, agentPatch);
     if (!b.ok) return b.res;
     if (b.data.buildingId && !store.getBuilding(b.data.buildingId)) return c.json(err("Unknown building"), 400);
-    const agent = store.updateAgent(id, b.data)!;
-    store.addEvent({ type: "agent.updated", agentId: id, message: `${agent.name}'s profile was updated`, data: { fields: Object.keys(b.data) } });
+    const { avatar, ...rest } = b.data;
+    const patch = { ...rest } as Parameters<Store["updateAgent"]>[1];
+    if (avatar && !rest.appearance) patch.appearance = { ...current.appearance, bodyColor: avatar.color };
+    // Cosmetic-only edits (look, voice) never touch status or the current task.
+    const agent = store.updateAgent(id, patch)!;
+    const cosmetic = Object.keys(b.data).every((k) => ["appearance", "voice", "avatar"].includes(k));
+    store.addEvent({
+      type: "agent.updated",
+      agentId: id,
+      message: cosmetic ? `${agent.name} got a new look` : `${agent.name}'s profile was updated`,
+      data: { fields: Object.keys(b.data), cosmetic },
+    });
     return c.json(agent);
   });
 

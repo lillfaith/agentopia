@@ -1,5 +1,6 @@
 import type { Agent, Building } from "../../shared/types.js";
 import type { Store } from "../db/store.js";
+import { SEED_LOOKS } from "./looks.js";
 
 export const DEFAULT_BUILDINGS: Building[] = [
   {
@@ -28,7 +29,7 @@ export const DEFAULT_BUILDINGS: Building[] = [
   },
 ];
 
-type SeedAgent = Omit<Agent, "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "model" | "archived" | "dailyBudgetUsd">;
+type SeedAgent = Omit<Agent, "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "model" | "archived" | "dailyBudgetUsd" | "appearance" | "voice" | "avatar">;
 
 export const DEFAULT_AGENTS: SeedAgent[] = [
   {
@@ -46,7 +47,6 @@ export const DEFAULT_AGENTS: SeedAgent[] = [
     responsibilities: ["Plan projects and write briefs", "Delegate to specialists", "Review and approve deliverables"],
     effort: "medium",
     skills: ["writing", "delegation"],
-    avatar: { color: "#f6a5c0", accessory: "crown" },
     buildingId: "town-hall",
     enabled: true,
   },
@@ -64,7 +64,6 @@ export const DEFAULT_AGENTS: SeedAgent[] = [
     responsibilities: ["Market & audience research", "Competitor analysis", "Organise findings for the copy team"],
     effort: "high",
     skills: ["research", "writing"],
-    avatar: { color: "#9fd3f5", accessory: "goggles" },
     buildingId: "observatory",
     enabled: true,
   },
@@ -82,7 +81,6 @@ export const DEFAULT_AGENTS: SeedAgent[] = [
     responsibilities: ["Headlines & taglines", "Landing-page and social copy", "Adapt tone to audience"],
     effort: "medium",
     skills: ["writing", "publishing"],
-    avatar: { color: "#c4b5fd", accessory: "beret" },
     buildingId: "ink-studio",
     enabled: true,
   },
@@ -93,6 +91,6 @@ export function seedTown(store: Store, defaultModel: string): void {
   const existing = new Set(store.listBuildings().map((b) => b.id));
   for (const b of DEFAULT_BUILDINGS) if (!existing.has(b.id)) store.upsertBuilding(b);
   for (const a of DEFAULT_AGENTS) {
-    if (!store.getAgent(a.id)) store.insertAgent({ ...a, model: defaultModel });
+    if (!store.getAgent(a.id)) store.insertAgent({ ...a, model: defaultModel, ...SEED_LOOKS[a.id] });
   }
 }

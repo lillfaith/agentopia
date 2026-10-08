@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { eventListeners, useTown, type PanelId, type TimeOfDay } from "../state/store";
+import { eventListeners, useTown, type PanelId } from "../state/store";
+import { TownClock } from "./TownClock";
 import { useTheme } from "../theme-engine/ThemeContext";
 import { fmtTokens, fmtUsd } from "./common";
 
@@ -25,7 +26,6 @@ export function TopBar() {
   const errors = snap.tasks.filter((t) => t.status === "failed").length;
   const tokens = snap.stats.reduce((n, x) => n + x.inputTokens + x.outputTokens, 0);
   const cost = snap.stats.reduce((n, x) => n + x.costUsd, 0);
-  const times: TimeOfDay[] = ["dawn", "day", "dusk", "night"];
 
   return (
     <div className="topbar" ref={bar}>
@@ -79,13 +79,7 @@ export function TopBar() {
       </div>
 
       <div className="world-controls panel">
-        <div className="seg">
-          {times.map((t) => (
-            <button key={t} className={s.timeOfDay === t ? "on" : ""} onClick={() => s.setTimeOfDay(t)} title={t}>
-              {icons[t]}
-            </button>
-          ))}
-        </div>
+        <TownClock />
         <button className="pill" onClick={s.requestOverview} title="Fly back to the town overview">
           {icons.overview} Overview
         </button>

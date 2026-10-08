@@ -21,6 +21,7 @@ import type {
   Workflow,
 } from "../../shared/types.js";
 import { transaction, type Database } from "./database.js";
+import { normalizeAppearance, normalizeVoice, type Appearance, type VoiceConfig } from "../../shared/cosmetics.js";
 
 type Row = Record<string, unknown>;
 
@@ -47,6 +48,7 @@ export const DEFAULT_SETTINGS: TownSettings = {
   },
   budget: { dailyUsd: null, monthlyUsd: null, perTaskUsd: null },
   timezone: "UTC",
+  timezoneMode: "auto",
 };
 
 const NO_EXECUTION: TaskExecution = { mode: "none", calls: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, models: [], lastRequestId: null };
@@ -57,6 +59,7 @@ export const WORKER_ALIVE_MS = 30_000;
 // ───────────────────────── row mappers ─────────────────────────
 
 function toAgent(r: Row): Agent {
+  const avatar = parse(r.avatar, { color: "#f9a8d4", accessory: "none" });
   return {
     id: r.id as string,
     name: r.name as string,
@@ -67,7 +70,9 @@ function toAgent(r: Row): Agent {
     model: r.model as string,
     effort: r.effort as Agent["effort"],
     skills: parse(r.skills, []),
-    avatar: parse(r.avatar, { color: "#f9a8d4", accessory: "none" }),
+    avatar,
+    appearance: normalizeAppearance(parse(r.appearance, null), avatar.color),
+    voice: normalizeVoice(parse(r.voice, null)),
     buildingId: r.building_id as string,
     status: r.status as AgentStatus,
     statusDetail: (r.status_detail as string) ?? null,
@@ -78,6 +83,11 @@ function toAgent(r: Row): Agent {
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
+}
+
+/** Legacy `avatar` view of an appearance, for older clients. */
+function avatarFor(a: Appearance) {
+  return { color: a.bodyColor, accessory: a.wearables.head ?? a.wearables.eyes ?? "none" };
 }
 
 function toSchedule(r: Row): Schedule {
@@ -292,17 +302,24 @@ export class Store {
     return r ? toAgent(r) : null;
   }
 
-  insertAgent(a: Omit<Agent, "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "archived" | "dailyBudgetUsd"> & { dailyBudgetUsd?: number | null }): Agent {
+  insertAgent(
+    a: Omit<Agent, "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "archived" | "dailyBudgetUsd" | "avatar" | "appearance" | "voice"> & {
+      dailyBudgetUsd?: number | null;
+      appearance: Appearance;
+      voice: VoiceConfig;
+    },
+  ): Agent {
     const ts = now();
+    const appearance = normalizeAppearance(a.appearance);
     this.db
       .prepare(
-        `INSERT INTO agents (id, name, role, personality, system_prompt, responsibilities, model, effort, skills, avatar,
+        `INSERT INTO agents (id, name, role, personality, system_prompt, responsibilities, model, effort, skills, avatar, appearance, voice,
            building_id, status, enabled, daily_budget_usd, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?)`,
       )
       .run(
         a.id, a.name, a.role, a.personality, a.systemPrompt, json(a.responsibilities), a.model, a.effort,
-        json(a.skills), json(a.avatar), a.buildingId, a.enabled ? 1 : 0, a.dailyBudgetUsd ?? null, ts, ts,
+        json(a.skills), json(avatarFor(appearance)), json(appearance), json(normalizeVoice(a.voice)), a.buildingId, a.enabled ? 1 : 0, a.dailyBudgetUsd ?? null, ts, ts,
       );
     return this.getAgent(a.id)!;
   }
@@ -310,7 +327,7 @@ export class Store {
   updateAgent(
     id: string,
     patch: Partial<
-      Pick<Agent, "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "model" | "effort" | "skills" | "avatar" | "enabled" | "buildingId" | "dailyBudgetUsd" | "archived">
+      Pick<Agent, "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "model" | "effort" | "skills" | "appearance" | "voice" | "enabled" | "buildingId" | "dailyBudgetUsd" | "archived">
     >,
   ): Agent | null {
     const cols: string[] = [];
@@ -324,12 +341,17 @@ export class Store {
       model: ["model", (v: string) => v],
       effort: ["effort", (v: string) => v],
       skills: ["skills", (v: string[]) => json(v)],
-      avatar: ["avatar", (v: object) => json(v)],
+      voice: ["voice", (v: VoiceConfig) => json(normalizeVoice(v))],
       enabled: ["enabled", (v: boolean) => (v ? 1 : 0)],
       archived: ["archived", (v: boolean) => (v ? 1 : 0)],
       buildingId: ["building_id", (v: string) => v],
       dailyBudgetUsd: ["daily_budget_usd", (v: number | null) => v],
     };
+    if (patch.appearance) {
+      const appearance = normalizeAppearance(patch.appearance);
+      cols.push("appearance = ?", "avatar = ?");
+      vals.push(json(appearance), json(avatarFor(appearance)));
+    }
     for (const [key, value] of Object.entries(patch)) {
       const m = map[key];
       if (!m || value === undefined) continue; // null is allowed (e.g. clearing a budget)

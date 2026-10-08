@@ -3,7 +3,7 @@ import { playPastelSfx } from "./audio";
 import { PastelBuilding } from "./Buildings";
 import { PastelCharacter } from "./Character";
 import { PastelEnvironment } from "./Environment";
-import { CAMERA, LIGHTING, SLOTS, SLOT_LABELS, buildNav, fallbackSlot } from "./layout";
+import { CAMERA, LIGHTING_KEYFRAMES, SLOTS, SLOT_LABELS, buildNav, fallbackSlot } from "./layout";
 import { PastelWeather } from "./Weather";
 
 /** "Pastel Village" — the original default theme for Agentopia. */
@@ -69,7 +69,7 @@ export const pastelVillage: ThemeManifest = {
       { kind: "atelier", label: "Glass atelier", icon: "🎨", description: "A bright greenhouse studio with an easel — for design." },
       { kind: "lab", label: "Crystal lab", icon: "🧊", description: "A crystal dome with orbiting rings — for 3D and experiments." },
     ],
-    lighting: LIGHTING,
+    lightingKeyframes: LIGHTING_KEYFRAMES,
     camera: CAMERA,
     walkSpeed: 2.6,
     labelHeight: 2.7,

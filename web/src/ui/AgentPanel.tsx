@@ -11,6 +11,7 @@ type Tab = "overview" | "work" | "config";
 export function AgentPanel({ agentId }: { agentId: string }) {
   const snap = useTown((s) => s.snapshot)!;
   const select = useTown((s) => s.selectAgent);
+  const openWardrobe = useTown((s) => s.openWardrobe);
   const agent = snap.agents.find((a) => a.id === agentId);
   const [tab, setTab] = useState<Tab>("overview");
   if (!agent) return null;
@@ -21,9 +22,9 @@ export function AgentPanel({ agentId }: { agentId: string }) {
   return (
     <Drawer side="right" title={null} onClose={() => select(null)}>
       <div className="agent-head">
-        <div className="agent-avatar" style={{ background: agent.avatar.color }}>
+        <button className="agent-avatar" style={{ background: agent.appearance.bodyColor }} onClick={() => openWardrobe(agent.id)} title="Open wardrobe">
           {agent.name.slice(0, 1)}
-        </div>
+        </button>
         <div className="agent-id">
           <h2>{agent.name}</h2>
           <div className="muted">
@@ -35,6 +36,9 @@ export function AgentPanel({ agentId }: { agentId: string }) {
               <StatusDot status={agent.status} /> {STATUS_LABEL[agent.status]}
             </span>
             {!agent.enabled && <Badge tone="muted">Disabled</Badge>}
+            <button className="pill" onClick={() => openWardrobe(agent.id)} title="Customize looks (cosmetic only)">
+              👗 Wardrobe
+            </button>
           </div>
         </div>
       </div>
@@ -259,8 +263,6 @@ export function TaskOutputCard({ task, open, onToggle }: { task: Task; open: boo
   );
 }
 
-const ACCESSORIES = ["crown", "goggles", "beret", "sprout", "none"];
-
 function Config({ agent }: { agent: Agent }) {
   const status = useTown((s) => s.snapshot!.status);
   const buildings = useTown((s) => s.snapshot!.buildings);
@@ -276,8 +278,6 @@ function Config({ agent }: { agent: Agent }) {
     skills: agent.skills,
     buildingId: agent.buildingId,
     dailyBudget: agent.dailyBudgetUsd === null ? "" : String(agent.dailyBudgetUsd),
-    color: agent.avatar.color,
-    accessory: agent.avatar.accessory,
     enabled: agent.enabled,
   }));
   const [busy, setBusy] = useState(false);
@@ -302,7 +302,6 @@ function Config({ agent }: { agent: Agent }) {
         skills: form.skills,
         buildingId: form.buildingId,
         dailyBudgetUsd: form.dailyBudget.trim() ? Number(form.dailyBudget) : null,
-        avatar: { color: form.color, accessory: form.accessory },
         enabled: form.enabled,
       });
       push({ tone: "good", text: `${form.name} updated` });
@@ -373,20 +372,6 @@ function Config({ agent }: { agent: Agent }) {
         <label>
           Personal daily cap (USD)
           <input type="number" min={0} step={0.5} placeholder="none — global limits apply" value={form.dailyBudget} onChange={(e) => set("dailyBudget", e.target.value)} />
-        </label>
-      </div>
-      <div className="grid2">
-        <label>
-          Colour
-          <input type="color" value={form.color} onChange={(e) => set("color", e.target.value)} />
-        </label>
-        <label>
-          Accessory
-          <select value={form.accessory} onChange={(e) => set("accessory", e.target.value)}>
-            {[...new Set([...ACCESSORIES, form.accessory])].map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
         </label>
       </div>
       <label className="check">

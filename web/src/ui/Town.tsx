@@ -61,7 +61,7 @@ function Villagers({ onHire }: { onHire: () => void }) {
         <section key={a.id} className="card villager">
           <div className="row between">
             <button className="link row gap-s" onClick={() => select(a.id)}>
-              <span className="avatar-dot big" style={{ background: a.avatar.color }} />
+              <span className="avatar-dot big" style={{ background: a.appearance.bodyColor }} />
               <span>
                 <b>{a.name}</b> <small className="muted">{a.role}</small>
                 <br />

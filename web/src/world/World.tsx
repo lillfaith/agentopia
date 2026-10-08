@@ -5,12 +5,12 @@ import type { SlotLayout, ThemeManifest } from "../theme-engine/types";
 import { useTown } from "../state/store";
 import { AgentActor } from "./AgentActor";
 import { CameraRig } from "./CameraRig";
+import { useEnvironment } from "../environment/useEnvironment";
 import { WorldLabel } from "./WorldLabel";
 
-function BuildingNode({ building, layout, theme }: { building: Building; layout: SlotLayout; theme: ThemeManifest }) {
+function BuildingNode({ building, layout, theme, glow }: { building: Building; layout: SlotLayout; theme: ThemeManifest; glow: number }) {
   const [hovered, setHovered] = useState(false);
   const selected = useTown((s) => s.selectedBuildingId === building.id);
-  const timeOfDay = useTown((s) => s.timeOfDay);
   const showNames = useTown((s) => s.showNames);
   const selectBuilding = useTown((s) => s.selectBuilding);
   const agents = useTown((s) => s.snapshot?.agents ?? []);
@@ -34,7 +34,7 @@ function BuildingNode({ building, layout, theme }: { building: Building; layout:
         document.body.style.cursor = "";
       }}
     >
-      <BuildingView building={building} glow={theme.world.lighting[timeOfDay].glow} hovered={hovered} selected={selected} activity={activity} />
+      <BuildingView building={building} glow={glow} hovered={hovered} selected={selected} activity={activity} />
       {showNames && (
         <WorldLabel position={[0, 7.6, 0]} reference={34} min={0.45}>
           <div className="world-label building-label" onClick={() => selectBuilding(building.id)}>
@@ -49,7 +49,7 @@ function BuildingNode({ building, layout, theme }: { building: Building; layout:
 
 export function World({ theme }: { theme: ThemeManifest }) {
   const snapshot = useTown((s) => s.snapshot);
-  const timeOfDay = useTown((s) => s.timeOfDay);
+  const env = useEnvironment(theme);
   const clearSelection = useTown((s) => s.selectAgent);
   const buildings = snapshot?.buildings ?? [];
   const agents = snapshot?.agents ?? [];
@@ -71,7 +71,7 @@ export function World({ theme }: { theme: ThemeManifest }) {
   const slotForBuilding = useCallback((id: string) => layouts.get(id), [layouts]);
   const nav = useMemo(() => theme.world.buildNav(occupied), [theme, occupied]);
 
-  const lighting = theme.world.lighting[timeOfDay];
+  const lighting = env.lighting;
   const Environment = theme.components.Environment;
   const Weather = theme.components.Weather;
   const agentIndex = new Map<string, number>();
@@ -86,18 +86,18 @@ export function World({ theme }: { theme: ThemeManifest }) {
     >
       <fog attach="fog" args={[lighting.fog, 70, 190]} />
       <Suspense fallback={null}>
-        <Environment timeOfDay={timeOfDay} lighting={lighting} slots={occupied} />
-        {Weather && <Weather timeOfDay={timeOfDay} />}
+        <Environment env={env} slots={occupied} />
+        {Weather && <Weather env={env} />}
         {buildings.map((b) => {
           const layout = layouts.get(b.id);
-          return layout ? <BuildingNode key={b.id} building={b} layout={layout} theme={theme} /> : null;
+          return layout ? <BuildingNode key={b.id} building={b} layout={layout} theme={theme} glow={lighting.glow} /> : null;
         })}
         {agents
           .filter((a) => a.enabled && !a.archived)
           .map((a) => {
             const i = agentIndex.get(a.buildingId) ?? 0;
             agentIndex.set(a.buildingId, i + 1);
-            return <AgentActor key={a.id} agent={a} index={i} theme={theme} nav={nav} slotForBuilding={slotForBuilding} />;
+            return <AgentActor key={a.id} agent={a} index={i} theme={theme} nav={nav} slotForBuilding={slotForBuilding} night={env.phase === "night"} />;
           })}
       </Suspense>
       <CameraRig theme={theme} />

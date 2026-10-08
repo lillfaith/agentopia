@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { setToken } from "./api/client";
+import { api, setToken } from "./api/client";
+import { browserTimezone } from "./environment/dayCycle";
 import { useTown } from "./state/store";
 import { getTheme } from "./theme-engine/registry";
 import { ThemeProvider } from "./theme-engine/ThemeContext";
@@ -9,6 +10,7 @@ import { ActivityLog, ApprovalsPanel, BuildingPanel, NewProject, Projects, TaskB
 import { SettingsPanel, TreasuryPanel } from "./ui/Admin";
 import { SchedulesPanel } from "./ui/Schedules";
 import { TownPanel } from "./ui/Town";
+import { Wardrobe } from "./ui/Wardrobe";
 import { Dock, ProviderBanner, Toasts, TopBar, useSoundEffects } from "./ui/Hud";
 
 function Hud() {
@@ -17,7 +19,8 @@ function Hud() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || (e.target as HTMLElement)?.closest("input, textarea, select")) return;
       const s = useTown.getState();
-      if (s.panel) s.openPanel(null);
+      if (s.wardrobeAgentId) s.openWardrobe(null);
+      else if (s.panel) s.openPanel(null);
       else s.selectAgent(null);
     };
     window.addEventListener("keydown", onKey);
@@ -26,6 +29,7 @@ function Hud() {
   const panel = useTown((s) => s.panel);
   const agentId = useTown((s) => s.selectedAgentId);
   const buildingId = useTown((s) => s.selectedBuildingId);
+  const wardrobeId = useTown((s) => s.wardrobeAgentId);
   return (
     <>
       <TopBar />
@@ -39,6 +43,7 @@ function Hud() {
       {panel === "approvals" && <ApprovalsPanel />}
       {panel === "treasury" && <TreasuryPanel />}
       {panel === "settings" && <SettingsPanel />}
+      {wardrobeId && <Wardrobe agentId={wardrobeId} />}
       {agentId && <AgentPanel agentId={agentId} />}
       {buildingId && !agentId && <BuildingPanel buildingId={buildingId} />}
       <Dock />
@@ -93,6 +98,14 @@ export function App() {
   useEffect(() => {
     void load();
   }, [load]);
+  // Town time follows the owner's device timezone unless they chose one manually.
+  // Saved server-side so the clock, lighting and new schedules all agree.
+  useEffect(() => {
+    if (!snapshot || snapshot.settings.timezoneMode !== "auto") return;
+    const tz = browserTimezone();
+    if (tz && tz !== snapshot.settings.timezone) void api.updateSettings({ timezone: tz }).then(() => load(), () => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot?.settings.timezone, snapshot?.settings.timezoneMode]);
   useEffect(() => {
     if (!snapshot) return;
     return connect();

@@ -16,10 +16,12 @@ Themes only get **theme-agnostic, read-only** inputs. They never see prompts, ta
 |---|---|---|
 | `building.kind` | server `buildings.kind` | `"hq"`, `"research"`, `"studio"`, `"workshop"`, `"atelier"`, `"lab"`; anything else → draw a fallback |
 | `building.slot` | server `buildings.slot` | `"north"`; the theme maps slots to world positions |
-| `color`, `accessory` | agent avatar | `"#f6a5c0"`, `"crown"`; unknown accessories need a sensible fallback |
-| `anim` | derived from real agent status | `idle · walk · think · work · carry · wait · celebrate · sad` |
+| `appearance` | agent cosmetics (`shared/cosmetics.ts`) | colours, eyes, expression, ears, tail, size and wearables per slot (`head · eyes · neck · back · hand`). Unknown item ids need a sensible fallback |
+| `anim` | real status, or decorative idle flavour | real: `think · work · sit-work · read · write · carry · wait · celebrate · confused`; decorative (idle only): `idle · walk · rest · sleep · converse`. See `WORK_ANIMS` |
+| `talking` | voice system | mouth flaps while the villager speaks |
 | `moving`, `carrying` | world controller | walking a real hand-off → `carrying = true` |
-| `glow` | lighting preset | 0 by day, 1 at night: light windows and lamps |
+| `env` | day cycle (`web/src/environment/dayCycle.ts`) | real local hour in the town timezone (or the visual override), phase, interpolated lighting, weather placeholder |
+| `glow` | interpolated lighting | 0 by day, 1 at night: light windows and lamps |
 | `activity` | agents working in a building | animate chimneys, telescopes, … |
 
 ## What a theme provides
@@ -38,7 +40,7 @@ export const myTheme: ThemeManifest = {
     fallbackSlot: (i) => ({...}),                       // for buildings in unknown slots
     buildNav: (occupiedSlots) => ({ nodes, edges }),    // walk graph for the plots in use
     buildingStyles: [{ kind: "workshop", label: "Workshop", icon: "⚙️", description: "…" }, …],
-    lighting: { dawn, day, dusk, night },               // sky, fog, sun, ambient, hemi, glow
+    lightingKeyframes: [{ hour: 6.1, preset }, …],      // interpolated continuously; sun position is computed
     camera: { fov, overviewPosition, overviewTarget, minDistance, maxDistance, minPolar, maxPolar },
     walkSpeed: 2.6,
     labelHeight: 2.7,
@@ -60,8 +62,8 @@ It then appears in **Settings → Theme**. The choice is saved server-side in `s
 
 1. **Original assets only.** Don't ship copyrighted characters or artwork.
 2. **Never fake activity.** Animate from the props you receive; don't invent progress.
-3. **Handle unknowns.** Users create their own departments, so new building kinds, slots and accessory
-   keywords will appear. Draw a tasteful fallback, and offer enough plots (the pastel theme has 11 plus a spiral fallback).
+3. **Handle unknowns.** Users create their own departments, so new building kinds, slots and cosmetic
+   item ids (from future packs) will appear. Draw a tasteful fallback, and offer enough plots (the pastel theme has 11 plus a spiral fallback).
 4. **Keep it light.** Use instancing for repeated decoration; avoid more than a handful of real-time lights.
 5. **Accessibility.** UI CSS variables must keep text readable (WCAG AA contrast on panels).
 

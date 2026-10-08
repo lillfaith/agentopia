@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { AgentStatus, Building } from "../../../shared/types";
-import type { TimeOfDay } from "../state/store";
+import type { Appearance } from "../../../shared/cosmetics";
+import type { EnvironmentState, LightingKeyframe } from "../environment/dayCycle";
 
 /**
  * THEME CONTRACT
@@ -22,6 +23,12 @@ export interface LightingPreset {
   hemi: { sky: string; ground: string; intensity: number };
   /** 0..1 — how strongly lamps/windows glow. */
   glow: number;
+  /** 0..1 — star field visibility. */
+  stars: number;
+  /** 0..1 — firefly density. */
+  fireflies: number;
+  /** 0..1 — drifting blossom petals (daytime ambience). */
+  petals: number;
 }
 
 export interface SlotLayout {
@@ -41,8 +48,32 @@ export interface NavGraph {
   edges: [string, string][];
 }
 
-/** Animation state handed to the character component. */
-export type CharacterAnim = "idle" | "walk" | "think" | "work" | "carry" | "wait" | "celebrate" | "sad";
+/**
+ * Animation state handed to the character component.
+ *
+ * WORK states are chosen ONLY from real agent status / real hand-off events:
+ *   think (planning) · work · sit-work (working at an interior desk) · read · write ·
+ *   carry (a real hand-off) · wait (needs approval) · celebrate (task completed) · confused (task failed)
+ * DECORATIVE states are idle-only flavour and never imply task progress:
+ *   idle · walk · rest · sleep · converse
+ */
+export type CharacterAnim =
+  | "idle"
+  | "walk"
+  | "think"
+  | "work"
+  | "sit-work"
+  | "read"
+  | "write"
+  | "carry"
+  | "wait"
+  | "celebrate"
+  | "confused"
+  | "rest"
+  | "sleep"
+  | "converse";
+
+export const WORK_ANIMS: ReadonlySet<CharacterAnim> = new Set(["think", "work", "sit-work", "read", "write", "carry", "wait", "celebrate", "confused"]);
 
 export function animForStatus(status: AgentStatus): CharacterAnim {
   switch (status) {
@@ -57,20 +88,21 @@ export function animForStatus(status: AgentStatus): CharacterAnim {
     case "completed":
       return "celebrate";
     case "failed":
-      return "sad";
+      return "confused";
     default:
       return "idle";
   }
 }
 
 export interface CharacterProps {
-  color: string;
-  accessory: string;
+  appearance: Appearance;
   anim: CharacterAnim;
   moving: boolean;
   carrying: boolean;
   selected: boolean;
   hovered: boolean;
+  /** True while the villager's voice is speaking (mouth flaps). */
+  talking?: boolean;
 }
 
 export interface BuildingProps {
@@ -83,8 +115,8 @@ export interface BuildingProps {
 }
 
 export interface EnvironmentProps {
-  timeOfDay: TimeOfDay;
-  lighting: LightingPreset;
+  /** Real-time lighting, phase and weather (see environment/dayCycle.ts). */
+  env: EnvironmentState;
   /** Occupied slots so decorations can avoid them. */
   slots: Record<string, SlotLayout>;
 }
@@ -118,7 +150,8 @@ export interface ThemeManifest {
     buildNav: (occupied: Record<string, SlotLayout>) => NavGraph;
     /** Building styles this theme can draw (any other kind gets a generic fallback). */
     buildingStyles: { kind: string; label: string; icon: string; description: string }[];
-    lighting: Record<TimeOfDay, LightingPreset>;
+    /** Lighting at local hours; the engine interpolates between them through the day. */
+    lightingKeyframes: LightingKeyframe[];
     camera: { fov: number; overviewPosition: Vec3; overviewTarget: Vec3; minDistance: number; maxDistance: number; minPolar: number; maxPolar: number };
     /** World units per second. */
     walkSpeed: number;
@@ -131,7 +164,7 @@ export interface ThemeManifest {
     Building: ComponentType<BuildingProps>;
     Character: ComponentType<CharacterProps>;
     /** Weather / ambient particles. Optional. */
-    Weather?: ComponentType<{ timeOfDay: TimeOfDay }>;
+    Weather?: ComponentType<{ env: EnvironmentState }>;
   };
 
   audio: {

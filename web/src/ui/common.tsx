@@ -132,7 +132,7 @@ export function AgentName({ id }: { id: string | null }) {
   if (!agent) return <span>{id}</span>;
   return (
     <button className="link agent-link" onClick={() => select(agent.id)}>
-      <span className="avatar-dot" style={{ background: agent.avatar.color }} />
+      <span className="avatar-dot" style={{ background: agent.appearance.bodyColor }} />
       {agent.name}
     </button>
   );

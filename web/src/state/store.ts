@@ -2,7 +2,6 @@ import { create } from "zustand";
 import type { Agent, AgentStats, TownEvent, TownSnapshot } from "../../../shared/types";
 import { api, subscribe } from "../api/client";
 
-export type TimeOfDay = "dawn" | "day" | "dusk" | "night";
 export type PanelId = "town" | "schedules" | "tasks" | "projects" | "log" | "approvals" | "treasury" | "settings" | "new-project";
 
 /** A real hand-off between agents (from a task.handoff event) that the world animates. */
@@ -33,10 +32,13 @@ interface UIState {
   selectedAgentId: string | null;
   selectedBuildingId: string | null;
   panel: PanelId | null;
+  /** Villager whose wardrobe (customization) is open. */
+  wardrobeAgentId: string | null;
   showNames: boolean;
   showBubbles: boolean;
   follow: boolean;
-  timeOfDay: TimeOfDay;
+  /** Manual lighting hour (screenshots/testing); null = follow real local time. Never affects schedules. */
+  lightingOverride: number | null;
   sound: boolean;
   /** Incremented to ask the camera to fly back to the overview. */
   overviewRequest: number;
@@ -46,8 +48,9 @@ interface UIState {
   selectAgent: (id: string | null) => void;
   selectBuilding: (id: string | null) => void;
   openPanel: (p: PanelId | null) => void;
+  openWardrobe: (agentId: string | null) => void;
   toggle: (key: "showNames" | "showBubbles" | "follow" | "sound") => void;
-  setTimeOfDay: (t: TimeOfDay) => void;
+  setLightingOverride: (hour: number | null) => void;
   requestOverview: () => void;
   dismissToast: (id: number) => void;
   pushToast: (t: Omit<Toast, "id">) => void;
@@ -84,10 +87,11 @@ export const useTown = create<UIState>((set, get) => ({
   selectedAgentId: null,
   selectedBuildingId: null,
   panel: null,
+  wardrobeAgentId: null,
   showNames: pref("showNames", true),
   showBubbles: pref("showBubbles", true),
   follow: false,
-  timeOfDay: pref<TimeOfDay>("timeOfDay", "day"),
+  lightingOverride: pref<number | null>("lightingOverride", null),
   sound: pref("sound", false),
   overviewRequest: 0,
 
@@ -118,15 +122,16 @@ export const useTown = create<UIState>((set, get) => ({
 
   selectAgent: (id) => set({ selectedAgentId: id, selectedBuildingId: null, follow: id ? get().follow : false }),
   selectBuilding: (id) => set({ selectedBuildingId: id, selectedAgentId: null, follow: false }),
-  openPanel: (p) => set({ panel: get().panel === p ? null : p }),
+  openPanel: (p) => set({ panel: get().panel === p ? null : p, wardrobeAgentId: null }),
+  openWardrobe: (wardrobeAgentId) => set({ wardrobeAgentId, panel: wardrobeAgentId ? null : get().panel }),
   toggle: (key) => {
     const value = !get()[key];
     set({ [key]: value } as Partial<UIState>);
     if (key !== "follow") savePref(key, value);
   },
-  setTimeOfDay: (timeOfDay) => {
-    set({ timeOfDay });
-    savePref("timeOfDay", timeOfDay);
+  setLightingOverride: (lightingOverride) => {
+    set({ lightingOverride });
+    savePref("lightingOverride", lightingOverride);
   },
   requestOverview: () => set({ overviewRequest: get().overviewRequest + 1, follow: false }),
   dismissToast: (id) => set({ toasts: get().toasts.filter((t) => t.id !== id) }),

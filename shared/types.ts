@@ -4,6 +4,8 @@
  * themes only ever see these types through the world snapshot.
  */
 
+import type { Appearance, VoiceConfig } from "./cosmetics.js";
+
 export type ISODate = string;
 
 // ───────────────────────── Agents ─────────────────────────
@@ -38,7 +40,12 @@ export interface Agent {
   effort: Effort;
   /** Skill ids this agent may use. Skills bundle tools + guidance (server-enforced allowlist). */
   skills: string[];
+  /** @deprecated kept in sync with `appearance` for older clients; use `appearance`. */
   avatar: AgentAvatar;
+  /** Cosmetic identity (body, face, features, wearables). Never affects prompts, tools or cost. */
+  appearance: Appearance;
+  /** Speech-sound voice. Purely cosmetic and synthesized locally in the browser. */
+  voice: VoiceConfig;
   /** Building the agent works from. */
   buildingId: string;
   status: AgentStatus;
@@ -433,8 +440,10 @@ export interface TownSettings {
   townTax: TownTaxSettings;
   /** Owner budget limits; can only be lower than the operator's hard ceilings. */
   budget: { dailyUsd: number | null; monthlyUsd: number | null; perTaskUsd: number | null };
-  /** Default IANA timezone for new schedules. */
+  /** Town IANA timezone: drives the in-game clock/lighting and is the default for new schedules. */
   timezone: string;
+  /** "auto" = follow the owner's browser timezone; "manual" = keep `timezone` as chosen. */
+  timezoneMode: "auto" | "manual";
 }
 
 export interface TownSnapshot {

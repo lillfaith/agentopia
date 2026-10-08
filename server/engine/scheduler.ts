@@ -6,67 +6,9 @@ import type { Store } from "../db/store.js";
 import { budgetStatus } from "./budget.js";
 import { startCampaignWorkflow } from "./workflows.js";
 
-// ───────────────────────── time-zone math (no dependencies) ─────────────────────────
-
-export function isValidTimezone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-interface LocalParts {
-  y: number;
-  m: number;
-  d: number;
-  h: number;
-  mi: number;
-  weekday: Weekday;
-}
-
-const WEEKDAYS: Record<string, Weekday> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
-
-export function localParts(date: Date, tz: string): LocalParts {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    weekday: "short",
-  }).formatToParts(date);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  return { y: +get("year"), m: +get("month"), d: +get("day"), h: +get("hour"), mi: +get("minute"), weekday: WEEKDAYS[get("weekday")] };
-}
-
-/** Offset (ms) of `tz` from UTC at instant `t`. */
-function offsetAt(t: number, tz: string): number {
-  const p = localParts(new Date(t), tz);
-  return Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi) - Math.floor(t / 60_000) * 60_000;
-}
-
-/**
- * UTC instant for a local wall-clock time. Non-existent local times (spring-forward gap)
- * are shifted forward by the gap (02:30 → 03:30); ambiguous times (fall-back) resolve
- * to the earlier occurrence.
- */
-export function zonedTimeToUtc(y: number, m: number, d: number, h: number, mi: number, tz: string): Date {
-  const guess = Date.UTC(y, m - 1, d, h, mi);
-  const first = guess - offsetAt(guess, tz);
-  const second = guess - offsetAt(first, tz);
-  const t = Math.min(first, second);
-  const back = localParts(new Date(t), tz);
-  if (back.h === h && back.mi === mi) return new Date(t);
-  const other = Math.max(first, second);
-  const back2 = localParts(new Date(other), tz);
-  if (back2.h === h && back2.mi === mi) return new Date(other);
-  // In a DST gap: use the later candidate (wall time shifted forward by the gap).
-  return new Date(other);
-}
+// Time-zone math lives in shared/time.ts so the browser clock and schedules agree.
+export { isValidTimezone, localParts, zonedTimeToUtc } from "../../shared/time.js";
+import { localParts, zonedTimeToUtc } from "../../shared/time.js";
 
 function parseHHMM(time: string): { h: number; mi: number } {
   const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time);

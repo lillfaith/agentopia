@@ -440,7 +440,38 @@ function scatter(slots: Record<string, SlotLayout>): { decor: Decor[]; flowers: 
   return { decor, flowers };
 }
 
-export function PastelEnvironment({ lighting, slots }: EnvironmentProps) {
+/** Star field on the upper sky; fades in with the lighting's `stars` amount. */
+function Stars({ amount }: { amount: number }) {
+  const ref = useRef<THREE.Points>(null);
+  const geom = useMemo(() => {
+    const rand = seeded(42);
+    const pos: number[] = [];
+    for (let i = 0; i < 520; i++) {
+      const u = rand() * Math.PI * 2;
+      const v = 0.12 + rand() * 0.85; // stay above the horizon
+      const r = 200;
+      pos.push(Math.cos(u) * Math.cos(v * Math.PI * 0.5) * r, Math.sin(v * Math.PI * 0.5) * r, Math.sin(u) * Math.cos(v * Math.PI * 0.5) * r);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    return g;
+  }, []);
+  useFrame(({ clock }) => {
+    if (!ref.current) return;
+    ref.current.rotation.y = clock.elapsedTime * 0.004;
+    const m = ref.current.material as THREE.PointsMaterial;
+    m.opacity = amount * (0.8 + Math.sin(clock.elapsedTime * 1.3) * 0.1);
+    ref.current.visible = amount > 0.02;
+  });
+  return (
+    <points ref={ref} geometry={geom} renderOrder={0}>
+      <pointsMaterial color="#fffbe6" size={2.2} sizeAttenuation={false} transparent depthWrite={false} fog={false} />
+    </points>
+  );
+}
+
+export function PastelEnvironment({ env, slots }: EnvironmentProps) {
+  const lighting = env.lighting;
   const { decor, flowers } = useMemo(() => scatter(slots), [slots]);
   const lamps = useMemo(
     () =>
@@ -453,6 +484,7 @@ export function PastelEnvironment({ lighting, slots }: EnvironmentProps) {
   return (
     <group>
       <Sky lighting={lighting} />
+      <Stars amount={lighting.stars} />
       <Lights lighting={lighting} />
       <Water />
       <Island />

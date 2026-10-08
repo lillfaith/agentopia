@@ -49,7 +49,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 | `npm run start:api` / `npm run start:worker` | Run the HTTP API and the background worker as separate processes |
 | `npm run verify:live` | Real, budget-capped checks of every Claude capability plus an end-to-end agent task |
 | `npm run backup` | Consistent online backup of the database |
-| `npm test` / `npm run typecheck` | 66 automated tests / TypeScript across server, client, scripts and tests |
+| `npm test` / `npm run typecheck` | 82 automated tests / TypeScript across server, client, scripts and tests |
 
 ---
 
