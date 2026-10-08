@@ -256,12 +256,99 @@ const CHECK_LABELS: Record<string, string> = {
   agent_task: "End-to-end agent task",
 };
 
+interface BillingInfo {
+  enabled: boolean;
+  plans: { id: string; label: string; priceUsdMonthly: number; dailyUsd: number; monthlyUsd: number; perTaskUsd: number; concurrency: number; models: string[] }[];
+  current: { plan: string; status: string | null; canRun: boolean; reason: string | null; warning: string | null; trialEndsAt: string | null; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean };
+}
+
+/** Plan, limits and Stripe checkout / portal (multi-user servers). */
+function BillingCard() {
+  const push = useTown((s) => s.pushToast);
+  const [info, setInfo] = useState<BillingInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.billing().then(setInfo, (e) => push({ tone: "bad", text: errText(e) }));
+  }, [push]);
+  if (!info) {
+    return (
+      <section className="card">
+        <h3>Plan & billing</h3>
+        <p className="muted">Loading…</p>
+      </section>
+    );
+  }
+  const cur = info.current;
+  const plan = info.plans.find((p) => p.id === cur.plan) ?? info.plans[0];
+  const go = async (fn: () => Promise<{ url: string }>) => {
+    setBusy(true);
+    try {
+      window.location.assign((await fn()).url);
+    } catch (e) {
+      push({ tone: "bad", text: errText(e) });
+      setBusy(false);
+    }
+  };
+  const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : "—");
+  const subscribed = !!cur.status && ["active", "trialing", "past_due"].includes(cur.status);
+  return (
+    <section className="card">
+      <h3>Plan & billing</h3>
+      {cur.reason && <div className="error-box">{cur.reason}</div>}
+      {cur.warning && <div className="warn-box">{cur.warning}</div>}
+      <dl className="kv">
+        <dt>Plan</dt>
+        <dd>
+          <Badge tone={cur.canRun ? "good" : "bad"}>{plan.label}</Badge> {cur.status && <small className="muted">({cur.status.replace("_", " ")})</small>}
+        </dd>
+        {cur.plan === "trial" && (
+          <>
+            <dt>Trial ends</dt>
+            <dd>{date(cur.trialEndsAt)}</dd>
+          </>
+        )}
+        {cur.currentPeriodEnd && (
+          <>
+            <dt>{cur.cancelAtPeriodEnd ? "Ends" : "Renews"}</dt>
+            <dd>{date(cur.currentPeriodEnd)}</dd>
+          </>
+        )}
+        <dt>AI spend included</dt>
+        <dd>
+          {fmtUsd(plan.dailyUsd)}/day · {fmtUsd(plan.monthlyUsd)}/month · {fmtUsd(plan.perTaskUsd)}/task
+        </dd>
+        <dt>Villagers at once</dt>
+        <dd>{plan.concurrency}</dd>
+      </dl>
+      {!info.enabled && <p className="muted small">Payments aren't set up on this server yet.</p>}
+      {info.enabled && (
+        <div className="row gap-s">
+          {!subscribed &&
+            info.plans
+              .filter((p) => p.priceUsdMonthly > 0)
+              .map((p) => (
+                <button key={p.id} className="btn primary" disabled={busy} onClick={() => go(() => api.checkout(p.id))}>
+                  {p.label} · ${p.priceUsdMonthly}/mo
+                </button>
+              ))}
+          {subscribed && (
+            <button className="btn" disabled={busy} onClick={() => go(api.billingPortal)}>
+              Manage billing
+            </button>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function SettingsPanel() {
   const theme = useTheme();
   const snap = useTown((s) => s.snapshot)!;
   const close = useTown((s) => s.openPanel);
   const push = useTown((s) => s.pushToast);
   const load = useTown((s) => s.load);
+  const account = useTown((s) => s.account);
   const [townName, setTownName] = useState(snap.settings.townName);
   const [timezone, setTimezone] = useState(snap.settings.timezone);
   const [token, setTok] = useState(getToken());
@@ -299,7 +386,10 @@ export function SettingsPanel() {
 
   return (
     <Drawer side="left" title="Settings" icon={theme.ui.icons.settings} onClose={() => close(null)} wide>
-      <section className="card">
+      {account ? (
+        <BillingCard />
+      ) : (
+        <section className="card">
         <h3>AI provider</h3>
         <dl className="kv">
           <dt>Mode</dt>
@@ -352,7 +442,8 @@ export function SettingsPanel() {
           </tbody>
         </table>
         <p className="muted small">A capability counts as working only after a real API call proves it on this installation. Unverified rows have not been proven here.</p>
-      </section>
+        </section>
+      )}
 
       <section className="card">
         <h3>Workers (24/7 background processing)</h3>

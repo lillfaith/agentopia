@@ -39,6 +39,8 @@ export interface Config {
   globalDailyBudgetUsd: number;
   /** Models villagers may use (null = any). Set per town from the owner's plan in SaaS mode. */
   allowedModels: string[] | null;
+  /** SaaS billing. Enabled only when the key, webhook secret and both price ids are set. */
+  stripe: { secretKey: string; webhookSecret: string; prices: { starter: string; pro: string } } | null;
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -104,7 +106,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sessionDays: Math.max(1, num(env.AGENTOPIA_SESSION_DAYS, 30)),
     globalDailyBudgetUsd: num(env.AGENTOPIA_GLOBAL_DAILY_BUDGET_USD, 0),
     allowedModels: null,
+    stripe: null,
   };
+  const stripeKey = readSecret(env, "STRIPE_SECRET_KEY");
+  const stripeWebhook = readSecret(env, "STRIPE_WEBHOOK_SECRET");
+  const priceStarter = env.STRIPE_PRICE_STARTER?.trim();
+  const pricePro = env.STRIPE_PRICE_PRO?.trim();
+  const stripeParts = [stripeKey, stripeWebhook, priceStarter, pricePro];
+  if (stripeParts.every(Boolean)) {
+    config.stripe = { secretKey: stripeKey!, webhookSecret: stripeWebhook!, prices: { starter: priceStarter!, pro: pricePro! } };
+  } else if (stripeParts.some(Boolean)) {
+    throw new Error("Stripe billing needs all of STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_STARTER and STRIPE_PRICE_PRO (or none of them).");
+  }
+  if (config.mode === "saas" && config.stripe && config.isProduction && !config.publicOrigin) {
+    throw new Error("Set AGENTOPIA_PUBLIC_ORIGIN (e.g. https://app.example.com) so Stripe can redirect back after checkout.");
+  }
   if (config.mode === "saas") {
     if (config.role !== "all") throw new Error("AGENTOPIA_MODE=saas runs the API and worker in one process; leave AGENTOPIA_ROLE unset (all).");
     if (config.simulation && config.isProduction) throw new Error("AGENTOPIA_SIMULATION cannot be used with AGENTOPIA_MODE=saas in production.");

@@ -77,6 +77,7 @@ export interface AccountInfo {
     label: string;
     canRun: boolean;
     reason: string | null;
+    warning: string | null;
     trialEndsAt: string | null;
     limits: { dailyUsd: number; monthlyUsd: number; perTaskUsd: number; concurrency: number; models: string[] };
   };
@@ -111,6 +112,9 @@ export const api = {
   updateSchedule: (id: string, body: Partial<NewSchedule>) => patch<Schedule>(`/api/schedules/${id}`, body),
   deleteSchedule: (id: string) => del<{ ok: true }>(`/api/schedules/${id}`),
   runSchedule: (id: string) => post<{ fired: boolean; outcome: string }>(`/api/schedules/${id}/run`, {}),
+  billing: () => call<any>("/api/billing"),
+  checkout: (plan: string) => post<{ url: string }>("/api/billing/checkout", { plan }),
+  billingPortal: () => post<{ url: string }>("/api/billing/portal", {}),
   emergencyStop: () => post<{ ok: true; cancelled: number }>("/api/system/stop", {}),
   resumeAll: () => post<{ ok: true }>("/api/system/resume", {}),
   testConnection: () => post<Verification>("/api/system/test-connection", {}),

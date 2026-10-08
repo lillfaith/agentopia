@@ -61,6 +61,23 @@ export const ACCOUNT_MIGRATIONS: Migration[] = [
     PRIMARY KEY (day, user_id)
   );
   `,
+
+  /* 3 — Stripe billing: customer + subscription state on the user, processed webhook events */ `
+  ALTER TABLE users ADD COLUMN stripe_customer_id TEXT;
+  ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT;
+  ALTER TABLE users ADD COLUMN billing_status TEXT;
+  ALTER TABLE users ADD COLUMN current_period_end TEXT;
+  ALTER TABLE users ADD COLUMN cancel_at_period_end INTEGER NOT NULL DEFAULT 0;
+  -- created timestamp of the newest Stripe event applied, so late or replayed events can't roll state back
+  ALTER TABLE users ADD COLUMN billing_event_at INTEGER NOT NULL DEFAULT 0;
+  CREATE UNIQUE INDEX idx_users_stripe_customer ON users(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+
+  CREATE TABLE stripe_events (
+    id           TEXT PRIMARY KEY,
+    type         TEXT NOT NULL,
+    received_at  TEXT NOT NULL
+  );
+  `,
 ];
 
 export interface Account {
@@ -70,6 +87,21 @@ export interface Account {
   trialEndsAt: string | null;
   status: "active" | "suspended";
   createdAt: string;
+  stripeCustomerId: string | null;
+  /** Stripe subscription status (active, trialing, past_due, canceled, …); null = never subscribed. */
+  billingStatus: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+}
+
+export interface SubscriptionUpdate {
+  subscriptionId: string;
+  plan: string;
+  status: string;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  /** Stripe event `created` (seconds). */
+  eventCreated: number;
 }
 
 export interface AuditEntry {
@@ -92,6 +124,10 @@ function toAccount(r: Row): Account {
     trialEndsAt: (r.trial_ends_at as string) ?? null,
     status: r.status as Account["status"],
     createdAt: r.created_at as string,
+    stripeCustomerId: (r.stripe_customer_id as string) ?? null,
+    billingStatus: (r.billing_status as string) ?? null,
+    currentPeriodEnd: (r.current_period_end as string) ?? null,
+    cancelAtPeriodEnd: r.cancel_at_period_end === 1,
   };
 }
 
@@ -140,6 +176,38 @@ export class AccountsStore {
 
   setTrialEnd(userId: string, iso: string | null): void {
     this.db.prepare("UPDATE users SET trial_ends_at = ?, updated_at = ? WHERE id = ?").run(iso, now(), userId);
+  }
+
+  // ── billing ──
+
+  setStripeCustomer(userId: string, customerId: string): void {
+    this.db.prepare("UPDATE users SET stripe_customer_id = ?, updated_at = ? WHERE id = ?").run(customerId, now(), userId);
+  }
+
+  findByStripeCustomer(customerId: string): Account | null {
+    const r = this.db.prepare("SELECT * FROM users WHERE stripe_customer_id = ?").get(customerId) as Row | undefined;
+    return r ? toAccount(r) : null;
+  }
+
+  /** Apply subscription state from a verified webhook. Returns false if a newer event was already applied. */
+  applySubscription(userId: string, u: SubscriptionUpdate): boolean {
+    const res = this.db
+      .prepare(
+        `UPDATE users SET plan = ?, stripe_subscription_id = ?, billing_status = ?, current_period_end = ?, cancel_at_period_end = ?,
+           billing_event_at = ?, updated_at = ? WHERE id = ? AND billing_event_at <= ?`,
+      )
+      .run(u.plan, u.subscriptionId, u.status, u.currentPeriodEnd, u.cancelAtPeriodEnd ? 1 : 0, u.eventCreated, now(), userId, u.eventCreated);
+    return Number(res.changes) > 0;
+  }
+
+  /** Record a webhook event id; false if it was already processed (Stripe retries and replays). */
+  claimStripeEvent(id: string, type: string): boolean {
+    const res = this.db.prepare("INSERT OR IGNORE INTO stripe_events (id, type, received_at) VALUES (?, ?, ?)").run(id, type, now());
+    return Number(res.changes) > 0;
+  }
+
+  forgetStripeEvent(id: string): void {
+    this.db.prepare("DELETE FROM stripe_events WHERE id = ?").run(id);
   }
 
   // ── towns ──

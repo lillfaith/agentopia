@@ -12,6 +12,7 @@ import { VERSION } from "../api/routes.js";
 import { body } from "../api/security.js";
 import type { LLMProvider } from "../llm/provider.js";
 import { AccountsStore, type Account } from "./accounts.js";
+import { registerBilling, registerStripeWebhook } from "./billing.js";
 import { dummyHash, hashPassword, verifyPassword } from "./passwords.js";
 import { RateLimiter } from "./rateLimit.js";
 import { Towns, type TownsOptions } from "./towns.js";
@@ -20,6 +21,8 @@ type Env = { Variables: { account: Account; townId: string; sessionToken: string
 
 export interface SaasOptions extends TownsOptions {
   provider?: LLMProvider;
+  /** Stand-in for fetch against api.stripe.com (tests). */
+  stripeFetch?: typeof fetch;
   /** Start the background worker loop (tests drive it by hand). */
   startWorker?: boolean;
 }
@@ -85,6 +88,7 @@ export function createSaasApp(config: Config, opts: SaasOptions = {}) {
         label: ent.plan.label,
         canRun: ent.canRun,
         reason: ent.reason,
+        warning: ent.warning,
         trialEndsAt: ent.trialEndsAt,
         limits: { dailyUsd: ent.plan.dailyUsd, monthlyUsd: ent.plan.monthlyUsd, perTaskUsd: ent.plan.perTaskUsd, concurrency: ent.plan.concurrency, models: ent.plan.models },
       },
@@ -164,6 +168,9 @@ export function createSaasApp(config: Config, opts: SaasOptions = {}) {
     return c.json({ ready: true, openTowns: towns.openCount, activeTasks: towns.activeTasks });
   });
 
+  const billingDeps = { config, accounts, towns, stripeFetch: opts.stripeFetch, clientIp };
+  registerStripeWebhook(app, billingDeps);
+
   app.use("/api/*", csrf);
 
   // ── auth ──
@@ -218,6 +225,7 @@ export function createSaasApp(config: Config, opts: SaasOptions = {}) {
 
   app.get("/api/auth/me", (c) => c.json(me(c.get("account"))));
   app.get("/api/account/audit", (c) => c.json(accounts.auditFor(c.get("account").id, 100)));
+  registerBilling(app, billingDeps);
 
   // ── everything else: the caller's own town ──
   app.all("/api/*", async (c) => {

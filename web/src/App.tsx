@@ -152,6 +152,12 @@ export function App() {
 
   useEffect(() => {
     void load();
+    // Back from Stripe Checkout: the plan itself changes when Stripe's webhook arrives, never from this URL.
+    const billing = new URLSearchParams(window.location.search).get("billing");
+    if (billing) {
+      useTown.getState().pushToast(billing === "success" ? { tone: "good", text: "Thank you! Your new plan is being activated — it shows in Settings within a minute." } : { tone: "info", text: "Checkout cancelled — nothing was charged." });
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, [load]);
   // Town time follows the owner's device timezone unless they chose one manually.
   // Saved server-side so the clock, lighting and new schedules all agree.

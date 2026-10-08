@@ -267,7 +267,7 @@ describe("SaaS vertical slice", () => {
     await town.app.runner.tick();
     expect(provider.calls).toHaveLength(0);
 
-    s.accounts.setPlan(userId, "starter");
+    s.accounts.applySubscription(userId, { subscriptionId: "sub_1", plan: "starter", status: "active", currentPeriodEnd: null, cancelAtPeriodEnd: false, eventCreated: 1 });
     s.towns.refreshEntitlements(userId);
     expect(town.config.workerConcurrency).toBe(2);
     await town.app.runner.drain();
