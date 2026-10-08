@@ -1,0 +1,48 @@
+# Live verification of the Claude integration (npm run verify:live).
+# Spends real API credit (hard cap ~$0.50 per run, enforced by the script).
+# Runs only when triggered manually, or when this file changes on the dev branch.
+name: verify-live
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/happy-fermi-ypjunl]
+    paths: [".github/workflows/verify-live.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-live
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Locate the API key secret (names only, never values)
+        id: key
+        env:
+          K1: ${{ secrets.ANTHROPIC_API_KEY }}
+          K2: ${{ secrets.ANTHROPIC_KEY }}
+          K3: ${{ secrets.CLAUDE_API_KEY }}
+        run: |
+          for n in K1:ANTHROPIC_API_KEY K2:ANTHROPIC_KEY K3:CLAUDE_API_KEY; do
+            var="${n%%:*}"; name="${n#*:}"
+            if [ -n "${!var}" ]; then echo "Found repository secret: $name"; echo "name=$name" >> "$GITHUB_OUTPUT"; exit 0; fi
+          done
+          echo "::error::No ANTHROPIC_API_KEY / ANTHROPIC_KEY / CLAUDE_API_KEY repository secret is available to this workflow."
+          exit 1
+      - name: npm run verify:live
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          AGENTOPIA_DB_PATH: ${{ runner.temp }}/verify.sqlite
+          NODE_NO_WARNINGS: "1"
+        run: npm run verify:live
