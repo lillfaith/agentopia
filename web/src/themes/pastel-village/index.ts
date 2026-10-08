@@ -61,7 +61,7 @@ export const pastelVillage: ThemeManifest = {
     lighting: LIGHTING,
     camera: CAMERA,
     walkSpeed: 2.6,
-    labelHeight: 2.0,
+    labelHeight: 2.7,
   },
   components: {
     Environment: PastelEnvironment,

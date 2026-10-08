@@ -281,7 +281,7 @@ export function PastelCharacter({ color, accessory, anim, moving, carrying, sele
   });
 
   return (
-    <group scale={hovered ? 1.08 : 1}>
+    <group scale={hovered ? 1.45 : 1.35}>
       {selected && (
         <mesh ref={ring} position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.62, 0.76, 32, 1, 0, Math.PI * 1.7]} />

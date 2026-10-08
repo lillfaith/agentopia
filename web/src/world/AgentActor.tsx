@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import type { Agent } from "../../../shared/types";
 import { animForStatus, type SlotLayout, type ThemeManifest } from "../theme-engine/types";
 import { STATUS_LABEL, levelFor, statsFor, useTown, type Errand } from "../state/store";
 import { route } from "./navigation";
 import { agentPositions } from "./positions";
+import { WorldLabel } from "./WorldLabel";
 
 type P = [number, number];
 
@@ -137,7 +137,8 @@ export function AgentActor({ agent, index, theme, slotForBuilding }: Props) {
       const dx = next[0] - p.x;
       const dz = next[1] - p.z;
       const d = Math.hypot(dx, dz);
-      const step = theme.world.walkSpeed * Math.min(dt, 0.05);
+      // Cap the step only for long stalls (e.g. a backgrounded tab), not ordinary low frame rates.
+      const step = theme.world.walkSpeed * Math.min(dt, 0.25);
       if (d <= step) {
         p.x = next[0];
         p.z = next[1];
@@ -185,7 +186,8 @@ export function AgentActor({ agent, index, theme, slotForBuilding }: Props) {
 
   const recentActivity = activity && activity.taskId === agent.currentTaskId && Date.now() - activity.ts < 120_000 ? activity.text : null;
   let bubble: string | null = null;
-  if (carrying && errand.current) bubble = `📨 ${errand.current.e.label}`;
+  if (agent.status === "waiting_approval" || agent.status === "failed") bubble = agent.statusDetail ?? STATUS_LABEL[agent.status];
+  else if (carrying && errand.current) bubble = `📨 ${errand.current.e.label}`;
   else if (agent.status === "working" || agent.status === "planning") bubble = recentActivity ?? agent.statusDetail;
   else if (agent.status !== "idle") bubble = agent.statusDetail ?? STATUS_LABEL[agent.status];
 
@@ -214,7 +216,7 @@ export function AgentActor({ agent, index, theme, slotForBuilding }: Props) {
         <cylinderGeometry args={[0.7, 0.7, 1.6, 8]} />
       </mesh>
       {(showNames || showBubbles) && (
-        <Html position={[0, theme.world.labelHeight, 0]} center distanceFactor={16} zIndexRange={[20, 0]}>
+        <WorldLabel position={[0, theme.world.labelHeight, 0]} zIndex={20} min={0.62}>
           <div className="world-label agent-label" onClick={() => selectAgent(agent.id)}>
             {showBubbles && bubble && <div className={`bubble status-${agent.status}`}>{bubble.length > 90 ? bubble.slice(0, 89) + "…" : bubble}</div>}
             {showNames && (
@@ -226,7 +228,7 @@ export function AgentActor({ agent, index, theme, slotForBuilding }: Props) {
               </div>
             )}
           </div>
-        </Html>
+        </WorldLabel>
       )}
     </group>
   );

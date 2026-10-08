@@ -23,7 +23,7 @@ export class SimulatedProvider implements LLMProvider {
   readonly simulated = true;
   private counter = 0;
 
-  constructor(private readonly latencyMs = 1200) {}
+  constructor(private readonly latencyMs = 3500) {}
 
   userMessage(text: string): SimMessage {
     return { role: "user", content: text };
