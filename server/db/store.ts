@@ -779,16 +779,17 @@ export class Store {
       .run(now(), run.outcome, run.taskId ?? null, run.workflowId ?? null, run.fired ? 1 : 0, now(), id);
   }
 
-  /** Average real cost of the last N runs of a schedule (tasks + workflow tasks). */
+  /** Real cost of the last N runs of a schedule that made real API calls (simulated runs are ignored). */
   scheduleRunCosts(scheduleId: string, limit = 5): number[] {
     const rows = this.db
       .prepare(
-        `SELECT run_key, SUM(cost) AS c FROM (
+        `SELECT run_key, SUM(cost) AS c, SUM(live) AS live FROM (
            SELECT COALESCE(t.workflow_id, t.id) AS run_key, t.created_at AS created_at,
-                  (SELECT COALESCE(SUM(cost_usd), 0) FROM usage u WHERE u.task_id = t.id AND u.simulated = 0) AS cost
+                  (SELECT COALESCE(SUM(cost_usd), 0) FROM usage u WHERE u.task_id = t.id AND u.simulated = 0) AS cost,
+                  (SELECT COUNT(*) FROM usage u WHERE u.task_id = t.id AND u.request_id IS NOT NULL) AS live
            FROM tasks t
            WHERE t.schedule_id = ? OR t.workflow_id IN (SELECT id FROM workflows WHERE schedule_id = ?)
-         ) GROUP BY run_key ORDER BY MAX(created_at) DESC LIMIT ?`,
+         ) GROUP BY run_key HAVING SUM(live) > 0 ORDER BY MAX(created_at) DESC LIMIT ?`,
       )
       .all(scheduleId, scheduleId, limit) as Row[];
     return rows.map((r) => Number(r.c));

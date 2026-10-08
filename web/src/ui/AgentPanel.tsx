@@ -3,7 +3,8 @@ import type { Agent, Effort, Task } from "../../../shared/types";
 import { PRIORITY_LABELS } from "../../../shared/types";
 import { api } from "../api/client";
 import { STATUS_LABEL, levelFor, statsFor, useTown } from "../state/store";
-import { Badge, Drawer, Empty, EventBadge, Markdown, SimTag, StatusDot, TASK_LABEL, TASK_TONE, clock, fmtTokens, fmtUsd, timeAgo } from "./common";
+import { Badge, Drawer, Empty, EventBadge, ExecutionBadge, ExecutionProof, Markdown, StatusDot, TASK_LABEL, TASK_TONE, clock, fmtTokens, fmtUsd, timeAgo } from "./common";
+import { SkillPicker } from "./Town";
 
 type Tab = "overview" | "work" | "config";
 
@@ -37,6 +38,14 @@ export function AgentPanel({ agentId }: { agentId: string }) {
           </div>
         </div>
       </div>
+      {agent.archived && (
+        <div className="warn-box row between">
+          <span>{agent.name} has left town (archived). History is kept.</span>
+          <button className="btn" onClick={() => api.restoreAgent(agent.id).catch((e) => useTown.getState().pushToast({ tone: "bad", text: String(e) }))}>
+            Restore
+          </button>
+        </div>
+      )}
       <div className="xp-bar" title="Cosmetic level derived from completed tasks">
         <div style={{ width: `${Math.min(100, (lv.xp / lv.next) * 100)}%` }} />
         <span>
@@ -94,7 +103,7 @@ function Overview({ agent }: { agent: Agent }) {
               <b>{current.title}</b>
               <Badge tone={TASK_TONE[current.status]}>{TASK_LABEL[current.status]}</Badge>
             </div>
-            <SimTag on={current.simulated} />
+            <ExecutionBadge task={current} verbose />
             <ul className="live-feed">
               {live.map((e) => (
                 <li key={e.id}>
@@ -222,13 +231,14 @@ export function TaskOutputCard({ task, open, onToggle }: { task: Task; open: boo
       <button className="row between link full" onClick={onToggle}>
         <b>{task.title}</b>
         <span className="row gap-s">
-          <SimTag on={task.simulated} />
+          <ExecutionBadge task={task} />
           <Badge tone={TASK_TONE[task.status]}>{TASK_LABEL[task.status]}</Badge>
         </span>
       </button>
       <small className="muted">{task.completedAt ? `${clock(task.completedAt)} · ${timeAgo(task.completedAt)}` : ""}</small>
       {open && (
         <>
+          <ExecutionProof task={task} />
           {task.output && <Markdown text={task.output} />}
           {task.lastError && <div className="error-box">{task.lastError}</div>}
           <div className="row gap-s">
@@ -253,6 +263,7 @@ const ACCESSORIES = ["crown", "goggles", "beret", "sprout", "none"];
 
 function Config({ agent }: { agent: Agent }) {
   const status = useTown((s) => s.snapshot!.status);
+  const buildings = useTown((s) => s.snapshot!.buildings);
   const push = useTown((s) => s.pushToast);
   const [form, setForm] = useState(() => ({
     name: agent.name,
@@ -262,7 +273,9 @@ function Config({ agent }: { agent: Agent }) {
     responsibilities: agent.responsibilities.join("\n"),
     model: agent.model,
     effort: agent.effort,
-    tools: agent.tools,
+    skills: agent.skills,
+    buildingId: agent.buildingId,
+    dailyBudget: agent.dailyBudgetUsd === null ? "" : String(agent.dailyBudgetUsd),
     color: agent.avatar.color,
     accessory: agent.avatar.accessory,
     enabled: agent.enabled,
@@ -286,7 +299,9 @@ function Config({ agent }: { agent: Agent }) {
         responsibilities: form.responsibilities.split("\n").map((s) => s.trim()).filter(Boolean),
         model: form.model,
         effort: form.effort,
-        tools: form.tools,
+        skills: form.skills,
+        buildingId: form.buildingId,
+        dailyBudgetUsd: form.dailyBudget.trim() ? Number(form.dailyBudget) : null,
         avatar: { color: form.color, accessory: form.accessory },
         enabled: form.enabled,
       });
@@ -343,23 +358,23 @@ function Config({ agent }: { agent: Agent }) {
           </select>
         </label>
       </div>
-      <fieldset>
-        <legend>Authorised tools</legend>
-        {status.tools.map((t) => (
-          <label key={t.id} className="check">
-            <input
-              type="checkbox"
-              checked={form.tools.includes(t.id)}
-              onChange={(e) => set("tools", e.target.checked ? [...form.tools, t.id] : form.tools.filter((x) => x !== t.id))}
-            />
-            <span>
-              <b>{t.label}</b> {t.requiresApproval && <Badge tone="warn">needs approval</Badge>} {t.implementation === "placeholder" && <Badge tone="muted">placeholder</Badge>}
-              <br />
-              <small className="muted">{t.description}</small>
-            </span>
-          </label>
-        ))}
-      </fieldset>
+      <SkillPicker value={form.skills} onChange={(v) => set("skills", v)} />
+      <div className="grid2">
+        <label>
+          Works at
+          <select value={form.buildingId} onChange={(e) => set("buildingId", e.target.value)}>
+            {buildings.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name} — {b.department}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Personal daily cap (USD)
+          <input type="number" min={0} step={0.5} placeholder="none — global limits apply" value={form.dailyBudget} onChange={(e) => set("dailyBudget", e.target.value)} />
+        </label>
+      </div>
       <div className="grid2">
         <label>
           Colour

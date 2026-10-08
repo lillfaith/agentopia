@@ -4,7 +4,7 @@ import { api, getToken, setToken } from "../api/client";
 import { useTown } from "../state/store";
 import { listThemes } from "../theme-engine/registry";
 import { useTheme } from "../theme-engine/ThemeContext";
-import { AgentName, Badge, Drawer, Empty, fmtTokens, fmtUsd } from "./common";
+import { AgentName, Badge, Drawer, Empty, fmtTokens, fmtUsd, timeAgo } from "./common";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -51,20 +51,53 @@ export function TreasuryPanel() {
           </div>
 
           <section className="card">
-            <h3>Today's budget</h3>
-            {t.today.budgetUsd > 0 ? (
-              <>
-                <div className="meter" title={`${fmtUsd(t.today.costUsd)} of ${fmtUsd(t.today.budgetUsd)}`}>
-                  <div className={t.today.costUsd >= t.today.budgetUsd ? "over" : ""} style={{ width: `${Math.min(100, (t.today.costUsd / t.today.budgetUsd) * 100)}%` }} />
+            <h3>Budget</h3>
+            {[
+              { label: "Today (UTC)", spent: t.budget.spent.todayUsd, limit: t.budget.effective.dailyUsd },
+              { label: "This month", spent: t.budget.spent.monthUsd, limit: t.budget.effective.monthlyUsd },
+            ].map((row) => (
+              <div key={row.label} className="budget-row">
+                <span>{row.label}</span>
+                <div className="meter" title={`${fmtUsd(row.spent)} of ${row.limit > 0 ? fmtUsd(row.limit) : "no limit"}`}>
+                  <div className={row.limit > 0 && row.spent >= row.limit ? "over" : ""} style={{ width: `${row.limit > 0 ? Math.min(100, (row.spent / row.limit) * 100) : 0}%` }} />
                 </div>
-                <small className="muted">
-                  {fmtUsd(t.today.costUsd)} of {fmtUsd(t.today.budgetUsd)} (UTC day). New model calls stop at the cap — set <code>AGENTOPIA_DAILY_BUDGET_USD</code>.
-                </small>
-              </>
-            ) : (
-              <small className="muted">No daily cap configured.</small>
-            )}
+                <span className="mono small">
+                  {fmtUsd(row.spent)} / {row.limit > 0 ? fmtUsd(row.limit) : "∞"}
+                </span>
+              </div>
+            ))}
+            <small className="muted">
+              Per-task limit {t.budget.effective.perTaskUsd > 0 ? fmtUsd(t.budget.effective.perTaskUsd) : "none"} · {t.totals.liveRequests} real API calls recorded · {t.totals.webFetches} page fetches · {t.totals.codeExecutions} sandbox runs
+            </small>
+            {t.budget.globalHold && <div className="error-box">Budget limit reached — new work is paused until it resets ({new Date(t.budget.resetsAt.day).toLocaleString()}).</div>}
           </section>
+
+          {t.scheduleProjections.length > 0 && (
+            <section className="card">
+              <h3>Projected schedule costs</h3>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Schedule</th>
+                    <th>Runs/mo</th>
+                    <th>Avg run</th>
+                    <th>Per month</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {t.scheduleProjections.map((p) => (
+                    <tr key={p.scheduleId}>
+                      <td>{p.name}</td>
+                      <td>{p.runsPerMonth}</td>
+                      <td>{p.avgRunCostUsd === null ? "—" : fmtUsd(p.avgRunCostUsd)}</td>
+                      <td>{p.projectedMonthlyUsd === null ? "after 1st run" : fmtUsd(p.projectedMonthlyUsd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+
 
           <section className="card">
             <h3>Spend by villager</h3>
@@ -205,6 +238,15 @@ function TownTax({ t }: { t: TreasurySummary }) {
 
 // ───────────────────────── settings ─────────────────────────
 
+const CHECK_LABELS: Record<string, string> = {
+  messages: "Basic Claude call",
+  client_tools: "Tool use loop (delegation)",
+  web_search: "Web search",
+  web_fetch: "Web fetch",
+  code_execution: "Code execution sandbox",
+  agent_task: "End-to-end agent task",
+};
+
 export function SettingsPanel() {
   const theme = useTheme();
   const snap = useTown((s) => s.snapshot)!;
@@ -212,8 +254,16 @@ export function SettingsPanel() {
   const push = useTown((s) => s.pushToast);
   const load = useTown((s) => s.load);
   const [townName, setTownName] = useState(snap.settings.townName);
+  const [timezone, setTimezone] = useState(snap.settings.timezone);
   const [token, setTok] = useState(getToken());
+  const [testing, setTesting] = useState(false);
   const st = snap.status;
+  const b = st.budget;
+  const [caps, setCaps] = useState({
+    dailyUsd: b.soft.dailyUsd === null ? "" : String(b.soft.dailyUsd),
+    monthlyUsd: b.soft.monthlyUsd === null ? "" : String(b.soft.monthlyUsd),
+    perTaskUsd: b.soft.perTaskUsd === null ? "" : String(b.soft.perTaskUsd),
+  });
   const save = async (patch: Parameters<typeof api.updateSettings>[0]) => {
     try {
       await api.updateSettings(patch);
@@ -223,8 +273,23 @@ export function SettingsPanel() {
       push({ tone: "bad", text: errText(e) });
     }
   };
+  const test = async () => {
+    setTesting(true);
+    try {
+      const v = await api.testConnection();
+      push({ tone: v.ok ? "good" : "bad", text: v.ok ? `Claude API reachable ✓ (${v.requestId})` : `Test failed: ${v.detail}` });
+    } catch (e) {
+      push({ tone: "bad", text: errText(e) });
+    } finally {
+      setTesting(false);
+      void load();
+    }
+  };
+  const num = (v: string) => (v.trim() === "" ? null : Number(v));
+  const limitText = (n: number) => (n > 0 ? fmtUsd(n) : "no limit");
+
   return (
-    <Drawer side="left" title="Settings" icon={theme.ui.icons.settings} onClose={() => close(null)}>
+    <Drawer side="left" title="Settings" icon={theme.ui.icons.settings} onClose={() => close(null)} wide>
       <section className="card">
         <h3>AI provider</h3>
         <dl className="kv">
@@ -235,21 +300,119 @@ export function SettingsPanel() {
             {st.provider.mode === "unconfigured" && <Badge tone="bad">No API key</Badge>}
           </dd>
           <dt>API key</dt>
-          <dd>{st.provider.keyConfigured ? "Configured on the server (never sent to the browser)" : "Not set — add ANTHROPIC_API_KEY to .env and restart"}</dd>
+          <dd>{st.provider.keyConfigured ? "Configured on the server (never sent to the browser)" : "Not set — add ANTHROPIC_API_KEY (or ANTHROPIC_API_KEY_FILE) and restart"}</dd>
+          {st.provider.baseUrlHost && (
+            <>
+              <dt>API host</dt>
+              <dd>
+                <Badge tone="warn">{st.provider.baseUrlHost}</Badge> <small className="muted">(from ANTHROPIC_BASE_URL)</small>
+              </dd>
+            </>
+          )}
           <dt>Refusal fallback</dt>
           <dd>{st.provider.refusalFallback === "default" ? "Server-side default fallback (supported models)" : "Off"}</dd>
-          <dt>Worker</dt>
-          <dd>
-            {st.worker.running ? "Running" : "Stopped"} · {st.worker.activeTasks}/{st.worker.concurrency} active
-          </dd>
-          <dt>Limits</dt>
-          <dd>
-            Daily budget {st.limits.dailyBudgetUsd ? fmtUsd(st.limits.dailyBudgetUsd) : "none"} · {st.limits.maxTurnsPerTask} turns/task · delegation depth {st.limits.maxDelegationDepth}
-          </dd>
-          <dt>Version</dt>
-          <dd>{st.version}</dd>
         </dl>
-        <p className="muted small">Keys and limits are server environment variables (see .env.example), so they can't be changed or read from the browser.</p>
+        <div className="row gap-s">
+          <button className="btn primary" disabled={testing || st.provider.mode !== "live"} onClick={test}>
+            {testing ? "Testing…" : "🔌 Test connection"}
+          </button>
+          <small className="muted">One tiny real call (~$0.01) with your default model. Full check: <code>npm run verify:live</code></small>
+        </div>
+        <h4>Live verification</h4>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Capability</th>
+              <th>Result</th>
+              <th>When</th>
+              <th>Request id</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.keys(CHECK_LABELS).map((id) => {
+              const v = st.verifications.find((x) => x.checkId === id);
+              return (
+                <tr key={id} title={v?.detail}>
+                  <td>{CHECK_LABELS[id]}</td>
+                  <td>{v ? <Badge tone={v.ok ? "good" : "bad"}>{v.ok ? "PASS" : "FAIL"}</Badge> : <Badge tone="muted">never run</Badge>}</td>
+                  <td>{v ? timeAgo(v.ts) : "—"}</td>
+                  <td className="mono small">{v?.requestId ? v.requestId.slice(0, 18) + "…" : "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <p className="muted small">A capability counts as working only after a real API call proves it on this installation. Unverified rows have not been proven here.</p>
+      </section>
+
+      <section className="card">
+        <h3>Workers (24/7 background processing)</h3>
+        {!st.workers.length && <div className="warn-box">No worker has reported in. Tasks and schedules won't run until one starts.</div>}
+        <ul className="task-mini">
+          {st.workers.map((w) => (
+            <li key={w.id}>
+              <span>
+                <i className={`dot ${w.alive ? "status-completed" : "status-failed"}`} /> {w.id} <small className="muted">
+                  {w.role} · {w.hostname} · pid {w.pid} · up since {timeAgo(w.startedAt)}
+                </small>
+              </span>
+              <span>{w.alive ? `${w.activeTasks} running` : `silent ${timeAgo(w.lastSeen)}`}</span>
+            </li>
+          ))}
+        </ul>
+        <small className="muted">This server runs as “{st.role}”. Limits: {st.limits.maxTurnsPerTask} model turns per task, delegation depth {st.limits.maxDelegationDepth}, schedules every ≥ {st.limits.minScheduleIntervalMinutes} min.</small>
+      </section>
+
+      <section className="card form">
+        <h3>Budget limits</h3>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th />
+              <th>Spent</th>
+              <th>Server ceiling</th>
+              <th>Your limit</th>
+              <th>Effective</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Today (UTC)</td>
+              <td>{fmtUsd(b.spent.todayUsd)}</td>
+              <td>{limitText(b.hard.dailyUsd)}</td>
+              <td>
+                <input type="number" min={0} step={0.5} placeholder="—" value={caps.dailyUsd} onChange={(e) => setCaps({ ...caps, dailyUsd: e.target.value })} />
+              </td>
+              <td>{limitText(b.effective.dailyUsd)}</td>
+            </tr>
+            <tr>
+              <td>This month</td>
+              <td>{fmtUsd(b.spent.monthUsd)}</td>
+              <td>{limitText(b.hard.monthlyUsd)}</td>
+              <td>
+                <input type="number" min={0} step={1} placeholder="—" value={caps.monthlyUsd} onChange={(e) => setCaps({ ...caps, monthlyUsd: e.target.value })} />
+              </td>
+              <td>{limitText(b.effective.monthlyUsd)}</td>
+            </tr>
+            <tr>
+              <td>Per task</td>
+              <td>—</td>
+              <td>{limitText(b.hard.perTaskUsd)}</td>
+              <td>
+                <input type="number" min={0} step={0.1} placeholder="—" value={caps.perTaskUsd} onChange={(e) => setCaps({ ...caps, perTaskUsd: e.target.value })} />
+              </td>
+              <td>{limitText(b.effective.perTaskUsd)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <button className="btn" onClick={() => save({ budget: { dailyUsd: num(caps.dailyUsd), monthlyUsd: num(caps.monthlyUsd), perTaskUsd: num(caps.perTaskUsd) } })}>
+          Save my limits
+        </button>
+        <small className="muted">
+          Before every model call, the worst-case cost of that call is reserved; if it could cross any limit, the call doesn't start and the work pauses until the limit resets. Server ceilings come from the environment and can't be raised here. Per-villager caps are in each villager's Configure tab.
+        </small>
+        {b.globalHold && <div className="error-box">Budget limit reached — new work is paused.</div>}
+        {b.agentHolds.length > 0 && <div className="warn-box">Paused by their own daily cap: {b.agentHolds.join(", ")}</div>}
       </section>
 
       <section className="card form">
@@ -264,6 +427,15 @@ export function SettingsPanel() {
           </div>
         </label>
         <label>
+          Default timezone for schedules
+          <div className="row gap-s">
+            <input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g. Europe/London" />
+            <button className="btn" onClick={() => save({ timezone })}>
+              Save
+            </button>
+          </div>
+        </label>
+        <label>
           Theme
           <select value={snap.settings.themeId} onChange={(e) => save({ themeId: e.target.value })}>
             {listThemes().map((th) => (
@@ -273,27 +445,29 @@ export function SettingsPanel() {
             ))}
           </select>
         </label>
-        <small className="muted">
-          {theme.description} Themes change only visuals and sound — villagers, tasks and data stay the same. More theme packs can be registered via the theme engine.
-        </small>
+        <small className="muted">{theme.description} Themes change only visuals and sound — villagers, tasks and data stay the same.</small>
       </section>
 
       <section className="card">
-        <h3>Agent tools</h3>
+        <h3>Skills</h3>
         <ul className="task-mini">
-          {st.tools.map((tool) => (
-            <li key={tool.id}>
+          {st.skills.map((sk) => (
+            <li key={sk.id}>
               <span>
-                <b>{tool.label}</b> <small className="muted">{tool.id}</small>
+                <b>
+                  {sk.icon} {sk.label}
+                </b>{" "}
+                <small className="muted">{sk.tools.map((t) => t.label).join(", ") || "model only"}</small>
               </span>
               <span className="row gap-s">
-                {tool.requiresApproval && <Badge tone="warn">approval</Badge>}
-                <Badge tone={tool.implementation === "real" ? "good" : "muted"}>{tool.implementation}</Badge>
+                {sk.status === "planned" ? <Badge tone="muted">planned</Badge> : <Badge tone="good">available</Badge>}
+                {sk.tools.some((t) => t.requiresApproval) && <Badge tone="warn">approval</Badge>}
+                {sk.tools.some((t) => t.implementation === "placeholder") && <Badge tone="muted">placeholder</Badge>}
               </span>
             </li>
           ))}
         </ul>
-        <p className="muted small">No shell, file-system or unrestricted network tools exist. Each villager may only call tools enabled in its Configure tab, enforced on the server.</p>
+        <p className="muted small">There are no shell, file-system or open-network tools. Code runs only in Anthropic's isolated sandbox. Each villager can use only the skills enabled in its Configure tab, and the server enforces this.</p>
       </section>
 
       <section className="card form">

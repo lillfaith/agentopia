@@ -27,14 +27,33 @@ function facingCentre(x: number, z: number, doorOffset = 3.6): SlotLayout {
   };
 }
 
+/** Building plots, in the order new departments are offered them. */
 export const SLOTS: Record<string, SlotLayout> = {
   north: facingCentre(0, -13.4),
   west: facingCentre(-12.6, 5.2),
   east: facingCentre(12.6, 5.2),
-  // Reserved for future departments.
   south: facingCentre(0, 14.2),
   northwest: facingCentre(-11, -9),
   northeast: facingCentre(11, -9),
+  southwest: facingCentre(-9.6, 14.6),
+  southeast: facingCentre(9.6, 14.6),
+  "far-west": facingCentre(-21, -3, 3.8),
+  "far-east": facingCentre(21, -3, 3.8),
+  "far-north": facingCentre(0, -21.6, 3.8),
+};
+
+export const SLOT_LABELS: Record<string, string> = {
+  north: "North plaza",
+  west: "West meadow",
+  east: "East meadow",
+  south: "South gate",
+  northwest: "Northwest hill",
+  northeast: "Northeast hill",
+  southwest: "Southwest garden",
+  southeast: "Southeast garden",
+  "far-west": "Far west shore",
+  "far-east": "Far east shore",
+  "far-north": "Far north cliffs",
 };
 
 export function fallbackSlot(index: number): SlotLayout {
@@ -42,8 +61,8 @@ export function fallbackSlot(index: number): SlotLayout {
   return facingCentre(Math.cos(a) * 17, Math.sin(a) * 17);
 }
 
-/** Path ring around the plaza, plus a spoke from the ring to every slot's door. */
-function buildNav(): NavGraph {
+/** Path ring around the plaza, plus a spoke from the ring to each occupied plot's door. */
+export function buildNav(slots: Record<string, SlotLayout>): NavGraph {
   const nodes: NavGraph["nodes"] = {};
   const edges: NavGraph["edges"] = [];
   for (let i = 0; i < RING_NODES; i++) {
@@ -51,7 +70,7 @@ function buildNav(): NavGraph {
     nodes[`r${i}`] = [Math.cos(a) * RING_RADIUS, Math.sin(a) * RING_RADIUS];
     edges.push([`r${i}`, `r${(i + 1) % RING_NODES}`]);
   }
-  for (const [slot, layout] of Object.entries(SLOTS)) {
+  for (const [slot, layout] of Object.entries(slots)) {
     const id = `door:${slot}`;
     nodes[id] = layout.door;
     let best = "r0";
@@ -65,17 +84,6 @@ function buildNav(): NavGraph {
   }
   return { nodes, edges };
 }
-
-export const NAV = buildNav();
-
-/** Plaza spots around the fountain where idle villagers like to hang out. */
-export const PLAZA_SPOTS: [number, number][] = [
-  [2.6, 1.6],
-  [-2.4, 2.0],
-  [0.4, 3.2],
-  [-1.8, -2.6],
-  [2.2, -2.4],
-];
 
 export const LIGHTING: Record<TimeOfDay, LightingPreset> = {
   dawn: {

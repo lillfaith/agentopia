@@ -1,4 +1,4 @@
-import type { Agent, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Workflow } from "../../../shared/types";
+import type { Agent, Building, Schedule, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
 
 const TOKEN_KEY = "agentopia.adminToken";
 
@@ -54,6 +54,10 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const post = <T>(path: string, body: unknown) => call<T>(path, { method: "POST", body: JSON.stringify(body) });
 const patch = <T>(path: string, body: unknown) => call<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+const del = <T>(path: string) => call<T>(path, { method: "DELETE" });
+
+export type NewAgent = Pick<Agent, "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "skills" | "avatar" | "buildingId" | "model" | "effort" | "dailyBudgetUsd">;
+export type NewSchedule = Pick<Schedule, "name" | "cadence" | "timezone" | "target" | "overlap" | "enabled">;
 
 export const api = {
   snapshot: () => call<TownSnapshot>("/api/snapshot"),
@@ -64,7 +68,18 @@ export const api = {
   createTask: (body: { agentId: string; title: string; instructions: string; priority: number; dependsOn?: string[] }) => post<Task>("/api/tasks", body),
   cancelTask: (id: string) => post<{ ok: true }>(`/api/tasks/${id}/cancel`, {}),
   retryTask: (id: string) => post<{ ok: true }>(`/api/tasks/${id}/retry`, {}),
-  startCampaign: (body: { topic: string; audience?: string; goal?: string }) => post<Workflow>("/api/workflows/campaign", body),
+  startCampaign: (body: { topic: string; audience?: string; goal?: string; managerId?: string; researcherId?: string; copywriterId?: string }) => post<Workflow>("/api/workflows/campaign", body),
+  hireAgent: (body: NewAgent) => post<Agent>("/api/agents", body),
+  archiveAgent: (id: string) => del<{ ok: true }>(`/api/agents/${id}`),
+  restoreAgent: (id: string) => post<Agent>(`/api/agents/${id}/restore`, {}),
+  createBuilding: (body: Omit<Building, "id">) => post<Building>("/api/buildings", body),
+  updateBuilding: (id: string, body: Partial<Omit<Building, "id">>) => patch<Building>(`/api/buildings/${id}`, body),
+  deleteBuilding: (id: string) => del<{ ok: true }>(`/api/buildings/${id}`),
+  createSchedule: (body: NewSchedule) => post<Schedule>("/api/schedules", body),
+  updateSchedule: (id: string, body: Partial<NewSchedule>) => patch<Schedule>(`/api/schedules/${id}`, body),
+  deleteSchedule: (id: string) => del<{ ok: true }>(`/api/schedules/${id}`),
+  runSchedule: (id: string) => post<{ fired: boolean; outcome: string }>(`/api/schedules/${id}/run`, {}),
+  testConnection: () => post<Verification>("/api/system/test-connection", {}),
   decide: (id: string, approve: boolean, note?: string) => post<{ ok: true }>(`/api/approvals/${id}/decide`, { approve, note: note || null }),
   updateSettings: (body: Partial<TownSettings>) => patch<TownSettings>("/api/settings", body),
 };

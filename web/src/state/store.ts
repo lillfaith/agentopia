@@ -3,7 +3,7 @@ import type { Agent, AgentStats, TownEvent, TownSnapshot } from "../../../shared
 import { api, subscribe } from "../api/client";
 
 export type TimeOfDay = "dawn" | "day" | "dusk" | "night";
-export type PanelId = "tasks" | "projects" | "log" | "approvals" | "treasury" | "settings" | "new-project";
+export type PanelId = "town" | "schedules" | "tasks" | "projects" | "log" | "approvals" | "treasury" | "settings" | "new-project";
 
 /** A real hand-off between agents (from a task.handoff event) that the world animates. */
 export interface Errand {

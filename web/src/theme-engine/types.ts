@@ -108,10 +108,16 @@ export interface ThemeManifest {
   };
 
   world: {
+    /** Named building plots, in the order new departments are offered them. */
     slots: Record<string, SlotLayout>;
+    /** Friendly names for plots, shown when building a new department. */
+    slotLabels: Record<string, string>;
     /** Layout for buildings whose slot is not defined by this theme. */
     fallbackSlot: (index: number) => SlotLayout;
-    nav: NavGraph;
+    /** Walkable path graph for the plots that are currently occupied. */
+    buildNav: (occupied: Record<string, SlotLayout>) => NavGraph;
+    /** Building styles this theme can draw (any other kind gets a generic fallback). */
+    buildingStyles: { kind: string; label: string; icon: string; description: string }[];
     lighting: Record<TimeOfDay, LightingPreset>;
     camera: { fov: number; overviewPosition: Vec3; overviewTarget: Vec3; minDistance: number; maxDistance: number; minPolar: number; maxPolar: number };
     /** World units per second. */

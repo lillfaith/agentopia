@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { Sparkles } from "@react-three/drei";
 import * as THREE from "three";
 import type { EnvironmentProps, LightingPreset, SlotLayout } from "../../theme-engine/types";
-import { ISLAND_RADIUS, NAV, PASTELS, RING_RADIUS, seeded } from "./layout";
+import { ISLAND_RADIUS, PASTELS, RING_RADIUS, buildNav, seeded } from "./layout";
 
 // ───────────────────────── sky & light ─────────────────────────
 
@@ -198,6 +198,7 @@ interface TilePlacement {
 }
 
 function pathTiles(slots: Record<string, SlotLayout>): TilePlacement[] {
+  const NAV = buildNav(slots);
   const tiles: TilePlacement[] = [];
   const ringCount = 46;
   for (let i = 0; i < ringCount; i++) {
@@ -394,6 +395,7 @@ function distToSegment(px: number, pz: number, ax: number, az: number, bx: numbe
 }
 
 function scatter(slots: Record<string, SlotLayout>): { decor: Decor[]; flowers: [number, number][] } {
+  const NAV = buildNav(slots);
   const rand = seeded(7);
   const decor: Decor[] = [];
   const flowers: [number, number][] = [];

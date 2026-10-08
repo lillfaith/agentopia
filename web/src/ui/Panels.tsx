@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import { STATUS_LABEL, useTown } from "../state/store";
 import { useTheme } from "../theme-engine/ThemeContext";
 import { TaskOutputCard } from "./AgentPanel";
-import { AgentName, Badge, Drawer, Empty, EventBadge, Markdown, SimTag, StatusDot, TASK_LABEL, TASK_TONE, clock, timeAgo } from "./common";
+import { AgentName, Badge, Drawer, Empty, EventBadge, ExecutionBadge, ExecutionProof, Markdown, SimTag, StatusDot, TASK_LABEL, TASK_TONE, clock, timeAgo } from "./common";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -104,8 +104,12 @@ export function TaskBoard() {
                   <div className="row gap-s">
                     {t.priority >= 2 && <Badge tone="bad">{PRIORITY_LABELS[t.priority]}</Badge>}
                     {t.dependsOn.length > 0 && <small className="muted">⛓ {t.dependsOn.length} dep</small>}
-                    {t.createdBy !== "user" && <small className="muted">from {snap.agents.find((a) => a.id === t.createdBy)?.name ?? t.createdBy}</small>}
-                    <SimTag on={t.simulated} />
+                    {t.createdBy.startsWith("schedule:") ? (
+                      <small className="muted">⏰ scheduled</small>
+                    ) : (
+                      t.createdBy !== "user" && <small className="muted">from {snap.agents.find((a) => a.id === t.createdBy)?.name ?? t.createdBy}</small>
+                    )}
+                    <ExecutionBadge task={t} />
                   </div>
                 </button>
               ))}
@@ -150,6 +154,8 @@ function TaskDetail({ taskId, onClose }: { taskId: string; onClose: () => void }
         </p>
       )}
       {task.lastError && <div className="error-box">{task.lastError}</div>}
+      <ExecutionProof task={task} />
+      {task.simulated && <SimTag on />}
       {task.output && (
         <details open>
           <summary>Output</summary>
@@ -259,12 +265,15 @@ export function NewProject() {
   const close = useTown((s) => s.openPanel);
   const push = useTown((s) => s.pushToast);
   const status = useTown((s) => s.snapshot!.status);
+  const agents = useTown((s) => s.snapshot!.agents.filter((a) => a.enabled && !a.archived));
+  const byRole = (role: string, fallbackId: string) => agents.find((a) => a.id === fallbackId)?.id ?? agents.find((a) => a.role.toLowerCase().includes(role))?.id ?? agents[0]?.id ?? "";
   const [form, setForm] = useState({ topic: "", audience: "", goal: "" });
+  const [team, setTeam] = useState(() => ({ managerId: byRole("manager", "manager"), researcherId: byRole("research", "researcher"), copywriterId: byRole("writ", "copywriter") }));
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setBusy(true);
     try {
-      await api.startCampaign(form);
+      await api.startCampaign({ ...form, ...team });
       push({ tone: "good", text: "Project started — watch Mabel write the brief!" });
       close(null);
       useTown.getState().requestOverview();
@@ -297,7 +306,30 @@ export function NewProject() {
           Goal
           <textarea rows={2} placeholder="e.g. Drive weekday afternoon visits" value={form.goal} maxLength={1000} onChange={(e) => setForm({ ...form, goal: e.target.value })} />
         </label>
-        <button className="btn primary full" disabled={busy || form.topic.trim().length < 3} onClick={submit}>
+        <fieldset>
+          <legend>Team</legend>
+          <div className="grid2">
+            {(
+              [
+                ["managerId", "Brief & review"],
+                ["researcherId", "Research"],
+                ["copywriterId", "Copywriting"],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key}>
+                {label}
+                <select value={team[key]} onChange={(e) => setTeam({ ...team, [key]: e.target.value })}>
+                  {agents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} — {a.role}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <button className="btn primary full" disabled={busy || form.topic.trim().length < 3 || !team.managerId || !team.researcherId || !team.copywriterId} onClick={submit}>
           ✨ Start project
         </button>
       </div>

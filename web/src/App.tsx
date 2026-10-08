@@ -7,6 +7,8 @@ import { World } from "./world/World";
 import { AgentPanel } from "./ui/AgentPanel";
 import { ActivityLog, ApprovalsPanel, BuildingPanel, NewProject, Projects, TaskBoard } from "./ui/Panels";
 import { SettingsPanel, TreasuryPanel } from "./ui/Admin";
+import { SchedulesPanel } from "./ui/Schedules";
+import { TownPanel } from "./ui/Town";
 import { Dock, ProviderBanner, Toasts, TopBar, useSoundEffects } from "./ui/Hud";
 
 function Hud() {
@@ -28,6 +30,8 @@ function Hud() {
     <>
       <TopBar />
       <ProviderBanner />
+      {panel === "town" && <TownPanel />}
+      {panel === "schedules" && <SchedulesPanel />}
       {panel === "tasks" && <TaskBoard />}
       {panel === "new-project" && <NewProject />}
       {panel === "projects" && <Projects />}

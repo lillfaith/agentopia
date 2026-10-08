@@ -3,7 +3,7 @@ import { playPastelSfx } from "./audio";
 import { PastelBuilding } from "./Buildings";
 import { PastelCharacter } from "./Character";
 import { PastelEnvironment } from "./Environment";
-import { CAMERA, LIGHTING, NAV, SLOTS, fallbackSlot } from "./layout";
+import { CAMERA, LIGHTING, SLOTS, SLOT_LABELS, buildNav, fallbackSlot } from "./layout";
 import { PastelWeather } from "./Weather";
 
 /** "Pastel Village" — the original default theme for Agentopia. */
@@ -36,6 +36,8 @@ export const pastelVillage: ThemeManifest = {
     fontStylesheet: "https://fonts.googleapis.com/css2?family=Nunito:wght@500;700;800;900&display=swap",
     icons: {
       tasks: "📋",
+      town: "🏘️",
+      schedules: "📅",
       projects: "🎁",
       "new-project": "✨",
       log: "📜",
@@ -56,8 +58,17 @@ export const pastelVillage: ThemeManifest = {
   },
   world: {
     slots: SLOTS,
+    slotLabels: SLOT_LABELS,
     fallbackSlot,
-    nav: NAV,
+    buildNav,
+    buildingStyles: [
+      { kind: "hq", label: "Town Hall", icon: "🏰", description: "Turrets, a clock and a pennant — for management." },
+      { kind: "research", label: "Observatory", icon: "🔭", description: "A domed tower with a rotating telescope." },
+      { kind: "studio", label: "Cottage studio", icon: "🪶", description: "A gabled cottage with a giant quill and inkpot." },
+      { kind: "workshop", label: "Workshop", icon: "⚙️", description: "A tinkerer's workshop with spinning gears — for engineering." },
+      { kind: "atelier", label: "Glass atelier", icon: "🎨", description: "A bright greenhouse studio with an easel — for design." },
+      { kind: "lab", label: "Crystal lab", icon: "🧊", description: "A crystal dome with orbiting rings — for 3D and experiments." },
+    ],
     lighting: LIGHTING,
     camera: CAMERA,
     walkSpeed: 2.6,

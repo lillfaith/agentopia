@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { Agent } from "../../../shared/types";
-import { animForStatus, type SlotLayout, type ThemeManifest } from "../theme-engine/types";
+import { animForStatus, type NavGraph, type SlotLayout, type ThemeManifest } from "../theme-engine/types";
 import { STATUS_LABEL, levelFor, statsFor, useTown, type Errand } from "../state/store";
 import { route } from "./navigation";
 import { agentPositions } from "./positions";
@@ -14,6 +14,7 @@ interface Props {
   agent: Agent;
   index: number;
   theme: ThemeManifest;
+  nav: NavGraph;
   slotForBuilding: (buildingId: string) => SlotLayout | undefined;
 }
 
@@ -25,7 +26,7 @@ const ERRAND_PAUSE_MS = 2200;
  * system state: its agent status (from the server) and hand-off events. Nothing
  * here fabricates progress.
  */
-export function AgentActor({ agent, index, theme, slotForBuilding }: Props) {
+export function AgentActor({ agent, index, theme, nav, slotForBuilding }: Props) {
   const group = useRef<THREE.Group>(null);
   const facing = useRef<THREE.Group>(null);
   const home = slotForBuilding(agent.buildingId);
@@ -117,7 +118,7 @@ export function AgentActor({ agent, index, theme, slotForBuilding }: Props) {
         if (now > idleUntil.current) {
           const spots = home.idleSpots;
           const r = Math.random();
-          idleGoal.current = r < 0.25 ? theme.world.nav.nodes[`r${Math.floor(Math.random() * 12)}`] ?? spots[0] : spots[Math.floor(Math.random() * spots.length)];
+          idleGoal.current = r < 0.25 ? nav.nodes[`r${Math.floor(Math.random() * 12)}`] ?? spots[0] : spots[Math.floor(Math.random() * spots.length)];
           idleUntil.current = now + 7000 + Math.random() * 9000;
         }
         goal = idleGoal.current;
@@ -127,7 +128,7 @@ export function AgentActor({ agent, index, theme, slotForBuilding }: Props) {
 
     if (goal && key !== goalKey.current) {
       goalKey.current = key;
-      path.current = route(theme.world.nav, [p.x, p.z], goal);
+      path.current = route(nav, [p.x, p.z], goal);
     }
 
     // 3) Walk the path.

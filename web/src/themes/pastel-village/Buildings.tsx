@@ -277,6 +277,172 @@ function InkStudio({ glow, activity }: { glow: number; activity: number }) {
   );
 }
 
+// ───────────────────────── Workshop (engineering) ─────────────────────────
+
+function Gear({ radius, teeth, color, speed, position, rotation = [0, 0, 0] }: { radius: number; teeth: number; color: string; speed: number; position: [number, number, number]; rotation?: [number, number, number] }) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame((_, dt) => {
+    if (ref.current) ref.current.rotation.z += dt * speed;
+  });
+  return (
+    <group position={position} rotation={rotation}>
+      <group ref={ref}>
+        <mesh castShadow>
+          <cylinderGeometry args={[radius, radius, 0.16, 24]} />
+          <meshStandardMaterial color={color} metalness={0.3} roughness={0.4} />
+        </mesh>
+        {Array.from({ length: teeth }, (_, i) => {
+          const a = (i / teeth) * Math.PI * 2;
+          return (
+            <mesh key={i} position={[Math.cos(a) * radius, 0, Math.sin(a) * radius]} rotation={[0, -a, 0]}>
+              <boxGeometry args={[0.22, 0.16, 0.18]} />
+              <meshStandardMaterial color={color} metalness={0.3} roughness={0.4} />
+            </mesh>
+          );
+        })}
+      </group>
+    </group>
+  );
+}
+
+function Workshop({ glow, activity }: { glow: number; activity: number }) {
+  const spin = activity ? 2.2 : 0.35;
+  return (
+    <group>
+      <mesh castShadow receiveShadow position={[0, 1.2, 0]}>
+        <boxGeometry args={[4.0, 2.4, 3.2]} />
+        <meshStandardMaterial color="#c8f0d8" roughness={0.75} />
+      </mesh>
+      {/* saw-tooth factory roof */}
+      {[-1.0, 1.0].map((x) => (
+        <Gable key={x} w={2.1} h={1.1} d={3.4} color="#7fc8a9" position={[x, 2.4, 0]} />
+      ))}
+      <mesh castShadow position={[-1.4, 3.6, -0.9]}>
+        <cylinderGeometry args={[0.22, 0.26, 1.4, 12]} />
+        <meshStandardMaterial color="#e3b3c9" />
+      </mesh>
+      <group position={[-1.4, 4.35, -0.9]}>
+        <Smoke active={activity > 0} />
+      </group>
+      {/* big gears on the facade */}
+      <Gear radius={0.55} teeth={10} color="#ffd86b" speed={spin} position={[1.15, 1.75, 1.62]} rotation={[Math.PI / 2, 0, 0]} />
+      <Gear radius={0.35} teeth={8} color="#ff9fb8" speed={-spin * 1.5} position={[1.85, 1.1, 1.62]} rotation={[Math.PI / 2, 0, 0]} />
+      <Door z={1.62} color="#6fb396" />
+      <Window position={[-1.2, 1.5, 1.62]} glow={Math.max(glow, activity ? 0.5 : 0)} />
+      {/* a little terminal screen outside */}
+      <group position={[-2.6, 0, 1.2]}>
+        <mesh castShadow position={[0, 0.45, 0]}>
+          <boxGeometry args={[0.5, 0.9, 0.4]} />
+          <meshStandardMaterial color="#b9a2ff" />
+        </mesh>
+        <mesh position={[0, 0.6, 0.21]}>
+          <planeGeometry args={[0.36, 0.3]} />
+          <meshStandardMaterial color="#1f2a44" emissive="#7cf0b0" emissiveIntensity={activity ? 1.2 : 0.3} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+// ───────────────────────── Glass atelier (design) ─────────────────────────
+
+function Atelier({ glow, activity }: { glow: number; activity: number }) {
+  const brush = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (brush.current) brush.current.rotation.z = Math.sin(clock.elapsedTime * (activity ? 5 : 1)) * 0.35;
+  });
+  return (
+    <group>
+      <mesh castShadow receiveShadow position={[0, 0.5, 0]}>
+        <boxGeometry args={[4.0, 1.0, 3.2]} />
+        <meshStandardMaterial color="#ffe1ef" roughness={0.8} />
+      </mesh>
+      {/* glass greenhouse body */}
+      <mesh castShadow position={[0, 1.75, 0]}>
+        <boxGeometry args={[3.8, 1.5, 3.0]} />
+        <meshStandardMaterial color="#d6f4ff" transparent opacity={0.45} roughness={0.1} metalness={0.1} emissive="#ffe8a8" emissiveIntensity={glow * 0.5 + (activity ? 0.2 : 0)} />
+      </mesh>
+      <Gable w={4.0} h={1.1} d={3.2} color="#bfe9ff" position={[0, 2.5, 0]} />
+      {/* frame */}
+      {[-1.9, 0, 1.9].map((x) => (
+        <mesh key={x} position={[x, 1.75, 1.52]}>
+          <boxGeometry args={[0.08, 1.5, 0.08]} />
+          <meshStandardMaterial color="#ffffff" />
+        </mesh>
+      ))}
+      <Door z={1.62} color="#ff9fb8" />
+      {/* easel with a painting */}
+      <group position={[-2.5, 0, 1.3]} rotation={[0, 0.5, 0]}>
+        {[-0.3, 0.3].map((x) => (
+          <mesh key={x} position={[x, 0.7, 0]} rotation={[0.15, 0, x > 0 ? -0.12 : 0.12]}>
+            <boxGeometry args={[0.06, 1.4, 0.06]} />
+            <meshStandardMaterial color="#d9a37a" />
+          </mesh>
+        ))}
+        <mesh position={[0, 1.05, 0.05]} rotation={[0.15, 0, 0]}>
+          <boxGeometry args={[0.8, 0.6, 0.04]} />
+          <meshStandardMaterial color="#fffaf0" />
+        </mesh>
+        {["#ff8fb8", "#9bf6ff", "#ffd86b"].map((c, i) => (
+          <mesh key={c} position={[-0.2 + i * 0.2, 1.05 + (i % 2) * 0.1, 0.09]} rotation={[0.15, 0, 0]}>
+            <circleGeometry args={[0.1, 16]} />
+            <meshStandardMaterial color={c} />
+          </mesh>
+        ))}
+        <group ref={brush} position={[0.45, 1.0, 0.15]}>
+          <mesh position={[0, 0.2, 0]}>
+            <cylinderGeometry args={[0.025, 0.025, 0.45, 6]} />
+            <meshStandardMaterial color="#8a7dd8" />
+          </mesh>
+        </group>
+      </group>
+    </group>
+  );
+}
+
+// ───────────────────────── Crystal lab (3D / experiments) ─────────────────────────
+
+function CrystalLab({ glow, activity }: { glow: number; activity: number }) {
+  const rings = useRef<THREE.Group>(null);
+  const crystal = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }, dt) => {
+    if (rings.current) {
+      rings.current.rotation.y += dt * (activity ? 1.6 : 0.3);
+      rings.current.rotation.x = Math.sin(clock.elapsedTime * 0.5) * 0.2;
+    }
+    if (crystal.current) crystal.current.position.y = 4.6 + Math.sin(clock.elapsedTime * 1.5) * 0.15;
+  });
+  return (
+    <group>
+      <mesh castShadow receiveShadow position={[0, 0.6, 0]}>
+        <cylinderGeometry args={[2.2, 2.4, 1.2, 8]} />
+        <meshStandardMaterial color="#e6dcff" roughness={0.7} />
+      </mesh>
+      <mesh castShadow position={[0, 2.2, 0]}>
+        <icosahedronGeometry args={[1.9, 1]} />
+        <meshStandardMaterial color="#c9b6ff" roughness={0.25} metalness={0.15} flatShading transparent opacity={0.9} emissive="#a58cff" emissiveIntensity={0.1 + glow * 0.4 + (activity ? 0.25 : 0)} />
+      </mesh>
+      <group ref={rings} position={[0, 2.4, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[2.6, 0.05, 8, 48]} />
+          <meshStandardMaterial color="#9bf6ff" emissive="#9bf6ff" emissiveIntensity={0.6} />
+        </mesh>
+        <mesh rotation={[Math.PI / 2.6, 0.6, 0]}>
+          <torusGeometry args={[2.9, 0.04, 8, 48]} />
+          <meshStandardMaterial color="#ffc6ff" emissive="#ffc6ff" emissiveIntensity={0.6} />
+        </mesh>
+      </group>
+      <mesh ref={crystal} castShadow position={[0, 4.6, 0]}>
+        <octahedronGeometry args={[0.45, 0]} />
+        <meshStandardMaterial color="#ffffff" emissive="#bdb2ff" emissiveIntensity={0.6 + glow} flatShading />
+      </mesh>
+      <group position={[0, 0, 2.1]}>
+        <Door z={0} color="#a58cff" />
+      </group>
+    </group>
+  );
+}
+
 // ───────────────────────── fallback ─────────────────────────
 
 function GenericHouse({ glow, seed }: { glow: number; seed: string }) {
@@ -299,7 +465,8 @@ function GenericHouse({ glow, seed }: { glow: number; seed: string }) {
   );
 }
 
-const PLOT_COLORS: Record<string, string> = { hq: "#ffe3ef", research: "#dff6f0", studio: "#fff6d6" };
+const PLOT_COLORS: Record<string, string> = { hq: "#ffe3ef", research: "#dff6f0", studio: "#fff6d6", workshop: "#e2f7ea", atelier: "#ffeaf3", lab: "#eee8ff" };
+const KNOWN_KINDS = new Set(["hq", "research", "studio", "workshop", "atelier", "lab"]);
 
 export function PastelBuilding({ building, glow, hovered, selected, activity }: BuildingProps) {
   const group = useRef<THREE.Group>(null);
@@ -316,7 +483,10 @@ export function PastelBuilding({ building, glow, hovered, selected, activity }: 
         {building.kind === "hq" && <TownHall glow={glow} activity={activity} />}
         {building.kind === "research" && <Observatory glow={glow} activity={activity} />}
         {building.kind === "studio" && <InkStudio glow={glow} activity={activity} />}
-        {!["hq", "research", "studio"].includes(building.kind) && <GenericHouse glow={glow} seed={building.id} />}
+        {building.kind === "workshop" && <Workshop glow={glow} activity={activity} />}
+        {building.kind === "atelier" && <Atelier glow={glow} activity={activity} />}
+        {building.kind === "lab" && <CrystalLab glow={glow} activity={activity} />}
+        {!KNOWN_KINDS.has(building.kind) && <GenericHouse glow={glow} seed={building.id} />}
       </group>
     </group>
   );

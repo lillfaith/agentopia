@@ -142,3 +142,23 @@ describe("schedules API", () => {
     expect((await h.request(`/api/schedules/${s.id}`, { method: "DELETE" })).status).toBe(200);
   });
 });
+
+describe("schedule cost projections", () => {
+  it("ignore simulated runs and project from real ones", async () => {
+    const { SimulatedProvider } = await import("../server/llm/simulated.js");
+    const { treasurySummary } = await import("../server/engine/treasury.js");
+    const sim = harness(new SimulatedProvider(0));
+    const s = addSchedule(sim, { cadence: { kind: "daily", time: "09:00" } });
+    new Scheduler(sim.store, sim.config, true).fire(s, "manual");
+    await sim.runner.drain();
+    expect(treasurySummary(sim.store, sim.config, true).scheduleProjections[0]).toMatchObject({ runsPerMonth: 30, avgRunCostUsd: null, projectedMonthlyUsd: null });
+
+    const live = harness(new ScriptedProvider([say("digest")]));
+    const s2 = addSchedule(live, { cadence: { kind: "daily", time: "09:00" } });
+    new Scheduler(live.store, live.config, false).fire(s2, "manual");
+    await live.runner.drain();
+    const p = treasurySummary(live.store, live.config).scheduleProjections[0];
+    expect(p.avgRunCostUsd).toBeCloseTo(0.014, 6); // 1000 in / 500 out on Opus 5.5
+    expect(p.projectedMonthlyUsd).toBeCloseTo(0.42, 6);
+  });
+});

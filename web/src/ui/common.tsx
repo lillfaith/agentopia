@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
-import type { AgentStatus, EventType, TaskStatus, TownEvent } from "../../../shared/types";
+import type { AgentStatus, EventType, SkillInfo, Task, TaskStatus, TownEvent } from "../../../shared/types";
 import { useTown } from "../state/store";
 
 export const fmtUsd = (n: number) => (n === 0 ? "$0.00" : n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`);
@@ -31,6 +31,15 @@ export const EVENT_BADGE: Partial<Record<EventType, { label: string; tone: strin
   "task.retry_scheduled": { label: "RETRY", tone: "warn" },
   "task.cancelled": { label: "STOP", tone: "muted" },
   "agent.updated": { label: "EDIT", tone: "info" },
+  "agent.created": { label: "HIRE", tone: "good" },
+  "agent.archived": { label: "LEFT", tone: "muted" },
+  "building.created": { label: "BUILD", tone: "good" },
+  "building.updated": { label: "BUILD", tone: "info" },
+  "building.deleted": { label: "BUILD", tone: "muted" },
+  "schedule.fired": { label: "SCHED", tone: "accent2" },
+  "schedule.skipped": { label: "SKIP", tone: "warn" },
+  "budget.hold": { label: "BUDGET", tone: "bad" },
+  "system.verification": { label: "VERIFY", tone: "info" },
   "workflow.created": { label: "PROJECT", tone: "accent" },
   "workflow.completed": { label: "DELIVER", tone: "good" },
   "usage.recorded": { label: "COST", tone: "muted" },
@@ -131,4 +140,39 @@ export function AgentName({ id }: { id: string | null }) {
 
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
+}
+
+/** Proof of execution: LIVE only when real Claude API request ids were recorded for the task. */
+export function ExecutionBadge({ task, verbose }: { task: Task; verbose?: boolean }) {
+  const e = task.execution;
+  if (e.mode === "live") {
+    return (
+      <span className="badge tone-good" title={`Executed by the Claude API — ${e.calls} call(s), last request ${e.lastRequestId ?? "?"} · ${e.models.join(", ")}`}>
+        LIVE{verbose ? ` · ${e.calls} call${e.calls === 1 ? "" : "s"} · ${fmtUsd(e.costUsd)}` : ""}
+      </span>
+    );
+  }
+  if (e.mode === "simulated" || task.simulated) return <SimTag on />;
+  return null;
+}
+
+export function ExecutionProof({ task }: { task: Task }) {
+  const e = task.execution;
+  if (e.mode !== "live") return null;
+  return (
+    <div className="proof">
+      ✅ Executed by the Claude API · {e.calls} call{e.calls === 1 ? "" : "s"} · {fmtTokens(e.inputTokens)} in / {fmtTokens(e.outputTokens)} out · ~{fmtUsd(e.costUsd)} · {e.models.join(", ")}
+      <br />
+      <span className="mono small">last request id: {e.lastRequestId}</span>
+    </div>
+  );
+}
+
+export function SkillChip({ skill }: { skill: SkillInfo }) {
+  return (
+    <span className={`skill-chip ${skill.status === "planned" ? "planned" : ""}`} title={skill.status === "planned" ? `${skill.label} — planned, not connected yet` : skill.description}>
+      {skill.icon} {skill.label}
+      {skill.status === "planned" && <em> · planned</em>}
+    </span>
+  );
 }

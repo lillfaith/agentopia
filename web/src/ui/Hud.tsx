@@ -8,8 +8,17 @@ export function TopBar() {
   const icons = theme.ui.icons;
   const s = useTown();
   const snap = s.snapshot;
+  const bar = useRef<HTMLDivElement>(null);
+  // Drawers and banners sit below the HUD, whose height changes as status chips wrap.
+  useEffect(() => {
+    const el = bar.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty("--hud-top", `${el.getBoundingClientRect().bottom + 10}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [!!snap]);
   if (!snap) return null;
-  const agents = snap.agents.filter((a) => a.enabled);
+  const agents = snap.agents.filter((a) => a.enabled && !a.archived);
   const working = agents.filter((a) => ["working", "planning", "delivering"].includes(a.status)).length;
   const waiting = snap.approvals.filter((a) => a.status === "pending").length;
   const activeTasks = snap.tasks.filter((t) => ["queued", "running", "waiting_approval", "retry_wait"].includes(t.status)).length;
@@ -19,7 +28,7 @@ export function TopBar() {
   const times: TimeOfDay[] = ["dawn", "day", "dusk", "night"];
 
   return (
-    <div className="topbar">
+    <div className="topbar" ref={bar}>
       <div className="town-card panel">
         <div className="town-title">
           <span className="town-emblem">🏡</span>
@@ -47,6 +56,21 @@ export function TopBar() {
           <span className="chip" onClick={() => s.openPanel("treasury")} role="button" title="Real API usage only">
             🪙 {fmtTokens(tokens)} · {fmtUsd(cost)}
           </span>
+          {snap.status.budget.globalHold && (
+            <span className="chip chip-bad" onClick={() => s.openPanel("settings")} role="button" title="A budget limit was reached; new work is paused">
+              ⛔ budget paused
+            </span>
+          )}
+          {!snap.status.workers.some((w) => w.alive) && (
+            <span className="chip chip-bad" onClick={() => s.openPanel("settings")} role="button" title="No worker process is running: tasks and schedules are not executing">
+              ⚙️ no worker
+            </span>
+          )}
+          {snap.schedules.some((x) => x.enabled) && (
+            <span className="chip" onClick={() => s.openPanel("schedules")} role="button">
+              ⏰ {snap.schedules.filter((x) => x.enabled).length} scheduled
+            </span>
+          )}
           <span className={`chip conn conn-${s.connection}`} title="Live event stream">
             <i className="dot" />
             {s.connection === "live" ? "LIVE" : s.connection === "connecting" ? "…" : "OFFLINE"}
@@ -84,6 +108,8 @@ export function TopBar() {
 
 const DOCK: { id: PanelId; label: string }[] = [
   { id: "new-project", label: "New project" },
+  { id: "town", label: "Town" },
+  { id: "schedules", label: "Schedules" },
   { id: "tasks", label: "Task board" },
   { id: "projects", label: "Deliverables" },
   { id: "log", label: "Activity log" },

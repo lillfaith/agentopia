@@ -69,6 +69,7 @@ export function World({ theme }: { theme: ThemeManifest }) {
     return o;
   }, [buildings, layouts]);
   const slotForBuilding = useCallback((id: string) => layouts.get(id), [layouts]);
+  const nav = useMemo(() => theme.world.buildNav(occupied), [theme, occupied]);
 
   const lighting = theme.world.lighting[timeOfDay];
   const Environment = theme.components.Environment;
@@ -92,11 +93,11 @@ export function World({ theme }: { theme: ThemeManifest }) {
           return layout ? <BuildingNode key={b.id} building={b} layout={layout} theme={theme} /> : null;
         })}
         {agents
-          .filter((a) => a.enabled)
+          .filter((a) => a.enabled && !a.archived)
           .map((a) => {
             const i = agentIndex.get(a.buildingId) ?? 0;
             agentIndex.set(a.buildingId, i + 1);
-            return <AgentActor key={a.id} agent={a} index={i} theme={theme} slotForBuilding={slotForBuilding} />;
+            return <AgentActor key={a.id} agent={a} index={i} theme={theme} nav={nav} slotForBuilding={slotForBuilding} />;
           })}
       </Suspense>
       <CameraRig theme={theme} />
