@@ -24,6 +24,17 @@ export interface Config {
   workerConcurrency: number;
   workerPollMs: number;
   simulation: boolean;
+  /** "local" = one town, admin token; "saas" = accounts, one private town per user. */
+  mode: "local" | "saas";
+  /** SaaS: directory holding accounts.sqlite and towns/<id>.sqlite. */
+  dataDir: string;
+  /** SaaS: take the client IP from the last X-Forwarded-For hop (behind Railway or another proxy). */
+  trustProxy: boolean;
+  /** SaaS: public origin (https://app.example.com); used for CSRF origin checks and secure cookies. */
+  publicOrigin: string | null;
+  /** SaaS: tasks running at once across all towns. */
+  globalConcurrency: number;
+  sessionDays: number;
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -31,6 +42,12 @@ function num(value: string | undefined, fallback: number): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) throw new Error(`Invalid numeric config value: ${value}`);
   return n;
+}
+
+function parseMode(v: string | undefined): Config["mode"] {
+  const m = v?.trim() || "local";
+  if (m !== "local" && m !== "saas") throw new Error(`AGENTOPIA_MODE must be local or saas (got "${m}")`);
+  return m;
 }
 
 function parseRole(v: string | undefined): Config["role"] {
@@ -75,7 +92,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     workerConcurrency: Math.max(1, num(env.AGENTOPIA_WORKER_CONCURRENCY, 2)),
     workerPollMs: Math.max(200, num(env.AGENTOPIA_WORKER_POLL_MS, 1500)),
     simulation: env.AGENTOPIA_SIMULATION?.trim() === "true",
+    mode: parseMode(env.AGENTOPIA_MODE),
+    dataDir: path.resolve(env.AGENTOPIA_DATA_DIR?.trim() || "./data"),
+    trustProxy: env.AGENTOPIA_TRUST_PROXY?.trim() === "true",
+    publicOrigin: env.AGENTOPIA_PUBLIC_ORIGIN?.trim().replace(/\/$/, "") || null,
+    globalConcurrency: Math.max(1, num(env.AGENTOPIA_GLOBAL_CONCURRENCY, 8)),
+    sessionDays: Math.max(1, num(env.AGENTOPIA_SESSION_DAYS, 30)),
   };
+  if (config.mode === "saas") {
+    if (config.role !== "all") throw new Error("AGENTOPIA_MODE=saas runs the API and worker in one process; leave AGENTOPIA_ROLE unset (all).");
+    if (config.simulation && config.isProduction) throw new Error("AGENTOPIA_SIMULATION cannot be used with AGENTOPIA_MODE=saas in production.");
+    if (config.publicOrigin && !/^https?:\/\/[^/]+$/.test(config.publicOrigin)) throw new Error("AGENTOPIA_PUBLIC_ORIGIN must look like https://app.example.com");
+  }
   assertSafeBinding(config);
   return config;
 }
@@ -83,7 +111,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "::1"]);
 
 /** Refuse to expose the control API beyond loopback without authentication. */
-export function assertSafeBinding(config: Pick<Config, "host" | "adminToken">): void {
+export function assertSafeBinding(config: Pick<Config, "host" | "adminToken"> & { mode?: Config["mode"] }): void {
+  // SaaS mode authenticates every request with a user session.
+  if (config.mode === "saas") return;
   if (!LOOPBACK.has(config.host) && !config.adminToken) {
     throw new Error(
       `Refusing to bind to ${config.host} without AGENTOPIA_ADMIN_TOKEN. ` +

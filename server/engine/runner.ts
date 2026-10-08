@@ -14,6 +14,20 @@ const RETRY_BASE_MS = 5_000;
 const STATUS_DECAY_MS = 6_000;
 const WORKER_HEARTBEAT_MS = 5_000;
 
+/** Process-wide cap on concurrent tasks, shared by every town's runner (SaaS mode). */
+export interface ConcurrencyGate {
+  tryAcquire(): boolean;
+  release(): void;
+}
+
+export interface RunnerOptions {
+  retryBaseMs?: number;
+  statusDecayMs?: number;
+  gate?: ConcurrencyGate;
+  /** When this returns a reason, nothing new starts (e.g. a lapsed plan). */
+  hold?: () => string | null;
+}
+
 /**
  * Durable background worker. The queue lives in the database, so tasks keep
  * running whether or not any browser is open, and a crashed worker's tasks are
@@ -34,17 +48,21 @@ export class TaskRunner {
 
   private readonly retryBaseMs: number;
   private readonly statusDecayMs: number;
+  private readonly gate: ConcurrencyGate | undefined;
+  private readonly hold: (() => string | null) | undefined;
 
   constructor(
     private readonly store: Store,
     readonly provider: LLMProvider,
     private readonly config: Config,
-    timings: { retryBaseMs?: number; statusDecayMs?: number } = {},
+    opts: RunnerOptions = {},
   ) {
     this.executor = new AgentExecutor(store, provider, config);
     this.scheduler = new Scheduler(store, config, provider.simulated);
-    this.retryBaseMs = timings.retryBaseMs ?? RETRY_BASE_MS;
-    this.statusDecayMs = timings.statusDecayMs ?? STATUS_DECAY_MS;
+    this.retryBaseMs = opts.retryBaseMs ?? RETRY_BASE_MS;
+    this.statusDecayMs = opts.statusDecayMs ?? STATUS_DECAY_MS;
+    this.gate = opts.gate;
+    this.hold = opts.hold;
   }
 
   get running(): boolean {
@@ -54,6 +72,9 @@ export class TaskRunner {
   get activeCount(): number {
     return this.active.size;
   }
+
+  /** When a task last started or settled here (ms since epoch). */
+  lastActivityAt = 0;
 
   start(): void {
     if (this.timer) return;
@@ -124,6 +145,7 @@ export class TaskRunner {
       for (const t of this.store.requeueExpiredLeases()) {
         this.store.addEvent({ type: "system.notice", taskId: t.id, agentId: t.agentId, message: `Recovered “${t.title}” from a worker that stopped responding — re-queued.` });
       }
+      if (this.hold?.()) return;
       try {
         this.scheduler.tick();
       } catch (err) {
@@ -140,8 +162,12 @@ export class TaskRunner {
         return;
       }
       while (this.active.size < this.config.workerConcurrency) {
+        if (this.gate && !this.gate.tryAcquire()) break;
         const task = this.store.claimNextTask(this.workerId, LEASE_MS, budget.agentHolds);
-        if (!task) break;
+        if (!task) {
+          this.gate?.release();
+          break;
+        }
         void this.run(task);
       }
     } finally {
@@ -162,6 +188,7 @@ export class TaskRunner {
 
   /** Is there work this worker could start right now (respecting budget holds)? */
   hasClaimableWork(): boolean {
+    if (this.hold?.()) return false;
     const budget = budgetStatus(this.store, this.config, this.provider.simulated);
     if (budget.globalHold) return false;
     if (!budget.agentHolds.length) return this.store.claimNextTaskPreview();
@@ -171,6 +198,7 @@ export class TaskRunner {
   private async run(task: Task): Promise<void> {
     const controller = new AbortController();
     this.active.set(task.id, controller);
+    this.lastActivityAt = Date.now();
     const sim = this.provider.simulated;
     // Label the task by how THIS attempt runs (a task re-run live after a simulated run becomes live).
     if (task.simulated !== sim) this.store.updateTask(task.id, { simulated: sim });
@@ -217,6 +245,8 @@ export class TaskRunner {
     } finally {
       clearInterval(heartbeat);
       this.active.delete(task.id);
+      this.lastActivityAt = Date.now();
+      this.gate?.release();
       if (this.timer) void this.tick();
     }
   }
@@ -306,8 +336,12 @@ export class TaskRunner {
   private flashStatus(agentId: string, taskId: string, status: "completed" | "failed", detail: string): void {
     this.store.setAgentStatus(agentId, status, detail.slice(0, 200), taskId, this.provider.simulated);
     setTimeout(() => {
-      const a = this.store.getAgent(agentId);
-      if (a && a.currentTaskId === taskId && a.status === status) this.store.setAgentStatus(agentId, "idle", null, null, this.provider.simulated);
+      try {
+        const a = this.store.getAgent(agentId);
+        if (a && a.currentTaskId === taskId && a.status === status) this.store.setAgentStatus(agentId, "idle", null, null, this.provider.simulated);
+      } catch {
+        /* the town was closed in the meantime; recover() resets stale states on reopen */
+      }
     }, this.statusDecayMs).unref();
   }
 

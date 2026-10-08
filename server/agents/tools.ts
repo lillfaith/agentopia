@@ -103,6 +103,7 @@ const delegateTask: LocalTool<typeof delegateSchema> = {
       priority: PRIORITY[input.priority ?? "normal"],
       parentTaskId: ctx.task.id,
       workflowId: ctx.task.workflowId,
+      projectId: ctx.task.projectId,
       createdBy: ctx.agent.id,
       delegationDepth: depth,
     });

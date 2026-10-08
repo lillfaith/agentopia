@@ -24,6 +24,8 @@ export interface ApiDeps {
   config: Config;
   store: Store;
   runner: TaskRunner;
+  /** True when mounted behind the SaaS account layer (which authenticates and checks CSRF). */
+  embedded?: boolean;
 }
 
 // ───────────────────────── validation schemas ─────────────────────────
@@ -103,8 +105,12 @@ const newTask = z
     instructions: z.string().trim().min(1).max(20000),
     priority: priority.default(1),
     dependsOn: z.array(z.string()).max(20).default([]),
+    projectId: z.string().min(1).nullable().optional(),
   })
   .strict();
+
+const projectCreate = z.object({ title: z.string().trim().min(1).max(80), goal: z.string().trim().max(2000).default("") }).strict();
+const projectPatch = z.object({ title: z.string().trim().min(1).max(80), goal: z.string().trim().max(2000), status: z.enum(["active", "archived"]) }).partial().strict();
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM");
 const cadence = z.discriminatedUnion("kind", [
@@ -162,7 +168,7 @@ const slugify = (s: string) =>
 
 // ───────────────────────── status ─────────────────────────
 
-export function systemStatus({ config, store, runner }: ApiDeps): SystemStatus {
+export function systemStatus({ config, store, runner, embedded }: ApiDeps): SystemStatus {
   const p = runner.provider;
   const base = process.env.ANTHROPIC_BASE_URL?.trim();
   let baseUrlHost: string | null = null;
@@ -182,10 +188,11 @@ export function systemStatus({ config, store, runner }: ApiDeps): SystemStatus {
       mode: p.simulated ? "simulation" : config.anthropicApiKey ? "live" : "unconfigured",
       keyConfigured: !!config.anthropicApiKey,
       refusalFallback: config.refusalFallback,
-      baseUrlHost,
+      baseUrlHost: embedded ? null : baseUrlHost,
     },
     worker: { running: runner.running, concurrency: config.workerConcurrency, activeTasks: runner.activeCount },
-    workers: store.listWorkers(),
+    // Worker hostnames and pids are operator details, not shown to SaaS users.
+    workers: embedded ? [] : store.listWorkers(),
     limits: {
       dailyBudgetUsd: config.dailyBudgetUsd,
       maxTurnsPerTask: config.maxTurnsPerTask,
@@ -205,7 +212,7 @@ export function systemStatus({ config, store, runner }: ApiDeps): SystemStatus {
 export function createApi(deps: ApiDeps): Hono {
   const { config, store, runner } = deps;
   const api = new Hono();
-  api.use("/api/*", security(config));
+  if (!deps.embedded) api.use("/api/*", security(config));
   const err = (message: string) => ({ error: message });
 
   api.get("/api/health", (c) => c.json({ ok: true, version: VERSION }));
@@ -225,6 +232,7 @@ export function createApi(deps: ApiDeps): Hono {
   api.get("/api/snapshot", (c) => {
     const snapshot: TownSnapshot = {
       settings: store.getSettings(),
+      projects: store.listProjects(),
       agents: store.listAgents(),
       stats: store.agentStats(),
       buildings: store.listBuildings(),
@@ -365,8 +373,32 @@ export function createApi(deps: ApiDeps): Hono {
     return c.json({ ok: true });
   });
 
+  // ── projects ──
+  api.get("/api/projects", (c) => c.json(store.listProjects()));
+  api.get("/api/projects/:id", (c) => {
+    const project = store.getProject(c.req.param("id"));
+    if (!project) return c.json(err("Project not found"), 404);
+    return c.json({ project, tasks: store.listTasks({ projectId: project.id, limit: 300 }) });
+  });
+  api.post("/api/projects", async (c) => {
+    const b = await body(c, projectCreate);
+    if (!b.ok) return b.res;
+    const project = store.createProject(b.data);
+    store.addEvent({ type: "system.notice", message: `New project: ${project.title}`, data: { projectId: project.id } });
+    return c.json(project, 201);
+  });
+  api.patch("/api/projects/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!store.getProject(id)) return c.json(err("Project not found"), 404);
+    const b = await body(c, projectPatch);
+    if (!b.ok) return b.res;
+    return c.json(store.updateProject(id, b.data));
+  });
+
   // ── tasks ──
-  api.get("/api/tasks", (c) => c.json(store.listTasks({ agentId: c.req.query("agentId"), workflowId: c.req.query("workflowId"), limit: 300 })));
+  api.get("/api/tasks", (c) =>
+    c.json(store.listTasks({ agentId: c.req.query("agentId"), workflowId: c.req.query("workflowId"), projectId: c.req.query("projectId"), limit: 300 })),
+  );
   api.get("/api/tasks/:id", (c) => {
     const task = store.getTask(c.req.param("id"));
     if (!task) return c.json(err("Task not found"), 404);
@@ -378,6 +410,7 @@ export function createApi(deps: ApiDeps): Hono {
     const agent = store.getAgent(b.data.agentId);
     if (!agent || agent.archived) return c.json(err("Unknown agent"), 400);
     for (const dep of b.data.dependsOn) if (!store.getTask(dep)) return c.json(err(`Unknown dependency ${dep}`), 400);
+    if (b.data.projectId && store.getProject(b.data.projectId)?.status !== "active") return c.json(err("Unknown or archived project"), 400);
     const task = store.createTask({ ...b.data, createdBy: "user" });
     store.addEvent({ type: "task.created", agentId: agent.id, taskId: task.id, message: `You assigned “${task.title}” to ${agent.name}`, data: { createdBy: "user" } });
     runner.poke();
@@ -483,6 +516,7 @@ export function createApi(deps: ApiDeps): Hono {
 
   // ── system: live connection test ──
   api.post("/api/system/test-connection", async (c) => {
+    if (deps.embedded) return c.json(err("Not available"), 404);
     const provider = runner.provider;
     if (provider.simulated) return c.json(err("Simulation mode is on — there is no API to test. Add ANTHROPIC_API_KEY and restart."), 409);
     if (!config.anthropicApiKey) return c.json(err("No ANTHROPIC_API_KEY is configured on the server."), 409);

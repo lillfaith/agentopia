@@ -62,7 +62,12 @@ export function TopBar() {
               ⛔ budget paused
             </span>
           )}
-          {!snap.status.workers.some((w) => w.alive) && (
+          {s.account && !s.account.plan.canRun && (
+            <span className="chip chip-bad" title={s.account.plan.reason ?? ""}>
+              ⛔ plan paused
+            </span>
+          )}
+          {!snap.status.worker.running && !snap.status.workers.some((w) => w.alive) && (
             <span className="chip chip-bad" onClick={() => s.openPanel("settings")} role="button" title="No worker process is running: tasks and schedules are not executing">
               ⚙️ no worker
             </span>
@@ -96,6 +101,11 @@ export function TopBar() {
         <button className={`pill ${s.sound ? "on" : ""}`} onClick={() => s.toggle("sound")} title="Sound effects">
           {s.sound ? icons.soundOn : icons.soundOff}
         </button>
+        {s.account && (
+          <button className="pill" onClick={() => void s.signOut()} title={`Signed in as ${s.account.user.email} · ${s.account.plan.label}`}>
+            👤 Sign out
+          </button>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import type {
   ApprovalStatus,
   Building,
   EventType,
+  Project,
   Schedule,
   Task,
   TaskExecution,
@@ -145,7 +146,19 @@ function toTask(r: Row): Task {
     updatedAt: r.updated_at as string,
     simulated: r.simulated === 1,
     scheduleId: (r.schedule_id as string) ?? null,
+    projectId: (r.project_id as string) ?? null,
     execution: NO_EXECUTION,
+  };
+}
+
+function toProject(r: Row): Project {
+  return {
+    id: r.id as string,
+    title: r.title as string,
+    goal: r.goal as string,
+    status: r.status as Project["status"],
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
   };
 }
 
@@ -158,6 +171,7 @@ function toWorkflow(r: Row): Workflow {
     status: r.status as Workflow["status"],
     finalTaskId: (r.final_task_id as string) ?? null,
     scheduleId: (r.schedule_id as string) ?? null,
+    projectId: (r.project_id as string) ?? null,
     createdAt: r.created_at as string,
     completedAt: (r.completed_at as string) ?? null,
   };
@@ -206,6 +220,7 @@ export interface NewTask {
   delegationDepth?: number;
   maxAttempts?: number;
   scheduleId?: string | null;
+  projectId?: string | null;
 }
 
 export interface NewEvent {
@@ -404,10 +419,10 @@ export class Store {
   }
 
   // ── workflows ──
-  insertWorkflow(w: Omit<Workflow, "createdAt" | "completedAt" | "status" | "scheduleId"> & { scheduleId?: string | null }): Workflow {
+  insertWorkflow(w: Omit<Workflow, "createdAt" | "completedAt" | "status" | "scheduleId" | "projectId"> & { scheduleId?: string | null; projectId?: string | null }): Workflow {
     this.db
-      .prepare("INSERT INTO workflows (id, template, title, input, status, final_task_id, schedule_id, created_at) VALUES (?, ?, ?, ?, 'running', ?, ?, ?)")
-      .run(w.id, w.template, w.title, json(w.input), w.finalTaskId, w.scheduleId ?? null, now());
+      .prepare("INSERT INTO workflows (id, template, title, input, status, final_task_id, schedule_id, project_id, created_at) VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?)")
+      .run(w.id, w.template, w.title, json(w.input), w.finalTaskId, w.scheduleId ?? null, w.projectId ?? null, now());
     return this.getWorkflow(w.id)!;
   }
 
@@ -431,6 +446,31 @@ export class Store {
   }
 
   // ── tasks ──
+  // ── projects ──
+  createProject(p: { title: string; goal: string }): Project {
+    const id = randomUUID();
+    const ts = now();
+    this.db.prepare("INSERT INTO projects (id, title, goal, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)").run(id, p.title, p.goal, ts, ts);
+    return this.getProject(id)!;
+  }
+
+  getProject(id: string): Project | null {
+    const r = this.db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Row | undefined;
+    return r ? toProject(r) : null;
+  }
+
+  listProjects(): Project[] {
+    return (this.db.prepare("SELECT * FROM projects ORDER BY status = 'archived', created_at DESC, rowid DESC").all() as Row[]).map(toProject);
+  }
+
+  updateProject(id: string, patch: Partial<Pick<Project, "title" | "goal" | "status">>): Project | null {
+    const cur = this.getProject(id);
+    if (!cur) return null;
+    const next = { ...cur, ...patch };
+    this.db.prepare("UPDATE projects SET title = ?, goal = ?, status = ?, updated_at = ? WHERE id = ?").run(next.title, next.goal, next.status, now(), id);
+    return this.getProject(id);
+  }
+
   createTask(t: NewTask): Task {
     const id = randomUUID();
     const ts = now();
@@ -440,12 +480,12 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO tasks (id, title, instructions, agent_id, status, priority, depends_on, parent_task_id, workflow_id,
-           created_by, delegation_depth, max_attempts, schedule_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           created_by, delegation_depth, max_attempts, schedule_id, project_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id, t.title, t.instructions, t.agentId, status, t.priority ?? 1, json(deps), t.parentTaskId ?? null,
-        t.workflowId ?? null, t.createdBy, t.delegationDepth ?? 0, t.maxAttempts ?? 3, t.scheduleId ?? null, ts, ts,
+        t.workflowId ?? null, t.createdBy, t.delegationDepth ?? 0, t.maxAttempts ?? 3, t.scheduleId ?? null, t.projectId ?? null, ts, ts,
       );
     return this.getTask(id)!;
   }
@@ -489,9 +529,13 @@ export class Store {
     });
   }
 
-  listTasks(opts: { agentId?: string; workflowId?: string; limit?: number } = {}): Task[] {
+  listTasks(opts: { agentId?: string; workflowId?: string; projectId?: string; limit?: number } = {}): Task[] {
     const where: string[] = [];
     const vals: (string | number)[] = [];
+    if (opts.projectId) {
+      where.push("project_id = ?");
+      vals.push(opts.projectId);
+    }
     if (opts.agentId) {
       where.push("agent_id = ?");
       vals.push(opts.agentId);
@@ -503,6 +547,13 @@ export class Store {
     vals.push(opts.limit ?? 200);
     const sql = `SELECT * FROM tasks ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC, rowid DESC LIMIT ?`;
     return this.withExecution((this.db.prepare(sql).all(...vals) as Row[]).map(toTask));
+  }
+
+  /** Earliest pending task time (run_after, or creation if due now) and next schedule run. Used to decide when to reopen a closed town. */
+  nextWakeHint(): { pendingAt: string | null; scheduleAt: string | null } {
+    const t = this.db.prepare("SELECT MIN(COALESCE(run_after, created_at)) AS at FROM tasks WHERE status IN ('queued', 'retry_wait')").get() as { at: string | null };
+    const s = this.db.prepare("SELECT MIN(next_run_at) AS at FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL").get() as { at: string | null };
+    return { pendingAt: t.at ?? null, scheduleAt: s.at ?? null };
   }
 
   /**

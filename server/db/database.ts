@@ -8,7 +8,7 @@ import { SEED_LOOKS } from "../agents/looks.js";
  * Schema migrations, applied in order and tracked with PRAGMA user_version.
  * Append new migrations; never edit a shipped one.
  */
-type Migration = string | ((db: DatabaseSync) => void);
+export type Migration = string | ((db: DatabaseSync) => void);
 
 export const MIGRATIONS: Migration[] = [
   /* 1 — Phase 1 foundation */ `
@@ -242,24 +242,39 @@ export const MIGRATIONS: Migration[] = [
       db.prepare("UPDATE agents SET appearance = ?, voice = ? WHERE id = ?").run(JSON.stringify(appearance), JSON.stringify(voice), r.id);
     }
   },
+
+  /* 5 — projects: a goal that groups tasks and workflows */ `
+  CREATE TABLE projects (
+    id         TEXT PRIMARY KEY,
+    title      TEXT NOT NULL,
+    goal       TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  ALTER TABLE tasks ADD COLUMN project_id TEXT REFERENCES projects(id);
+  ALTER TABLE workflows ADD COLUMN project_id TEXT REFERENCES projects(id);
+  CREATE INDEX idx_tasks_project ON tasks(project_id, created_at);
+  `,
 ];
 
 export type Database = DatabaseSync;
 
-export function openDatabase(dbPath: string): Database {
+export function openDatabase(dbPath: string, migrations: Migration[] = MIGRATIONS): Database {
   if (dbPath !== ":memory:") fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec("PRAGMA busy_timeout = 5000;");
-  migrate(db);
+  migrate(db, migrations);
   return db;
 }
 
-function migrate(db: Database): void {
+function migrate(db: Database, migrations: Migration[]): void {
   const { user_version: current } = db.prepare("PRAGMA user_version").get() as { user_version: number };
-  for (let v = current; v < MIGRATIONS.length; v++) {
-    const m = MIGRATIONS[v];
+  if (current > migrations.length) throw new Error(`Database schema v${current} is newer than this build (v${migrations.length}); refusing to open it.`);
+  for (let v = current; v < migrations.length; v++) {
+    const m = migrations[v];
     transaction(db, () => {
       if (typeof m === "string") db.exec(m);
       else m(db);

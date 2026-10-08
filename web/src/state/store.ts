@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Agent, AgentStats, TownEvent, TownSnapshot } from "../../../shared/types";
-import { api, subscribe } from "../api/client";
+import { DEMO, api, subscribe, type AccountInfo } from "../api/client";
 
 export type PanelId = "town" | "schedules" | "tasks" | "projects" | "log" | "approvals" | "treasury" | "settings" | "new-project";
 
@@ -23,6 +23,8 @@ export interface Toast {
 interface UIState {
   snapshot: TownSnapshot | null;
   loadError: string | null;
+  /** Signed-in account in SaaS mode; null for a self-hosted single town (or the demo). */
+  account: AccountInfo | null;
   connection: "connecting" | "live" | "offline";
   errands: Errand[];
   toasts: Toast[];
@@ -44,6 +46,7 @@ interface UIState {
   overviewRequest: number;
 
   load: () => Promise<void>;
+  signOut: () => Promise<void>;
   connect: () => () => void;
   selectAgent: (id: string | null) => void;
   selectBuilding: (id: string | null) => void;
@@ -57,6 +60,7 @@ interface UIState {
 }
 
 let toastSeq = 0;
+let accountChecked = false;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 /** Event listeners outside React (sound effects). */
 export const eventListeners = new Set<(e: TownEvent) => void>();
@@ -80,6 +84,7 @@ function savePref(key: string, value: unknown) {
 export const useTown = create<UIState>((set, get) => ({
   snapshot: null,
   loadError: null,
+  account: null,
   connection: "connecting",
   errands: [],
   toasts: [],
@@ -98,12 +103,25 @@ export const useTown = create<UIState>((set, get) => ({
   async load() {
     try {
       const snapshot = await api.snapshot();
+      snapshot.projects ??= [];
       const activity = { ...get().activity };
       for (const e of snapshot.events) noteActivity(activity, e);
-      set({ snapshot, loadError: null, activity });
+      // Only a multi-user server knows /api/auth/me; a self-hosted town answers 404. Asked once per sign-in.
+      let account = get().account;
+      if (!accountChecked && !DEMO) {
+        account = await api.me().catch(() => null);
+        accountChecked = true;
+      }
+      set({ snapshot, loadError: null, activity, account });
     } catch (err) {
       set({ loadError: err instanceof Error ? err.message : String(err) });
     }
+  },
+
+  async signOut() {
+    await api.logout().catch(() => {});
+    // A fresh page load tears the 3D world down cleanly and drops all town state from memory.
+    window.location.reload();
   },
 
   connect() {

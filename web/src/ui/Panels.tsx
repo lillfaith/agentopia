@@ -98,7 +98,7 @@ export function TaskBoard() {
                 <button key={t.id} className={`task-card ${selected?.id === t.id ? "on" : ""}`} onClick={() => setSelected(t)}>
                   <b>{t.title}</b>
                   <div className="row between">
-                    <AgentName id={t.agentId} />
+                    <AgentName id={t.agentId} plain />
                     <Badge tone={TASK_TONE[t.status]}>{TASK_LABEL[t.status]}</Badge>
                   </div>
                   <div className="row gap-s">
@@ -193,7 +193,8 @@ function NewTaskForm() {
   const push = useTown((s) => s.pushToast);
   const agents = snap.agents.filter((a) => a.enabled);
   const open = snap.tasks.filter((t) => !["failed", "cancelled"].includes(t.status)).slice(0, 30);
-  const [form, setForm] = useState({ agentId: agents[0]?.id ?? "", title: "", instructions: "", priority: 1, dependsOn: "" });
+  const projects = snap.projects.filter((p) => p.status === "active");
+  const [form, setForm] = useState({ agentId: agents[0]?.id ?? "", title: "", instructions: "", priority: 1, dependsOn: "", projectId: "" });
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setBusy(true);
@@ -204,6 +205,7 @@ function NewTaskForm() {
         instructions: form.instructions.trim() || form.title.trim(),
         priority: form.priority,
         dependsOn: form.dependsOn ? [form.dependsOn] : [],
+        projectId: form.projectId || null,
       });
       setForm((f) => ({ ...f, title: "", instructions: "", dependsOn: "" }));
       push({ tone: "info", text: "Task assigned" });
@@ -238,6 +240,19 @@ function NewTaskForm() {
           </select>
         </label>
       </div>
+      {projects.length > 0 && (
+        <label>
+          Project (optional)
+          <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
+            <option value="">— none —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <input placeholder="Title" value={form.title} maxLength={200} onChange={(e) => setForm({ ...form, title: e.target.value })} />
       <textarea placeholder="Instructions" rows={3} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} />
       <label>
@@ -267,13 +282,15 @@ export function NewProject() {
   const status = useTown((s) => s.snapshot!.status);
   const agents = useTown((s) => s.snapshot!.agents.filter((a) => a.enabled && !a.archived));
   const byRole = (role: string, fallbackId: string) => agents.find((a) => a.id === fallbackId)?.id ?? agents.find((a) => a.role.toLowerCase().includes(role))?.id ?? agents[0]?.id ?? "";
-  const [form, setForm] = useState({ topic: "", audience: "", goal: "" });
+  const projects = useTown((s) => s.snapshot!.projects.filter((p) => p.status === "active"));
+  const [form, setForm] = useState({ topic: "", audience: "", goal: "", projectId: "" });
   const [team, setTeam] = useState(() => ({ managerId: byRole("manager", "manager"), researcherId: byRole("research", "researcher"), copywriterId: byRole("writ", "copywriter") }));
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setBusy(true);
     try {
-      await api.startCampaign({ ...form, ...team });
+      const { projectId, ...rest } = form;
+      await api.startCampaign({ ...rest, ...team, ...(projectId ? { projectId } : {}) });
       push({ tone: "good", text: "Project started — watch Mabel write the brief!" });
       close(null);
       useTown.getState().requestOverview();
@@ -306,6 +323,19 @@ export function NewProject() {
           Goal
           <textarea rows={2} placeholder="e.g. Drive weekday afternoon visits" value={form.goal} maxLength={1000} onChange={(e) => setForm({ ...form, goal: e.target.value })} />
         </label>
+        {projects.length > 0 && (
+          <label>
+            Project (optional)
+            <select value={form.projectId} onChange={(e) => setForm({ ...form, projectId: e.target.value })}>
+              <option value="">— none —</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <fieldset>
           <legend>Team</legend>
           <div className="grid2">
@@ -346,7 +376,9 @@ export function Projects() {
   const [open, setOpen] = useState<string | null>(null);
   return (
     <Drawer side="left" title="Projects & deliverables" icon={theme.ui.icons.projects} onClose={() => close(null)} wide>
-      {!snap.workflows.length && <Empty>No projects yet. Start one with ✨ New project.</Empty>}
+      <OwnerProjects />
+      {snap.workflows.length > 0 && <h3>Campaigns</h3>}
+      {!snap.workflows.length && !snap.projects.length && <Empty>No projects yet. Create one above, or start a campaign with ✨ New project.</Empty>}
       {snap.workflows.map((w) => {
         const steps = snap.tasks.filter((t) => t.workflowId === w.id).reverse();
         const final = snap.tasks.find((t) => t.id === w.finalTaskId);
@@ -372,6 +404,73 @@ export function Projects() {
         );
       })}
     </Drawer>
+  );
+}
+
+/** The owner's own projects: a goal plus the tasks assigned within it. */
+function OwnerProjects() {
+  const snap = useTown((s) => s.snapshot)!;
+  const push = useTown((s) => s.pushToast);
+  const load = useTown((s) => s.load);
+  const [form, setForm] = useState({ title: "", goal: "" });
+  const [busy, setBusy] = useState(false);
+  const [openTask, setOpenTask] = useState<string | null>(null);
+  const create = async () => {
+    setBusy(true);
+    try {
+      await api.createProject({ title: form.title.trim(), goal: form.goal.trim() });
+      setForm({ title: "", goal: "" });
+      push({ tone: "good", text: "Project created — assign tasks to it from the Task board" });
+      await load();
+    } catch (e) {
+      push({ tone: "bad", text: errText(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const archive = async (id: string, status: "active" | "archived") => {
+    try {
+      await api.updateProject(id, { status });
+      await load();
+    } catch (e) {
+      push({ tone: "bad", text: errText(e) });
+    }
+  };
+  return (
+    <>
+      <details className="card composer">
+        <summary>➕ New project</summary>
+        <input placeholder="Project name, e.g. Spring launch" value={form.title} maxLength={80} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+        <textarea placeholder="Goal (shared with every villager working on it)" rows={2} maxLength={2000} value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} />
+        <button className="btn primary" disabled={busy || !form.title.trim()} onClick={create}>
+          Create project
+        </button>
+      </details>
+      {snap.projects.map((p) => {
+        const tasks = snap.tasks.filter((t) => t.projectId === p.id);
+        const done = tasks.filter((t) => t.status === "completed").length;
+        return (
+          <section key={p.id} className="card">
+            <div className="row between">
+              <h3>{p.title}</h3>
+              <span className="row gap-s">
+                <Badge tone={p.status === "active" ? "accent" : "muted"}>{p.status}</Badge>
+                <button className="btn ghost" onClick={() => archive(p.id, p.status === "active" ? "archived" : "active")}>
+                  {p.status === "active" ? "Archive" : "Restore"}
+                </button>
+              </span>
+            </div>
+            {p.goal && <p className="muted">{p.goal}</p>}
+            <small className="muted">
+              {done}/{tasks.length} tasks done · {timeAgo(p.createdAt)}
+            </small>
+            {tasks.map((t) => (
+              <TaskOutputCard key={t.id} task={t} open={openTask === t.id} onToggle={() => setOpenTask(openTask === t.id ? null : t.id)} />
+            ))}
+          </section>
+        );
+      })}
+    </>
   );
 }
 

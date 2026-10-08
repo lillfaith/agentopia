@@ -54,9 +54,62 @@ function Hud() {
   );
 }
 
+/** Sign in / create an account (multi-user server). */
+function Login() {
+  const load = useTown((s) => s.load);
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await (mode === "login" ? api.login({ email, password }) : api.signup({ email, password }));
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form className="panel gate-card" onSubmit={submit}>
+      <h1>🏡 Agentopia</h1>
+      <p>{mode === "login" ? "Welcome back! Your villagers kept working while you were away." : "Start your own village of AI helpers. Free 14-day trial, no card needed."}</p>
+      <input type="email" autoComplete="email" required placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <input
+        type="password"
+        autoComplete={mode === "login" ? "current-password" : "new-password"}
+        required
+        minLength={mode === "signup" ? 10 : 1}
+        placeholder={mode === "signup" ? "Password (at least 10 characters)" : "Password"}
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+      />
+      {error && <div className="error-box">{error}</div>}
+      <button className="btn primary full" disabled={busy}>
+        {mode === "login" ? "Enter my town" : "Create my town"}
+      </button>
+      <button type="button" className="btn ghost full" onClick={() => (setMode(mode === "login" ? "signup" : "login"), setError(null))}>
+        {mode === "login" ? "New here? Create an account" : "Already have a town? Sign in"}
+      </button>
+    </form>
+  );
+}
+
 function Gate({ error }: { error: string }) {
   const [token, setTok] = useState("");
   const load = useTown((s) => s.load);
+  if (/^Sign in required/.test(error)) {
+    return (
+      <div className="gate">
+        <Login />
+      </div>
+    );
+  }
   const needsToken = /401|Unauthorized/i.test(error);
   return (
     <div className="gate">

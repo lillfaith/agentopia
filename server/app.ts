@@ -5,7 +5,7 @@ import { seedTown } from "./agents/seed.js";
 import { AnthropicProvider } from "./llm/anthropic.js";
 import type { LLMProvider } from "./llm/provider.js";
 import { SimulatedProvider } from "./llm/simulated.js";
-import { TaskRunner } from "./engine/runner.js";
+import { TaskRunner, type RunnerOptions } from "./engine/runner.js";
 import { createApi } from "./api/routes.js";
 
 /** Pick the provider. Simulation is only ever used when explicitly enabled AND no key is set. */
@@ -35,6 +35,9 @@ export interface AppOptions {
   provider?: LLMProvider;
   startWorker?: boolean;
   timings?: { retryBaseMs?: number; statusDecayMs?: number };
+  runner?: Pick<RunnerOptions, "gate" | "hold">;
+  /** Mounted behind the SaaS account layer, which handles authentication and CSRF. */
+  embedded?: boolean;
 }
 
 export function createApp(config: Config, opts: AppOptions = {}) {
@@ -42,8 +45,8 @@ export function createApp(config: Config, opts: AppOptions = {}) {
   const store = new Store(db);
   seedTown(store, config.defaultModel);
   const provider = opts.provider ?? createProvider(config) ?? new UnconfiguredProvider();
-  const runner = new TaskRunner(store, provider, config, opts.timings);
-  const api = createApi({ config, store, runner });
+  const runner = new TaskRunner(store, provider, config, { ...opts.timings, ...opts.runner });
+  const api = createApi({ config, store, runner, embedded: opts.embedded });
   // API-only processes never run tasks or schedules; a separate worker process does.
   const startWorker = opts.startWorker ?? config.role !== "api";
   if (startWorker) runner.start();

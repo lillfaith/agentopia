@@ -26,6 +26,8 @@ export function buildSystemPrompt(agent: Agent, skillPrompts: string[] = []): st
 /** First user turn: the task brief plus outputs of completed dependencies. */
 export function buildBrief(store: Store, task: Task): string {
   const parts = [`# Task: ${task.title}`, "", task.instructions.trim()];
+  const project = task.projectId ? store.getProject(task.projectId) : null;
+  if (project) parts.push("", `(This task is part of the project “${project.title}”${project.goal.trim() ? `, whose goal is: ${project.goal.trim()}` : ""}.)`);
   const deps = task.dependsOn.map((id) => store.getTask(id)).filter((t): t is Task => !!t && t.status === "completed");
   if (deps.length) {
     parts.push("", "## Input from colleagues");

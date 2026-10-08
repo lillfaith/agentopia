@@ -132,6 +132,8 @@ export interface Task {
   simulated: boolean;
   /** Schedule that created this task, if any. */
   scheduleId: string | null;
+  /** Project this task belongs to, if any. */
+  projectId: string | null;
   /** Proof of execution, derived from recorded API usage. */
   execution: TaskExecution;
 }
@@ -158,6 +160,7 @@ export interface Workflow {
   status: "running" | "completed" | "failed" | "cancelled";
   finalTaskId: string | null;
   scheduleId: string | null;
+  projectId: string | null;
   createdAt: ISODate;
   completedAt: ISODate | null;
 }
@@ -446,8 +449,23 @@ export interface TownSettings {
   timezoneMode: "auto" | "manual";
 }
 
+// ───────────────────────── Projects ─────────────────────────
+
+export type ProjectStatus = "active" | "archived";
+
+/** A goal the owner is working towards; groups related tasks and workflows. */
+export interface Project {
+  id: string;
+  title: string;
+  goal: string;
+  status: ProjectStatus;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+}
+
 export interface TownSnapshot {
   settings: TownSettings;
+  projects: Project[];
   agents: Agent[];
   stats: AgentStats[];
   buildings: Building[];

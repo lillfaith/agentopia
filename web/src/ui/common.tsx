@@ -125,11 +125,20 @@ export function Drawer({ side, title, icon, onClose, children, wide }: { side: "
   );
 }
 
-export function AgentName({ id }: { id: string | null }) {
+/** `plain` renders a non-interactive name (for use inside another button). */
+export function AgentName({ id, plain }: { id: string | null; plain?: boolean }) {
   const agent = useTown((s) => s.snapshot?.agents.find((a) => a.id === id));
   const select = useTown((s) => s.selectAgent);
   if (!id) return <span className="muted">—</span>;
   if (!agent) return <span>{id}</span>;
+  if (plain) {
+    return (
+      <span className="agent-link">
+        <span className="avatar-dot" style={{ background: agent.appearance.bodyColor }} />
+        {agent.name}
+      </span>
+    );
+  }
   return (
     <button className="link agent-link" onClick={() => select(agent.id)}>
       <span className="avatar-dot" style={{ background: agent.appearance.bodyColor }} />

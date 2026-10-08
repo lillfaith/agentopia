@@ -1,4 +1,4 @@
-import type { Agent, Building, Schedule, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
+import type { Agent, Building, Project, Schedule, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
 
 import { DemoError, demoCall, demoSubscribe } from "../demo/demoServer";
 
@@ -69,6 +69,19 @@ const post = <T>(path: string, body: unknown) => call<T>(path, { method: "POST",
 const patch = <T>(path: string, body: unknown) => call<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 const del = <T>(path: string) => call<T>(path, { method: "DELETE" });
 
+/** The signed-in account (SaaS mode). Plan limits are decided by the server. */
+export interface AccountInfo {
+  user: { id: string; email: string; createdAt: string };
+  plan: {
+    id: string;
+    label: string;
+    canRun: boolean;
+    reason: string | null;
+    trialEndsAt: string | null;
+    limits: { dailyUsd: number; monthlyUsd: number; perTaskUsd: number; concurrency: number; models: string[] };
+  };
+}
+
 export type NewAgent = Pick<Agent, "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "skills" | "avatar" | "buildingId" | "model" | "effort" | "dailyBudgetUsd">;
 export type NewSchedule = Pick<Schedule, "name" | "cadence" | "timezone" | "target" | "overlap" | "enabled">;
 
@@ -78,10 +91,16 @@ export const api = {
   agentDetail: (id: string) => call<{ agent: Agent; tasks: Task[]; events: TownEvent[] }>(`/api/agents/${id}`),
   updateAgent: (id: string, body: Partial<Agent>) => patch<Agent>(`/api/agents/${id}`, body),
   taskDetail: (id: string) => call<{ task: Task; events: TownEvent[] }>(`/api/tasks/${id}`),
-  createTask: (body: { agentId: string; title: string; instructions: string; priority: number; dependsOn?: string[] }) => post<Task>("/api/tasks", body),
+  me: () => call<AccountInfo>("/api/auth/me"),
+  signup: (body: { email: string; password: string }) => post<AccountInfo>("/api/auth/signup", body),
+  login: (body: { email: string; password: string }) => post<AccountInfo>("/api/auth/login", body),
+  logout: () => post<{ ok: true }>("/api/auth/logout", {}),
+  createProject: (body: { title: string; goal: string }) => post<Project>("/api/projects", body),
+  updateProject: (id: string, body: Partial<Pick<Project, "title" | "goal" | "status">>) => patch<Project>(`/api/projects/${id}`, body),
+  createTask: (body: { agentId: string; title: string; instructions: string; priority: number; dependsOn?: string[]; projectId?: string | null }) => post<Task>("/api/tasks", body),
   cancelTask: (id: string) => post<{ ok: true }>(`/api/tasks/${id}/cancel`, {}),
   retryTask: (id: string) => post<{ ok: true }>(`/api/tasks/${id}/retry`, {}),
-  startCampaign: (body: { topic: string; audience?: string; goal?: string; managerId?: string; researcherId?: string; copywriterId?: string }) => post<Workflow>("/api/workflows/campaign", body),
+  startCampaign: (body: { topic: string; audience?: string; goal?: string; managerId?: string; researcherId?: string; copywriterId?: string; projectId?: string }) => post<Workflow>("/api/workflows/campaign", body),
   hireAgent: (body: NewAgent) => post<Agent>("/api/agents", body),
   archiveAgent: (id: string) => del<{ ok: true }>(`/api/agents/${id}`),
   restoreAgent: (id: string) => post<Agent>(`/api/agents/${id}/restore`, {}),

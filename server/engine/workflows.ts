@@ -11,6 +11,8 @@ export const campaignInput = z.object({
   managerId: z.string().optional(),
   researcherId: z.string().optional(),
   copywriterId: z.string().optional(),
+  /** Project the campaign belongs to (must exist and be active). */
+  projectId: z.string().optional(),
 });
 export type CampaignInput = z.infer<typeof campaignInput>;
 
@@ -31,6 +33,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, override?: { m
     const a = store.getAgent(id);
     if (!a || !a.enabled || a.archived) throw new Error(`The ${role} role needs an active villager (got "${id}")`);
   }
+  if (input.projectId && store.getProject(input.projectId)?.status !== "active") throw new Error("Unknown or archived project");
   const context = [
     `Topic / product: ${input.topic}`,
     input.audience ? `Target audience: ${input.audience}` : null,
@@ -46,6 +49,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, override?: { m
     input: { topic: input.topic, audience: input.audience, goal: input.goal },
     finalTaskId: null,
     scheduleId,
+    projectId: input.projectId ?? null,
   });
 
   const brief = store.createTask({
@@ -54,6 +58,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, override?: { m
     createdBy: "user",
     workflowId: wf.id,
     scheduleId,
+    projectId: input.projectId ?? null,
     priority: 2,
     instructions: [
       context,
@@ -71,6 +76,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, override?: { m
     createdBy: ids.manager,
     workflowId: wf.id,
     scheduleId,
+    projectId: input.projectId ?? null,
     priority: 2,
     dependsOn: [brief.id],
     parentTaskId: brief.id,
@@ -88,6 +94,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, override?: { m
     createdBy: ids.manager,
     workflowId: wf.id,
     scheduleId,
+    projectId: input.projectId ?? null,
     priority: 2,
     dependsOn: [brief.id, research.id],
     parentTaskId: research.id,
@@ -105,6 +112,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, override?: { m
     createdBy: ids.manager,
     workflowId: wf.id,
     scheduleId,
+    projectId: input.projectId ?? null,
     priority: 2,
     dependsOn: [research.id, copy.id],
     parentTaskId: copy.id,
