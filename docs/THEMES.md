@@ -38,12 +38,14 @@ export const myTheme: ThemeManifest = {
     slots: { north: {...}, west: {...}, east: {...} }, // position, rotation, door, idleSpots
     slotLabels: { north: "North plaza", … },           // shown when users build departments
     fallbackSlot: (i) => ({...}),                       // for buildings in unknown slots
-    buildNav: (occupiedSlots) => ({ nodes, edges }),    // walk graph for the plots in use
+    buildNav: (occupiedSlots) => ({ nodes, edges, hangouts }), // walk graph for the plots in use;
+                                                        // hangouts = decorative idle destinations
     buildingStyles: [{ kind: "workshop", label: "Workshop", icon: "⚙️", description: "…" }, …],
     lightingKeyframes: [{ hour: 6.1, preset }, …],      // interpolated continuously; sun position is computed
     camera: { fov, overviewPosition, overviewTarget, minDistance, maxDistance, minPolar, maxPolar },
     walkSpeed: 2.6,
     labelHeight: 2.7,
+    renderer: { toneMapping: "neutral", exposure: 1, fog: [95, 240] }, // optional look settings
   },
   components: { Environment, Building, Character, Weather /* optional */ },
   audio: { playSfx: (id, audioContext) => {…}, ambientUrl: null },
@@ -66,6 +68,31 @@ It then appears in **Settings → Theme**. The choice is saved server-side in `s
    item ids (from future packs) will appear. Draw a tasteful fallback, and offer enough plots (the pastel theme has 11 plus a spiral fallback).
 4. **Keep it light.** Use instancing for repeated decoration; avoid more than a handful of real-time lights.
 5. **Accessibility.** UI CSS variables must keep text readable (WCAG AA contrast on panels).
+
+## How Pastel Village is built (a template for packs)
+
+The default theme is organised so its pieces can ship separately later (environment, buildings,
+characters, wearables):
+
+| File | Role |
+|---|---|
+| `layout.ts` | Pure data: plots, island outline, landmarks (pier, field, picnic, pond, garden), winding paths that steer around every plot, the walk graph, lighting keyframes |
+| `composition.ts` | Pure placement of scenery in zones (plaza ring, forest belt, groves, beach, field). Everything yields to plots and paths. Unit-tested |
+| `architecture.ts` | Building kit (walls, half-timbering, tiled roofs, windows with shutters and flower boxes, doors, lanterns, fenced yards). Parts are merged into one mesh per material |
+| `Buildings.tsx` | One model per building kind plus a cottage for unknown kinds; animated details (dome, gears, quill, smoke) stay separate |
+| `terrain.tsx`, `plaza.tsx`, `flora.tsx`, `shore.tsx`, `garden.tsx` | Rendering of the island, square, plants, pier and picnic, pond and kitchen garden, mostly instanced |
+| `textures.ts` | Procedural canvas textures (no image files) |
+| `Character.tsx`, `wearables.tsx` | Villager rig and the core cosmetic pack |
+
+**Custom departments.** A building on any plot gets a fenced yard, a painted sign with its name and a
+path that bends around other plots. Buildings whose slot the theme doesn't know (for example, created
+under another theme) get spare plots that never overlap designed ones (`FALLBACK_SPOTS`).
+
+**Performance budget.** The full town with every plot built is about 600 draw calls and 500k triangles
+including the shadow pass. Repeated scenery is instanced, buildings are merged per material, only two
+real point lights exist (lamps use additive light pools), and `PerformanceMonitor` lowers the pixel
+ratio on slower GPUs. Open the app with `?stats` to read live counters from `window.__agentopiaStats`,
+and `?cam=x,y,z,tx,ty,tz` to open on a fixed viewpoint.
 
 ## Phase 3 (planned)
 

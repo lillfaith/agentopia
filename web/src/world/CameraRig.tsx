@@ -19,6 +19,13 @@ export function CameraRig({ theme }: { theme: ThemeManifest }) {
 
   useEffect(() => {
     camera.position.set(...cam.overviewPosition);
+    // `?cam=x,y,z,tx,ty,tz` opens on a specific viewpoint (screenshots, sharing a view).
+    const v = new URLSearchParams(window.location.search).get("cam")?.split(",").map(Number);
+    if (v && v.length === 6 && v.every(Number.isFinite)) {
+      camera.position.set(v[0], v[1], v[2]);
+      const t = setTimeout(() => controls.current?.target.set(v[3], v[4], v[5]), 0);
+      return () => clearTimeout(t);
+    }
   }, [camera, cam]);
 
   useEffect(() => {

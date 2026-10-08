@@ -10,9 +10,9 @@ import { PastelWeather } from "./Weather";
 export const pastelVillage: ThemeManifest = {
   id: "pastel-village",
   name: "Pastel Village",
-  version: "1.0.0",
+  version: "1.1.0",
   author: "Agentopia",
-  description: "A cosy candy-coloured island village with mushroom trees, a rainbow path and round little villagers.",
+  description: "A cosy pastel island village: a flagstone square, winding cobble lanes, timber cottages, a hyacinth field, a beach and a lantern-lit pier.",
   ui: {
     cssVars: {
       "--font": "'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif",
@@ -62,17 +62,19 @@ export const pastelVillage: ThemeManifest = {
     fallbackSlot,
     buildNav,
     buildingStyles: [
-      { kind: "hq", label: "Town Hall", icon: "🏰", description: "Turrets, a clock and a pennant — for management." },
-      { kind: "research", label: "Observatory", icon: "🔭", description: "A domed tower with a rotating telescope." },
-      { kind: "studio", label: "Cottage studio", icon: "🪶", description: "A gabled cottage with a giant quill and inkpot." },
-      { kind: "workshop", label: "Workshop", icon: "⚙️", description: "A tinkerer's workshop with spinning gears — for engineering." },
-      { kind: "atelier", label: "Glass atelier", icon: "🎨", description: "A bright greenhouse studio with an easel — for design." },
+      { kind: "hq", label: "Town Hall", icon: "🏰", description: "Timber-framed hall with towers, a clock gable and a task board — for management." },
+      { kind: "research", label: "Observatory", icon: "🔭", description: "Stone tower, balcony and turning dome, with a telescope and globe in the yard." },
+      { kind: "studio", label: "Cottage studio", icon: "🪶", description: "Half-timbered cottage with posters, a typewriter desk and a giant quill." },
+      { kind: "workshop", label: "Workshop", icon: "⚙️", description: "Brick workshop with a barn door, gears, crates and a workbench prototype — for engineering." },
+      { kind: "atelier", label: "Glass atelier", icon: "🎨", description: "Greenhouse studio with an easel, paint pots and potted flowers — for design." },
       { kind: "lab", label: "Crystal lab", icon: "🧊", description: "A crystal dome with orbiting rings — for 3D and experiments." },
     ],
     lightingKeyframes: LIGHTING_KEYFRAMES,
     camera: CAMERA,
     walkSpeed: 2.6,
     labelHeight: 2.7,
+    // Neutral tone mapping keeps pastel hues true instead of ACES' washed-out highlights.
+    renderer: { toneMapping: "neutral", exposure: 1.0, fog: [95, 240] },
   },
   components: {
     Environment: PastelEnvironment,

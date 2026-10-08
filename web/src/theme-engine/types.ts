@@ -46,6 +46,8 @@ export interface NavGraph {
   /** Waypoints on walkable paths (x, z). */
   nodes: Record<string, [number, number]>;
   edges: [string, string][];
+  /** Optional spots idle villagers like to visit (benches, a pier, a picnic). Decorative only. */
+  hangouts?: [number, number][];
 }
 
 /**
@@ -157,6 +159,8 @@ export interface ThemeManifest {
     walkSpeed: number;
     /** Height of floating labels above an agent's feet. */
     labelHeight: number;
+    /** Optional renderer look. Defaults: ACES tone mapping, exposure 1, fog 70–190. */
+    renderer?: { toneMapping?: "aces" | "neutral" | "agx"; exposure?: number; fog?: [near: number, far: number] };
   };
 
   components: {

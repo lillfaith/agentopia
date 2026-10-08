@@ -134,7 +134,11 @@ export function AgentActor({ agent, index, theme, nav, slotForBuilding, night }:
           const friend = agents.find((o) => o.id !== agent.id && o.status === "idle" && o.enabled && !o.archived && Math.random() < 0.5);
           const fp = friend ? agentPositions.get(friend.id) : undefined;
           if (fp && r < 0.3) idleGoal.current = [fp.x + 1.1, fp.z + 0.5];
-          else idleGoal.current = r < 0.5 ? nav.nodes[`r${Math.floor(Math.random() * 12)}`] ?? spots[0] : spots[Math.floor(Math.random() * spots.length)];
+          else {
+            // Wander to one of the theme's hangouts (benches, a pier, a picnic…) or stay near home.
+            const hangouts = nav.hangouts?.length ? nav.hangouts : Object.values(nav.nodes);
+            idleGoal.current = r < 0.5 ? hangouts[Math.floor(Math.random() * hangouts.length)] : spots[Math.floor(Math.random() * spots.length)];
+          }
           wantsRest.current = Math.random() < 0.35;
           idleUntil.current = now + 7000 + Math.random() * 9000;
         }

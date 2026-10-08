@@ -19,13 +19,31 @@ export function TownClock() {
   const [open, setOpen] = useState(false);
   const realPhase = phaseForHour(env.realHour);
   return (
-    <div className="town-clock">
-      <button className="clock-face" onClick={() => setOpen(!open)} title={`Town time in ${env.timezone}. Click for lighting options.`}>
-        <span className="clock-icon">{PHASE_ICON[env.phase]}</span>
-        <b>{formatClock(env.realHour)}</b>
-        <span className="clock-phase">{PHASE_LABEL[realPhase]}</span>
-        {env.isOverride && <span className="clock-override">lighting: {PHASE_LABEL[env.phase]}</span>}
-      </button>
+    <div className={`town-clock ${env.isOverride ? "is-preview" : "is-live"}`}>
+      {env.isOverride ? (
+        <>
+          <button className="clock-face preview" onClick={() => setOpen(!open)} title="The town is showing a lighting preview. Real time and schedules are unaffected.">
+            <span className="clock-badge preview-badge">👁 Preview</span>
+            <span className="clock-icon">{PHASE_ICON[env.phase]}</span>
+            <b>{PHASE_LABEL[env.phase]}</b>
+            <span className="clock-real">
+              real time {formatClock(env.realHour)} · {PHASE_LABEL[realPhase]}
+            </span>
+          </button>
+          <button className="clock-live-btn" onClick={() => setOverride(null)} title="Return to real-time lighting">
+            ↺ Live
+          </button>
+        </>
+      ) : (
+        <button className="clock-face live" onClick={() => setOpen(!open)} title={`Real local time in ${env.timezone}. Click to preview other lighting.`}>
+          <span className="clock-badge live-badge">
+            <span className="live-dot" /> Real time
+          </span>
+          <span className="clock-icon">{PHASE_ICON[realPhase]}</span>
+          <b>{formatClock(env.realHour)}</b>
+          <span className="clock-phase">{PHASE_LABEL[realPhase]}</span>
+        </button>
+      )}
       {open && (
         <div className="popover clock-pop">
           <div className="pop-title">Town lighting</div>

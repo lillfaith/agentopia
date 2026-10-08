@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useMemo, useState } from "react";
 import { Canvas } from "@react-three/fiber";
+import * as THREE from "three";
 import type { Building } from "../../../shared/types";
 import type { SlotLayout, ThemeManifest } from "../theme-engine/types";
 import { useTown } from "../state/store";
@@ -7,6 +8,8 @@ import { AgentActor } from "./AgentActor";
 import { CameraRig } from "./CameraRig";
 import { useEnvironment } from "../environment/useEnvironment";
 import { WorldLabel } from "./WorldLabel";
+import { PerformanceMonitor } from "@react-three/drei";
+import { RenderStats } from "./RenderStats";
 
 function BuildingNode({ building, layout, theme, glow }: { building: Building; layout: SlotLayout; theme: ThemeManifest; glow: number }) {
   const [hovered, setHovered] = useState(false);
@@ -55,36 +58,51 @@ export function World({ theme }: { theme: ThemeManifest }) {
   const agents = snapshot?.agents ?? [];
 
   // Data → layout: each building's slot id is mapped to a position by the active theme.
+  // Keyed by ids and slots only, so routine snapshot refreshes don't rebuild the town's scenery.
+  const plotKey = buildings.map((b) => `${b.id}@${b.slot}`).join("|");
   const layouts = useMemo(() => {
     const map = new Map<string, SlotLayout>();
-    buildings.forEach((b, i) => map.set(b.id, theme.world.slots[b.slot] ?? theme.world.fallbackSlot(i)));
+    // Buildings whose slot this theme doesn't define get the theme's spare plots, in order.
+    let spare = 0;
+    for (const entry of plotKey ? plotKey.split("|") : []) {
+      const [id, slot] = entry.split("@");
+      map.set(id, theme.world.slots[slot] ?? theme.world.fallbackSlot(spare++));
+    }
     return map;
-  }, [buildings, theme]);
+  }, [plotKey, theme]);
   const occupied = useMemo(() => {
     const o: Record<string, SlotLayout> = {};
-    for (const b of buildings) {
-      const l = layouts.get(b.id);
-      if (l) o[b.slot] = l;
+    for (const entry of plotKey ? plotKey.split("|") : []) {
+      const [id, slot] = entry.split("@");
+      const l = layouts.get(id);
+      if (l) o[slot] = l;
     }
     return o;
-  }, [buildings, layouts]);
+  }, [plotKey, layouts]);
   const slotForBuilding = useCallback((id: string) => layouts.get(id), [layouts]);
   const nav = useMemo(() => theme.world.buildNav(occupied), [theme, occupied]);
 
+  const [dpr, setDpr] = useState(() => Math.min(1.75, window.devicePixelRatio || 1));
   const lighting = env.lighting;
+  const look = theme.world.renderer ?? {};
+  const toneMapping = look.toneMapping === "neutral" ? THREE.NeutralToneMapping : look.toneMapping === "agx" ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
+  const [fogNear, fogFar] = look.fog ?? [70, 190];
   const Environment = theme.components.Environment;
   const Weather = theme.components.Weather;
   const agentIndex = new Map<string, number>();
 
   return (
     <Canvas
-      shadows
-      dpr={[1, 2]}
+      shadows="percentage"
+      dpr={dpr}
       camera={{ fov: theme.world.camera.fov, near: 0.5, far: 500, position: theme.world.camera.overviewPosition }}
       onPointerMissed={() => clearSelection(null)}
-      gl={{ antialias: true }}
+      gl={{ antialias: true, toneMapping, toneMappingExposure: look.exposure ?? 1, powerPreference: "high-performance" }}
     >
-      <fog attach="fog" args={[lighting.fog, 70, 190]} />
+      <fog attach="fog" args={[lighting.fog, fogNear, fogFar]} />
+      {/* Drops resolution on slower GPUs (e.g. a MacBook Air) to keep the frame rate smooth. */}
+      <PerformanceMonitor onDecline={() => setDpr(1)} onIncline={() => setDpr(Math.min(1.75, window.devicePixelRatio))} flipflops={3} onFallback={() => setDpr(1)} />
+      <RenderStats />
       <Suspense fallback={null}>
         <Environment env={env} slots={occupied} />
         {Weather && <Weather env={env} />}

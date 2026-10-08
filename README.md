@@ -7,10 +7,10 @@ villager is a working agent with its own system prompt, model, skills, task queu
 cost ledger. When the Manager hands research to the Researcher, you watch her walk the brief across
 town. That walk happens because the hand-off happened in the database. Nothing on screen is faked progress.
 
-![The village by day: Mabel, Pip and Quill handing work to each other](docs/images/village-handoff.jpg)
-![Night: Quill waits for approval before publishing](docs/images/night-approval.jpg)
+![The village by day: flagstone square, cobble lanes, timber cottages, hyacinth field, beach and pier](docs/images/town-day.jpg)
+![The same town at night: lit windows, lanterns and fairy lights on the pier](docs/images/town-night.jpg)
 
-<sub>Screenshots from the offline simulation mode (hence the banner). With an API key, the same flows run on Claude.</sub>
+<sub>Screenshots from the offline simulation mode (hence the banner), with every building plot in use. With an API key, the same flows run on Claude. The sky follows your real local time; the clock's preview menu shows other times of day.</sub>
 
 > **Status: v0.2 (Phase 2: Autonomy).** Schedules, 24/7 workers, strict budgets, hiring, custom
 > departments and modular skills. **The live Claude API path has not yet been verified against a real key.**
@@ -49,7 +49,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 | `npm run start:api` / `npm run start:worker` | Run the HTTP API and the background worker as separate processes |
 | `npm run verify:live` | Real, budget-capped checks of every Claude capability plus an end-to-end agent task |
 | `npm run backup` | Consistent online backup of the database |
-| `npm test` / `npm run typecheck` | 82 automated tests / TypeScript across server, client, scripts and tests |
+| `npm test` / `npm run typecheck` | 97 automated tests / TypeScript across server, client, scripts and tests |
 
 ---
 
