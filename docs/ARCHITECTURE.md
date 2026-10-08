@@ -163,9 +163,24 @@ The world asks the theme where each building **slot** is (`north`, `west`, `east
 each building **kind** (`hq`, `research`, `studio`, or a generic fallback). Agents keep their data; only
 the look changes.
 
-## 5. Path to 24/7 cloud operation
+## 5. Phase 2 additions
 
-Already in place: the DB-backed queue with leases, heartbeats, recovery and `BEGIN IMMEDIATE` claims; no
-browser dependency; graceful shutdown; bearer-token auth and a refusal to bind publicly without it.
-Phase 2 adds a separate `worker` entrypoint, Postgres behind `Store`, a scheduler for recurring tasks, and
-per-agent spending policies. See [ROADMAP.md](ROADMAP.md).
+- **Skills** (`server/skills/`): `capabilitiesFor(agent)` turns an agent's skill ids into local tools, hosted
+  tools and stable prompt guidance. When the coding skill is combined with web research, the provider
+  switches to the basic web-tool versions so the model sees a single code sandbox.
+- **Scheduler** (`server/engine/scheduler.ts`): pure, dependency-free timezone math (`Intl`) and a
+  `tick()` that runs inside the worker's poll. Due occurrences are claimed by compare-and-set on `next_run_at`.
+- **Budgets** (`server/engine/budget.ts`): `preflight()` before every call. Global holds stop claiming,
+  per-agent holds exclude those agents from claims, and the executor returns `budget_hold`, which the
+  runner turns into a delayed re-queue.
+- **Roles and cross-process operation**: `AGENTOPIA_ROLE` decides whether a process serves HTTP, runs the
+  worker, or both. SSE tails the `events` table. Cancellation is a database state that the worker's lease
+  heartbeat notices. `workers` holds heartbeats; `tool_runs` makes local tool calls exactly-once.
+- **Proof of execution**: `usage.request_id` / `requested_model`. `Task.execution` is derived from usage rows.
+- **Verification** (`server/engine/verify.ts`): live checks shared by the API's connection test and `scripts/verify-live.ts`.
+
+## 6. Path to multi-host cloud operation
+
+Single-host 24/7 operation is in place (see [DEPLOYMENT.md](DEPLOYMENT.md)). Going multi-host requires
+a Postgres implementation of `Store` (the claim, compare-and-set and tail queries map directly onto it) and
+moving SSE tailing to `LISTEN/NOTIFY`. See [ROADMAP.md](ROADMAP.md).

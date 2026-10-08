@@ -13,16 +13,24 @@
 - Modular theme engine with one original theme
 - Test suite (engine, approvals, permissions, failures, API security, provider request shape)
 
-## Phase 2: Autonomy
-- Separate `worker` process entrypoint; horizontal workers on one database
-- Postgres implementation of `Store` for cloud deployments; Docker image
-- Recurring schedules (daily / weekly / cron) with a scheduler and missed-run policy
-- Per-agent and per-workflow spending limits; budget alerts
-- Configurable permission policies per tool and agent; approval expiry and escalation
-- Idempotency keys for side-effecting tools; stronger recovery semantics
-- Real integrations behind approvals (email, social/blog publishing, calendars, docs)
-- More workflow templates and a visual workflow builder; agent create/delete from the UI
-- Notifications outside the browser (email / push)
+## ✅ Phase 2: Autonomy (v0.2, see [PHASE2.md](PHASE2.md))
+- Separate API / worker processes with heartbeats, readiness, cross-process events and cancellation
+- Docker image + two-container Compose with auto-restart; online backups
+- Recurring schedules (interval / daily / weekly, timezones, DST-safe, exactly-once, catch-up once)
+- Strict budgets: daily / monthly / per-task ceilings + owner limits + per-villager caps, worst case reserved before each call
+- Exactly-once local tool runs across crashes
+- Proof of execution (request ids, LIVE badges), connection test, `npm run verify:live`
+- Hire / archive / restore villagers from templates; custom departments and buildings with new styles
+- Modular skills: research, writing, delegation, coding sandbox; publishing/email placeholders; image & 3D slots
+
+## Phase 2.5: Hardening (next)
+- Run `verify:live` against a real key and fix anything it finds
+- Real integrations behind approvals (email, social/blog publishing), one skill module each
+- First media skill (image generation) with one provider
+- Notifications outside the browser (email / push) for approvals, failures and budget holds
+- Configurable permission policies per skill; approval expiry and escalation
+- More workflow templates and a visual workflow builder
+- Postgres implementation of `Store` for multi-host deployments
 
 ## Phase 3: Productization
 - One-command installer / desktop bundle; first-run setup wizard (keys, town name, agents)
