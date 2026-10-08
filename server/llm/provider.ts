@@ -16,7 +16,7 @@ export interface ToolSpec {
 }
 
 /** Provider-hosted tools (executed on the provider's infrastructure). */
-export type HostedTool = "web_search";
+export type HostedTool = "web_search" | "web_fetch" | "code_execution";
 
 export interface GenerateRequest {
   model: string;
@@ -50,6 +50,8 @@ export interface GenerateResult {
   refusal: { category: string | null; explanation: string | null } | null;
   /** Human-readable notes on hosted-tool activity, e.g. web searches run. */
   hostedActivity: string[];
+  /** Provider request id (Anthropic `request-id` header). null for the simulator. */
+  requestId: string | null;
 }
 
 export interface ToolResult {

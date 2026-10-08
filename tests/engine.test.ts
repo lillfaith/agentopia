@@ -124,7 +124,7 @@ describe("tool permissions", () => {
     expect(h.store.getTask(task.id)?.status).toBe("completed");
     // Only authorised tools are offered to the model at all.
     expect(provider.calls[0].tools.map((t) => t.name)).toEqual([]);
-    expect(provider.calls[0].hostedTools).toEqual(["web_search"]);
+    expect(provider.calls[0].hostedTools).toEqual(["web_search", "web_fetch"]);
   });
 
   it("lets the Manager delegate, with a depth limit", async () => {
@@ -183,18 +183,18 @@ describe("failure handling", () => {
     expect(provider.calls).toHaveLength(1);
   });
 
-  it("enforces the daily budget before calling the model", async () => {
+  it("pauses (does not fail) queued work when the daily budget is spent, without calling the model", async () => {
     const provider = new ScriptedProvider([say("should not run")]);
     const h = harness(provider, { dailyBudgetUsd: 1 });
     h.store.recordUsage({
       agentId: "manager", taskId: null, model: "claude-opus-5-5", inputTokens: 0, outputTokens: 0,
-      cacheReadTokens: 0, cacheWriteTokens: 0, webSearchRequests: 0, costUsd: 1.5, simulated: false,
+      cacheReadTokens: 0, cacheWriteTokens: 0, webSearchRequests: 0, webFetchRequests: 0, codeExecutions: 0, costUsd: 1.5, simulated: false, requestId: "req_x", requestedModel: null,
     });
     const task = h.store.createTask({ agentId: "manager", title: "T", instructions: "x", createdBy: "user" });
     await h.runner.drain();
     expect(provider.calls).toHaveLength(0);
-    expect(h.store.getTask(task.id)?.status).toBe("failed");
-    expect(h.store.getTask(task.id)?.lastError).toContain("Daily budget");
+    expect(h.store.getTask(task.id)?.status).toBe("queued");
+    expect(h.store.listEvents({ limit: 50 }).some((e) => e.type === "budget.hold")).toBe(true);
   });
 
   it("re-queues tasks whose worker lease expired (crash recovery)", () => {

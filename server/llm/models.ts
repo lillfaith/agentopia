@@ -86,6 +86,10 @@ export interface TokenUsage {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   webSearchRequests: number;
+  /** Web fetch has no per-request fee (tokens only); counted for visibility. */
+  webFetchRequests?: number;
+  /** Hosted code-execution tool uses; sandbox time is billed by Anthropic per container-hour and not estimated here. */
+  codeExecutions?: number;
 }
 
 export function estimateCostUsd(modelId: string, u: TokenUsage): number {
@@ -105,5 +109,6 @@ export function estimateCostUsd(modelId: string, u: TokenUsage): number {
 }
 
 export const PRICING_NOTE =
-  "Costs are estimates from list prices in server/llm/models.ts (incl. $10 per 1,000 web searches). " +
+  "Costs are estimates from list prices in server/llm/models.ts (incl. $10 per 1,000 web searches; web fetch has no extra fee). " +
+  "Code-execution sandbox time ($0.05/container-hour after 1,550 free hours/month, free alongside web tools) is not estimated. " +
   "Reconcile against your Anthropic invoice; batch discounts, regional pricing and fallback re-pricing are not modelled.";

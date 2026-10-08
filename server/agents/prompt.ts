@@ -5,7 +5,7 @@ import type { Store } from "../db/store.js";
  * Full system prompt for an agent. Kept byte-stable for a given agent config
  * (no timestamps or ids) so the provider can serve it from the prompt cache.
  */
-export function buildSystemPrompt(agent: Agent): string {
+export function buildSystemPrompt(agent: Agent, skillPrompts: string[] = []): string {
   const lines = [
     agent.systemPrompt.trim(),
     "",
@@ -13,6 +13,7 @@ export function buildSystemPrompt(agent: Agent): string {
   ];
   if (agent.personality.trim()) lines.push(`Personality: ${agent.personality.trim()}`);
   if (agent.responsibilities.length) lines.push(`Responsibilities: ${agent.responsibilities.join("; ")}.`);
+  if (skillPrompts.length) lines.push("", "Your skills:", ...skillPrompts.map((p) => `- ${p}`));
   lines.push(
     "",
     "You work inside Agentopia, a town of AI colleagues. Your final message is saved as the task's output and may be passed to colleagues or the human owner, so make it complete and self-contained.",

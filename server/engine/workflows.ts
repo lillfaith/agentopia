@@ -7,6 +7,10 @@ export const campaignInput = z.object({
   topic: z.string().trim().min(3).max(500),
   audience: z.string().trim().max(500).optional().default(""),
   goal: z.string().trim().max(1000).optional().default(""),
+  /** Which villagers fill each role (defaults: the seeded Manager, Researcher and Copywriter). */
+  managerId: z.string().optional(),
+  researcherId: z.string().optional(),
+  copywriterId: z.string().optional(),
 });
 export type CampaignInput = z.infer<typeof campaignInput>;
 
@@ -16,10 +20,16 @@ export type CampaignInput = z.infer<typeof campaignInput>;
  *   Manager writes the brief → Researcher researches → Copywriter writes → Manager reviews.
  * The final task's output is the deliverable shown in the dashboard.
  */
-export function startCampaignWorkflow(store: Store, raw: unknown, ids = { manager: "manager", researcher: "researcher", copywriter: "copywriter" }): Workflow {
+export function startCampaignWorkflow(store: Store, raw: unknown, override?: { manager: string; researcher: string; copywriter: string }, scheduleId: string | null = null): Workflow {
   const input = campaignInput.parse(raw);
-  for (const id of Object.values(ids)) {
-    if (!store.getAgent(id)?.enabled) throw new Error(`Workflow needs an enabled agent with id "${id}"`);
+  const ids = override ?? {
+    manager: input.managerId ?? "manager",
+    researcher: input.researcherId ?? "researcher",
+    copywriter: input.copywriterId ?? "copywriter",
+  };
+  for (const [role, id] of Object.entries(ids)) {
+    const a = store.getAgent(id);
+    if (!a || !a.enabled || a.archived) throw new Error(`The ${role} role needs an active villager (got "${id}")`);
   }
   const context = [
     `Topic / product: ${input.topic}`,
@@ -35,6 +45,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, ids = { manage
     title: `Campaign: ${input.topic.slice(0, 80)}`,
     input: { topic: input.topic, audience: input.audience, goal: input.goal },
     finalTaskId: null,
+    scheduleId,
   });
 
   const brief = store.createTask({
@@ -42,6 +53,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, ids = { manage
     agentId: ids.manager,
     createdBy: "user",
     workflowId: wf.id,
+    scheduleId,
     priority: 2,
     instructions: [
       context,
@@ -58,6 +70,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, ids = { manage
     agentId: ids.researcher,
     createdBy: ids.manager,
     workflowId: wf.id,
+    scheduleId,
     priority: 2,
     dependsOn: [brief.id],
     parentTaskId: brief.id,
@@ -74,6 +87,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, ids = { manage
     agentId: ids.copywriter,
     createdBy: ids.manager,
     workflowId: wf.id,
+    scheduleId,
     priority: 2,
     dependsOn: [brief.id, research.id],
     parentTaskId: research.id,
@@ -90,6 +104,7 @@ export function startCampaignWorkflow(store: Store, raw: unknown, ids = { manage
     agentId: ids.manager,
     createdBy: ids.manager,
     workflowId: wf.id,
+    scheduleId,
     priority: 2,
     dependsOn: [research.id, copy.id],
     parentTaskId: copy.id,

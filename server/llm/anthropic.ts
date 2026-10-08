@@ -51,13 +51,7 @@ export class AnthropicProvider implements LLMProvider {
       input_schema: t.inputSchema as Anthropic.Beta.Messages.BetaTool.InputSchema,
       eager_input_streaming: true,
     }));
-    if (req.hostedTools.includes("web_search")) {
-      tools.push(
-        spec.supportsWebSearch
-          ? { type: "web_search_20260209", name: "web_search", max_uses: 5 }
-          : { type: "web_search_20250305", name: "web_search", max_uses: 5 },
-      );
-    }
+    tools.push(...hostedToolDefinitions(req.hostedTools, spec.supportsWebSearch));
 
     const useFallback = this.refusalFallback === "default" && spec.supportsServerFallback;
     const params: BetaParams = {
@@ -73,9 +67,11 @@ export class AnthropicProvider implements LLMProvider {
     };
 
     let message: Anthropic.Beta.Messages.BetaMessage;
+    let requestId: string | null = null;
     try {
       const stream = this.client.beta.messages.stream(params, { signal: req.signal });
       message = await stream.finalMessage();
+      requestId = stream.request_id ?? null;
     } catch (err) {
       throw mapError(err);
     }
@@ -91,10 +87,22 @@ export class AnthropicProvider implements LLMProvider {
       .map((b) => ({ id: b.id, name: b.name, input: b.input }));
 
     const hostedActivity: string[] = [];
+    let codeExecutions = 0;
+    let webFetches = 0;
     for (const b of message.content) {
-      if (b.type === "server_tool_use" && b.name === "web_search") {
-        const q = (b.input as { query?: string } | null)?.query;
-        hostedActivity.push(q ? `Web search: “${q}”` : "Web search");
+      if (b.type !== "server_tool_use") continue;
+      const input = (b.input ?? {}) as { query?: string; url?: string; command?: string; path?: string; code?: string };
+      if (b.name === "web_search") hostedActivity.push(input.query ? `Web search: “${input.query}”` : "Web search");
+      else if (b.name === "web_fetch") {
+        webFetches += 1;
+        hostedActivity.push(input.url ? `Read page: ${input.url}` : "Read a web page");
+      } else if (b.name === "bash_code_execution" || b.name === "code_execution") {
+        codeExecutions += 1;
+        const cmd = (input.command ?? input.code ?? "").split("\n")[0].slice(0, 100);
+        hostedActivity.push(cmd ? `Ran code: ${cmd}` : "Ran code in sandbox");
+      } else if (b.name === "text_editor_code_execution") {
+        codeExecutions += 1;
+        hostedActivity.push(input.path ? `Edited file in sandbox: ${input.path}` : "Edited a file in the sandbox");
       }
     }
 
@@ -110,6 +118,8 @@ export class AnthropicProvider implements LLMProvider {
         cacheReadTokens: u.cache_read_input_tokens ?? 0,
         cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
         webSearchRequests: u.server_tool_use?.web_search_requests ?? 0,
+        webFetchRequests: Math.max(webFetches, u.server_tool_use?.web_fetch_requests ?? 0),
+        codeExecutions,
       },
       servedModel: message.model,
       fallbackUsed: message.content.some((b) => b.type === "fallback"),
@@ -121,8 +131,30 @@ export class AnthropicProvider implements LLMProvider {
             }
           : null,
       hostedActivity,
+      requestId,
     };
   }
+}
+
+/**
+ * Map hosted capabilities to Anthropic server-tool definitions.
+ * The _20260209 web tools run their own code sandbox for dynamic filtering;
+ * declaring the standalone code_execution tool alongside them creates a second
+ * execution environment that can confuse the model, so when both are requested
+ * we use the basic web tool versions and a single code sandbox.
+ */
+export function hostedToolDefinitions(hosted: string[], modelSupportsDynamicWeb: boolean): BetaToolUnion[] {
+  const out: BetaToolUnion[] = [];
+  const wantsCode = hosted.includes("code_execution");
+  const dynamic = modelSupportsDynamicWeb && !wantsCode;
+  if (hosted.includes("web_search")) {
+    out.push(dynamic ? { type: "web_search_20260209", name: "web_search", max_uses: 5 } : { type: "web_search_20250305", name: "web_search", max_uses: 5 });
+  }
+  if (hosted.includes("web_fetch")) {
+    out.push(dynamic ? { type: "web_fetch_20260209", name: "web_fetch", max_uses: 5 } : { type: "web_fetch_20250910", name: "web_fetch", max_uses: 5 });
+  }
+  if (wantsCode) out.push({ type: "code_execution_20260521", name: "code_execution" });
+  return out;
 }
 
 function mapStop(reason: string | null): StopReason {

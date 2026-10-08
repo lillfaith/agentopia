@@ -14,7 +14,8 @@ describe("HTTP API", () => {
     const snap = JSON.parse(text);
     expect(snap.agents).toHaveLength(3);
     expect(snap.status.provider.keyConfigured).toBe(true);
-    expect(snap.status.tools.find((t: { id: string }) => t.id === "publish_content").requiresApproval).toBe(true);
+    const publishing = snap.status.skills.find((s: { id: string }) => s.id === "publishing");
+    expect(publishing.tools[0]).toMatchObject({ id: "publish_content", requiresApproval: true, implementation: "placeholder" });
   });
 
   it("creates tasks and validates input", async () => {
@@ -32,19 +33,19 @@ describe("HTTP API", () => {
     expect(detail.events.map((e: { type: string }) => e.type)).toContain("task.completed");
   });
 
-  it("updates agent configuration with a server-side tool allowlist", async () => {
+  it("updates agent configuration with a server-side skill allowlist", async () => {
     const h = harness(new ScriptedProvider([]));
-    const bad = await h.request("/api/agents/researcher", { method: "PATCH", body: JSON.stringify({ tools: ["shell"] }) });
+    const bad = await h.request("/api/agents/researcher", { method: "PATCH", body: JSON.stringify({ skills: ["shell"] }) });
     expect(bad.status).toBe(400);
     const extra = await h.request("/api/agents/researcher", { method: "PATCH", body: JSON.stringify({ status: "working" }) });
     expect(extra.status).toBe(400); // status is not user-editable
     const ok = await h.request("/api/agents/researcher", {
       method: "PATCH",
-      body: JSON.stringify({ name: "Pippa", model: "claude-sonnet-5-5", effort: "low", tools: ["web_search", "web_search"] }),
+      body: JSON.stringify({ name: "Pippa", model: "claude-sonnet-5-5", effort: "low", skills: ["research", "research", "coding"], dailyBudgetUsd: 0.5 }),
     });
     expect(ok.status).toBe(200);
     const agent = await ok.json();
-    expect(agent).toMatchObject({ name: "Pippa", model: "claude-sonnet-5-5", effort: "low", tools: ["web_search"] });
+    expect(agent).toMatchObject({ name: "Pippa", model: "claude-sonnet-5-5", effort: "low", skills: ["research", "coding"], dailyBudgetUsd: 0.5 });
   });
 
   it("starts the campaign workflow and exposes the deliverable", async () => {
@@ -79,7 +80,7 @@ describe("HTTP API", () => {
     const h = harness(new ScriptedProvider([]));
     h.store.recordUsage({
       agentId: "manager", taskId: null, model: "claude-opus-5-5", inputTokens: 1_000_000, outputTokens: 0,
-      cacheReadTokens: 0, cacheWriteTokens: 0, webSearchRequests: 0, costUsd: 40, simulated: false,
+      cacheReadTokens: 0, cacheWriteTokens: 0, webSearchRequests: 0, webFetchRequests: 0, codeExecutions: 0, costUsd: 40, simulated: false, requestId: "req_x", requestedModel: null,
     });
     await h.request("/api/settings", { method: "PATCH", body: JSON.stringify({ townTax: { enabled: true, rate: 10, weeklyCapUsd: 3 } }) });
     const t = await (await h.request("/api/treasury")).json();

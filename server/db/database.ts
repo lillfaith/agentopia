@@ -6,7 +6,9 @@ import { DatabaseSync } from "node:sqlite";
  * Schema migrations, applied in order and tracked with PRAGMA user_version.
  * Append new migrations; never edit a shipped one.
  */
-const MIGRATIONS: string[] = [
+type Migration = string | ((db: DatabaseSync) => void);
+
+export const MIGRATIONS: Migration[] = [
   /* 1 — Phase 1 foundation */ `
   CREATE TABLE settings (
     key   TEXT PRIMARY KEY,
@@ -128,6 +130,97 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_usage_ts ON usage(ts);
   CREATE INDEX idx_usage_agent ON usage(agent_id);
   `,
+
+  /* 2 — Phase 2: skills, budgets, schedules, workers, proof of execution */ `
+  ALTER TABLE agents ADD COLUMN skills TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE agents ADD COLUMN daily_budget_usd REAL;
+  ALTER TABLE agents ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+
+  ALTER TABLE usage ADD COLUMN request_id TEXT;
+  ALTER TABLE usage ADD COLUMN requested_model TEXT;
+  ALTER TABLE usage ADD COLUMN web_fetch_requests INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE usage ADD COLUMN code_executions INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX idx_usage_task ON usage(task_id);
+
+  ALTER TABLE tasks ADD COLUMN schedule_id TEXT;
+  ALTER TABLE workflows ADD COLUMN schedule_id TEXT;
+
+  CREATE UNIQUE INDEX idx_buildings_slot ON buildings(slot);
+
+  CREATE TABLE schedules (
+    id               TEXT PRIMARY KEY,
+    name             TEXT NOT NULL,
+    enabled          INTEGER NOT NULL DEFAULT 1,
+    cadence          TEXT NOT NULL,
+    timezone         TEXT NOT NULL,
+    target           TEXT NOT NULL,
+    overlap          TEXT NOT NULL DEFAULT 'skip',
+    next_run_at      TEXT,
+    last_run_at      TEXT,
+    last_outcome     TEXT,
+    last_task_id     TEXT,
+    last_workflow_id TEXT,
+    run_count        INTEGER NOT NULL DEFAULT 0,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+  );
+  CREATE INDEX idx_schedules_due ON schedules(enabled, next_run_at);
+
+  CREATE TABLE workers (
+    id           TEXT PRIMARY KEY,
+    role         TEXT NOT NULL,
+    hostname     TEXT NOT NULL,
+    pid          INTEGER NOT NULL,
+    started_at   TEXT NOT NULL,
+    last_seen    TEXT NOT NULL,
+    active_tasks INTEGER NOT NULL DEFAULT 0
+  );
+
+  -- Results of side-effecting local tool calls, so a crash-recovered task never runs one twice.
+  CREATE TABLE tool_runs (
+    task_id     TEXT NOT NULL,
+    tool_use_id TEXT NOT NULL,
+    tool_id     TEXT NOT NULL,
+    result      TEXT NOT NULL,
+    is_error    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (task_id, tool_use_id)
+  );
+
+  CREATE TABLE verifications (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         TEXT NOT NULL,
+    check_id   TEXT NOT NULL,
+    ok         INTEGER NOT NULL,
+    detail     TEXT NOT NULL,
+    request_id TEXT,
+    model      TEXT,
+    cost_usd   REAL NOT NULL DEFAULT 0,
+    source     TEXT NOT NULL
+  );
+  CREATE INDEX idx_verifications_check ON verifications(check_id, id);
+  `,
+
+  /* 3 — map Phase 1 tool allowlists onto skills */ (db) => {
+    const TOOL_TO_SKILL: Record<string, string> = {
+      delegate_task: "delegation",
+      web_search: "research",
+      publish_content: "publishing",
+      send_email: "email",
+    };
+    const rows = db.prepare("SELECT id, tools FROM agents").all() as { id: string; tools: string }[];
+    for (const r of rows) {
+      let tools: string[] = [];
+      try {
+        tools = JSON.parse(r.tools);
+      } catch {
+        /* keep empty */
+      }
+      const skills = new Set<string>(["writing"]);
+      for (const t of tools) if (TOOL_TO_SKILL[t]) skills.add(TOOL_TO_SKILL[t]);
+      db.prepare("UPDATE agents SET skills = ? WHERE id = ?").run(JSON.stringify([...skills]), r.id);
+    }
+  },
 ];
 
 export type Database = DatabaseSync;
@@ -145,8 +238,10 @@ export function openDatabase(dbPath: string): Database {
 function migrate(db: Database): void {
   const { user_version: current } = db.prepare("PRAGMA user_version").get() as { user_version: number };
   for (let v = current; v < MIGRATIONS.length; v++) {
+    const m = MIGRATIONS[v];
     transaction(db, () => {
-      db.exec(MIGRATIONS[v]);
+      if (typeof m === "string") db.exec(m);
+      else m(db);
       db.exec(`PRAGMA user_version = ${v + 1}`);
     });
   }

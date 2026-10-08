@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "node:fs";
 import path from "node:path";
 
 /** Server configuration, read once from the environment. Secrets never leave the server. */
@@ -12,6 +13,11 @@ export interface Config {
   refusalFallback: "default" | "off";
   adminToken: string | null;
   dailyBudgetUsd: number;
+  monthlyBudgetUsd: number;
+  maxTaskCostUsd: number;
+  minScheduleIntervalMinutes: number;
+  /** "all" = API + worker in one process; "api" = HTTP only; "worker" = queue + scheduler only. */
+  role: "all" | "api" | "worker";
   maxTurnsPerTask: number;
   maxOutputTokens: number;
   maxDelegationDepth: number;
@@ -27,19 +33,42 @@ function num(value: string | undefined, fallback: number): number {
   return n;
 }
 
+function parseRole(v: string | undefined): Config["role"] {
+  const r = v?.trim() || "all";
+  if (r !== "all" && r !== "api" && r !== "worker") throw new Error(`AGENTOPIA_ROLE must be all, api or worker (got "${r}")`);
+  return r;
+}
+
+/** Read NAME, or the file at NAME_FILE (Docker/Kubernetes secrets). */
+function readSecret(env: NodeJS.ProcessEnv, name: string): string | null {
+  const direct = env[name]?.trim();
+  if (direct) return direct;
+  const file = env[`${name}_FILE`]?.trim();
+  if (!file) return null;
+  try {
+    return fs.readFileSync(file, "utf8").trim() || null;
+  } catch (err) {
+    throw new Error(`Could not read ${name}_FILE (${file}): ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const host = env.HOST?.trim() || "127.0.0.1";
-  const adminToken = env.AGENTOPIA_ADMIN_TOKEN?.trim() || null;
+  const adminToken = readSecret(env, "AGENTOPIA_ADMIN_TOKEN");
   const config: Config = {
     host,
     port: num(env.PORT, 8787),
     isProduction: env.NODE_ENV === "production",
     dbPath: path.resolve(env.AGENTOPIA_DB_PATH?.trim() || "./data/agentopia.sqlite"),
-    anthropicApiKey: env.ANTHROPIC_API_KEY?.trim() || null,
+    anthropicApiKey: readSecret(env, "ANTHROPIC_API_KEY"),
     defaultModel: env.AGENTOPIA_DEFAULT_MODEL?.trim() || "claude-opus-5-5",
     refusalFallback: env.AGENTOPIA_REFUSAL_FALLBACK?.trim() === "off" ? "off" : "default",
     adminToken,
     dailyBudgetUsd: num(env.AGENTOPIA_DAILY_BUDGET_USD, 5),
+    monthlyBudgetUsd: num(env.AGENTOPIA_MONTHLY_BUDGET_USD, 50),
+    maxTaskCostUsd: num(env.AGENTOPIA_MAX_TASK_COST_USD, 1),
+    minScheduleIntervalMinutes: Math.max(1, num(env.AGENTOPIA_MIN_SCHEDULE_INTERVAL_MINUTES, 15)),
+    role: parseRole(env.AGENTOPIA_ROLE),
     maxTurnsPerTask: Math.max(1, num(env.AGENTOPIA_MAX_TURNS_PER_TASK, 8)),
     maxOutputTokens: Math.max(1024, num(env.AGENTOPIA_MAX_OUTPUT_TOKENS, 16000)),
     maxDelegationDepth: num(env.AGENTOPIA_MAX_DELEGATION_DEPTH, 3),

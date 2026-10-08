@@ -1,8 +1,8 @@
 {
   "name": "agentopia",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Agentopia — an isometric AI-agent town where every villager is a real, configurable AI employee.",
+  "description": "Agentopia \u2014 an isometric AI-agent town where every villager is a real, configurable AI employee.",
   "type": "module",
   "license": "UNLICENSED",
   "engines": {
@@ -16,7 +16,11 @@
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "worker": "AGENTOPIA_ROLE=worker tsx server/index.ts",
+    "start:api": "NODE_ENV=production AGENTOPIA_ROLE=api tsx server/index.ts",
+    "start:worker": "NODE_ENV=production AGENTOPIA_ROLE=worker tsx server/index.ts",
+    "verify:live": "tsx scripts/verify-live.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.0",

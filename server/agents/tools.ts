@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Agent, Task, ToolInfo } from "../../shared/types.js";
 import type { Store } from "../db/store.js";
-import type { HostedTool, ToolSpec } from "../llm/provider.js";
+import type { HostedTool } from "../llm/provider.js";
 
 /**
  * Categories that ALWAYS require an explicit human approval before execution.
@@ -208,9 +208,9 @@ const sendEmail: LocalTool<typeof emailSchema> = {
   },
 };
 
-// ───────────────────────── hosted ─────────────────────────
+// ───────────────────────── hosted (run on Anthropic's infrastructure) ─────────────────────────
 
-const webSearch: ProviderHostedTool = {
+export const webSearch: ProviderHostedTool = {
   kind: "hosted",
   id: "web_search",
   label: "Web search",
@@ -220,38 +220,42 @@ const webSearch: ProviderHostedTool = {
   hosted: "web_search",
 };
 
-// ───────────────────────── registry ─────────────────────────
+export const webFetch: ProviderHostedTool = {
+  kind: "hosted",
+  id: "web_fetch",
+  label: "Web fetch",
+  description: "Read the full text of a web page whose URL already appears in the conversation (hosted; max 5 per model call).",
+  sensitivity: "none",
+  implementation: "real",
+  hosted: "web_fetch",
+};
 
-export const TOOLS: ToolDefinition[] = [delegateTask, webSearch, publishContent, sendEmail];
+export const codeExecution: ProviderHostedTool = {
+  kind: "hosted",
+  id: "code_execution",
+  label: "Code execution (sandbox)",
+  description:
+    "Run Python and shell commands in Anthropic's isolated sandbox (no internet, no access to this computer). Output returns as text.",
+  sensitivity: "none",
+  implementation: "real",
+  hosted: "code_execution",
+};
 
-export function getTool(id: string): ToolDefinition | undefined {
-  return TOOLS.find((t) => t.id === id);
-}
+export const delegate = delegateTask as unknown as LocalTool;
+export const publish = publishContent as unknown as LocalTool;
+export const email = sendEmail as unknown as LocalTool;
 
 export function requiresApproval(tool: ToolDefinition): boolean {
   return tool.sensitivity !== "none";
 }
 
-export function toolInfo(): ToolInfo[] {
-  return TOOLS.map((t) => ({
-    id: t.id,
-    label: t.label,
-    description: t.description,
-    requiresApproval: requiresApproval(t),
-    implementation: t.implementation,
-  }));
-}
-
-/** Build the provider tool list from an agent's server-side allowlist. Unknown ids are ignored. */
-export function toolsForAgent(store: Store, agent: Agent): { local: LocalTool[]; specs: ToolSpec[]; hosted: HostedTool[] } {
-  const local: LocalTool[] = [];
-  const hosted: HostedTool[] = [];
-  for (const id of agent.tools) {
-    const tool = getTool(id);
-    if (!tool) continue;
-    if (tool.kind === "hosted") hosted.push(tool.hosted);
-    else local.push(tool);
-  }
-  const specs = local.map((t) => ({ name: t.id, description: t.description, inputSchema: t.inputSchema({ store, agent }) }));
-  return { local, specs, hosted };
+export function toolInfo(tool: ToolDefinition): ToolInfo {
+  return {
+    id: tool.id,
+    label: tool.label,
+    description: tool.description,
+    requiresApproval: requiresApproval(tool),
+    implementation: tool.implementation,
+    runsOn: tool.kind,
+  };
 }

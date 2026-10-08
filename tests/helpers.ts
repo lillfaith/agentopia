@@ -8,7 +8,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
 }
 
 export function harness(provider: LLMProvider, overrides: Partial<Config> = {}) {
-  const config = testConfig(overrides);
+  const config = testConfig({ role: "all", ...overrides });
   const app = createApp(config, { provider, startWorker: false, timings: { retryBaseMs: 1, statusDecayMs: 5 } });
   const request = (path: string, init: RequestInit = {}) =>
     app.api.request(path, {
@@ -18,12 +18,13 @@ export function harness(provider: LLMProvider, overrides: Partial<Config> = {}) 
   return { ...app, config, request };
 }
 
-type Step = (req: GenerateRequest) => Partial<GenerateResult> | Error;
+type Step = (req: GenerateRequest) => Partial<GenerateResult> | Error | Promise<Partial<GenerateResult> | Error>;
 
 /** Deterministic fake provider: each generate() call consumes the next scripted step. */
 export class ScriptedProvider implements LLMProvider {
   readonly id = "scripted";
   calls: GenerateRequest[] = [];
+  private n = 0;
   constructor(
     private readonly steps: Step[],
     readonly simulated = false,
@@ -38,7 +39,7 @@ export class ScriptedProvider implements LLMProvider {
     this.calls.push(structuredClone({ ...req, signal: undefined }));
     const step = this.steps.shift();
     if (!step) throw new Error("ScriptedProvider ran out of steps");
-    const out = step(req);
+    const out = await step(req);
     if (out instanceof Error) throw out;
     const text = out.text ?? "";
     return {
@@ -52,6 +53,7 @@ export class ScriptedProvider implements LLMProvider {
       refusal: null,
       hostedActivity: [],
       ...out,
+      requestId: out.requestId === undefined ? (this.simulated ? null : `req_scripted_${++this.n}`) : out.requestId,
     };
   }
 }

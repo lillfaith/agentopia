@@ -36,8 +36,8 @@ export interface Agent {
   responsibilities: string[];
   model: string;
   effort: Effort;
-  /** Tool ids this agent is authorised to call (server-enforced allowlist). */
-  tools: string[];
+  /** Skill ids this agent may use. Skills bundle tools + guidance (server-enforced allowlist). */
+  skills: string[];
   avatar: AgentAvatar;
   /** Building the agent works from. */
   buildingId: string;
@@ -45,6 +45,10 @@ export interface Agent {
   statusDetail: string | null;
   currentTaskId: string | null;
   enabled: boolean;
+  /** Archived agents keep their history but leave the town. */
+  archived: boolean;
+  /** Optional per-agent daily spend cap (USD). null = only global caps apply. */
+  dailyBudgetUsd: number | null;
   createdAt: ISODate;
   updatedAt: ISODate;
 }
@@ -119,6 +123,24 @@ export interface Task {
   updatedAt: ISODate;
   /** True when produced by the offline simulation provider. */
   simulated: boolean;
+  /** Schedule that created this task, if any. */
+  scheduleId: string | null;
+  /** Proof of execution, derived from recorded API usage. */
+  execution: TaskExecution;
+}
+
+/**
+ * How a task was actually executed. "live" means at least one real Claude API
+ * response with a request id was recorded for it.
+ */
+export interface TaskExecution {
+  mode: "live" | "simulated" | "none";
+  calls: number;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  models: string[];
+  lastRequestId: string | null;
 }
 
 export interface Workflow {
@@ -128,8 +150,43 @@ export interface Workflow {
   input: Record<string, string>;
   status: "running" | "completed" | "failed" | "cancelled";
   finalTaskId: string | null;
+  scheduleId: string | null;
   createdAt: ISODate;
   completedAt: ISODate | null;
+}
+
+// ───────────────────────── Schedules ─────────────────────────
+
+export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7; // ISO: 1 = Monday … 7 = Sunday
+
+export type Cadence =
+  | { kind: "interval"; everyMinutes: number }
+  | { kind: "daily"; time: string } // "HH:MM" in the schedule's timezone
+  | { kind: "weekly"; days: Weekday[]; time: string };
+
+export type ScheduleTarget =
+  | { type: "task"; agentId: string; title: string; instructions: string; priority: TaskPriority }
+  | { type: "campaign"; topic: string; audience: string; goal: string };
+
+export interface Schedule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  cadence: Cadence;
+  /** IANA timezone, e.g. "Europe/London". */
+  timezone: string;
+  target: ScheduleTarget;
+  /** What to do if the previous run is still in progress. */
+  overlap: "skip" | "queue";
+  nextRunAt: ISODate | null;
+  lastRunAt: ISODate | null;
+  lastOutcome: string | null;
+  /** Most recent task or workflow created by this schedule. */
+  lastTaskId: string | null;
+  lastWorkflowId: string | null;
+  runCount: number;
+  createdAt: ISODate;
+  updatedAt: ISODate;
 }
 
 // ───────────────────────── Approvals ─────────────────────────
@@ -168,9 +225,18 @@ export type EventType =
   | "task.cancelled"
   | "agent.status"
   | "agent.updated"
+  | "agent.created"
+  | "agent.archived"
+  | "building.created"
+  | "building.updated"
+  | "building.deleted"
   | "workflow.created"
   | "workflow.completed"
+  | "schedule.fired"
+  | "schedule.skipped"
+  | "budget.hold"
   | "usage.recorded"
+  | "system.verification"
   | "system.notice";
 
 export interface TownEvent {
@@ -198,8 +264,15 @@ export interface UsageRecord {
   cacheReadTokens: number;
   cacheWriteTokens: number;
   webSearchRequests: number;
+  webFetchRequests: number;
+  /** Number of hosted code-execution tool uses in this response. */
+  codeExecutions: number;
   costUsd: number;
   simulated: boolean;
+  /** Anthropic request id — proof that a real API call happened. */
+  requestId: string | null;
+  /** Model the agent asked for (servedModel may differ after a refusal fallback). */
+  requestedModel: string | null;
 }
 
 export interface TownTaxSettings {
@@ -211,9 +284,33 @@ export interface TownTaxSettings {
   cause: string;
 }
 
+export interface BudgetLimits {
+  dailyUsd: number;
+  monthlyUsd: number;
+  perTaskUsd: number;
+}
+
+export interface BudgetStatus {
+  /** Ceilings set by the server operator (environment). The UI can only lower them. */
+  hard: BudgetLimits;
+  /** Owner-set limits from settings (null = use the hard ceiling). */
+  soft: { dailyUsd: number | null; monthlyUsd: number | null; perTaskUsd: number | null };
+  /** min(hard, soft); 0 = unlimited. */
+  effective: BudgetLimits;
+  spent: { todayUsd: number; monthUsd: number };
+  /** True when new model calls are currently paused by a global cap. */
+  globalHold: boolean;
+  /** Agents paused by their own daily cap. */
+  agentHolds: string[];
+  resetsAt: { day: ISODate; month: ISODate };
+}
+
 export interface TreasurySummary {
-  totals: { inputTokens: number; outputTokens: number; costUsd: number; requests: number; webSearches: number };
+  totals: { inputTokens: number; outputTokens: number; costUsd: number; requests: number; webSearches: number; webFetches: number; codeExecutions: number; liveRequests: number };
   today: { costUsd: number; budgetUsd: number };
+  budget: BudgetStatus;
+  /** Projected monthly cost of enabled schedules, from their recent run costs. */
+  scheduleProjections: Array<{ scheduleId: string; name: string; runsPerMonth: number; avgRunCostUsd: number | null; projectedMonthlyUsd: number | null }>;
   byAgent: Array<{ agentId: string; inputTokens: number; outputTokens: number; costUsd: number; requests: number }>;
   byModel: Array<{ model: string; inputTokens: number; outputTokens: number; costUsd: number; requests: number }>;
   daily: Array<{ day: string; costUsd: number; tokens: number }>;
@@ -233,19 +330,50 @@ export interface TreasurySummary {
 
 export type ProviderMode = "live" | "simulation" | "unconfigured";
 
+export interface WorkerInfo {
+  id: string;
+  role: "all" | "worker";
+  hostname: string;
+  pid: number;
+  startedAt: ISODate;
+  lastSeen: ISODate;
+  activeTasks: number;
+  alive: boolean;
+}
+
+export interface Verification {
+  id: number;
+  ts: ISODate;
+  checkId: string;
+  ok: boolean;
+  detail: string;
+  requestId: string | null;
+  model: string | null;
+  costUsd: number;
+  source: "connection-test" | "verify-live";
+}
+
 export interface SystemStatus {
   version: string;
+  /** Which roles this API process runs. Workers may also run as separate processes. */
+  role: "all" | "api";
   provider: {
     id: string;
     mode: ProviderMode;
     keyConfigured: boolean;
     refusalFallback: string;
+    /** Set only when requests go to a non-default API host (e.g. a corporate proxy). */
+    baseUrlHost: string | null;
   };
   worker: { running: boolean; concurrency: number; activeTasks: number };
-  limits: { dailyBudgetUsd: number; maxTurnsPerTask: number; maxDelegationDepth: number };
+  workers: WorkerInfo[];
+  limits: { dailyBudgetUsd: number; maxTurnsPerTask: number; maxDelegationDepth: number; minScheduleIntervalMinutes: number };
+  budget: BudgetStatus;
   authRequired: boolean;
   models: ModelInfo[];
-  tools: ToolInfo[];
+  skills: SkillInfo[];
+  /** Latest result per verification check. */
+  verifications: Verification[];
 }
 
 export interface ModelInfo {
@@ -263,12 +391,50 @@ export interface ToolInfo {
   requiresApproval: boolean;
   /** "real" = executes for real; "placeholder" = records intent only. */
   implementation: "real" | "placeholder";
+  /** "local" runs on this server; "hosted" runs on Anthropic's infrastructure. */
+  runsOn: "local" | "hosted";
+}
+
+export type SkillCategory = "research" | "writing" | "coordination" | "coding" | "publishing" | "communication" | "media" | "3d";
+
+export interface SkillInfo {
+  id: string;
+  label: string;
+  icon: string;
+  category: SkillCategory;
+  description: string;
+  /** "available" can be enabled; "planned" is a declared slot with no integration yet. */
+  status: "available" | "planned";
+  tools: ToolInfo[];
+  costNote: string;
+  /** Id of the verify:live check that proves this skill works, if any. */
+  verificationCheck: string | null;
+}
+
+export interface AgentTemplate {
+  id: string;
+  role: string;
+  icon: string;
+  description: string;
+  personality: string;
+  systemPrompt: string;
+  responsibilities: string[];
+  skills: string[];
+  effort: Effort;
+  avatar: AgentAvatar;
+  /** Suggested building style for a matching department. */
+  buildingKind: string;
+  department: string;
 }
 
 export interface TownSettings {
   townName: string;
   themeId: string;
   townTax: TownTaxSettings;
+  /** Owner budget limits; can only be lower than the operator's hard ceilings. */
+  budget: { dailyUsd: number | null; monthlyUsd: number | null; perTaskUsd: number | null };
+  /** Default IANA timezone for new schedules. */
+  timezone: string;
 }
 
 export interface TownSnapshot {
@@ -279,6 +445,8 @@ export interface TownSnapshot {
   tasks: Task[];
   approvals: Approval[];
   workflows: Workflow[];
+  schedules: Schedule[];
   events: TownEvent[];
   status: SystemStatus;
+  templates: AgentTemplate[];
 }

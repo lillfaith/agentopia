@@ -1,6 +1,9 @@
 import type { TownTaxSettings, TreasurySummary } from "../../shared/types.js";
+import type { Config } from "../config.js";
 import type { Store } from "../db/store.js";
 import { PRICING_NOTE } from "../llm/models.js";
+import { budgetStatus } from "./budget.js";
+import { runsPerMonth } from "./scheduler.js";
 
 type Agg = { input_tokens: number; output_tokens: number; cost: number; requests: number };
 
@@ -24,12 +27,14 @@ export function computeTownTax(settings: TownTaxSettings, weekCostUsd: number, w
   return { amount: Math.round(amount * 100) / 100, capped: raw > cap };
 }
 
-export function treasurySummary(store: Store, dailyBudgetUsd: number): TreasurySummary {
+export function treasurySummary(store: Store, config: Config, simulated = false): TreasurySummary {
   // Simulated rows carry zero tokens and zero cost; exclude them so totals reflect real API usage only.
-  const totals = store.usageQuery<Agg & { searches: number }>(
+  const totals = store.usageQuery<Agg & { searches: number; fetches: number; code: number; live: number }>(
     `SELECT COALESCE(SUM(input_tokens + cache_read_tokens + cache_write_tokens),0) AS input_tokens,
             COALESCE(SUM(output_tokens),0) AS output_tokens, COALESCE(SUM(cost_usd),0) AS cost,
-            COUNT(*) AS requests, COALESCE(SUM(web_search_requests),0) AS searches
+            COUNT(*) AS requests, COALESCE(SUM(web_search_requests),0) AS searches,
+            COALESCE(SUM(web_fetch_requests),0) AS fetches, COALESCE(SUM(code_executions),0) AS code,
+            COALESCE(SUM(CASE WHEN request_id IS NOT NULL THEN 1 ELSE 0 END),0) AS live
      FROM usage WHERE simulated = 0`,
   )[0];
   const byAgent = store.usageQuery<Agg & { agent_id: string }>(
@@ -58,6 +63,7 @@ export function treasurySummary(store: Store, dailyBudgetUsd: number): TreasuryS
     weekStart.toISOString(),
   )[0];
   const settings = store.getSettings().townTax;
+  const budget = budgetStatus(store, config, simulated);
   const tax = computeTownTax(settings, Number(week.cost), Number(week.tokens));
 
   return {
@@ -67,8 +73,21 @@ export function treasurySummary(store: Store, dailyBudgetUsd: number): TreasuryS
       costUsd: Number(totals.cost),
       requests: Number(totals.requests),
       webSearches: Number(totals.searches),
+      webFetches: Number(totals.fetches),
+      codeExecutions: Number(totals.code),
+      liveRequests: Number(totals.live),
     },
-    today: { costUsd: store.spendSince(today.toISOString()), budgetUsd: dailyBudgetUsd },
+    today: { costUsd: store.spendSince(today.toISOString()), budgetUsd: budget.effective.dailyUsd },
+    budget,
+    scheduleProjections: store
+      .listSchedules()
+      .filter((sch) => sch.enabled)
+      .map((sch) => {
+        const costs = store.scheduleRunCosts(sch.id);
+        const avg = costs.length ? costs.reduce((a, b) => a + b, 0) / costs.length : null;
+        const runs = runsPerMonth(sch.cadence);
+        return { scheduleId: sch.id, name: sch.name, runsPerMonth: runs, avgRunCostUsd: avg, projectedMonthlyUsd: avg === null ? null : avg * runs };
+      }),
     byAgent: byAgent.map((r) => ({ agentId: r.agent_id, inputTokens: Number(r.input_tokens), outputTokens: Number(r.output_tokens), costUsd: Number(r.cost), requests: Number(r.requests) })),
     byModel: byModel.map((r) => ({ model: r.model, inputTokens: Number(r.input_tokens), outputTokens: Number(r.output_tokens), costUsd: Number(r.cost), requests: Number(r.requests) })),
     daily: daily.map((r) => ({ day: r.day, costUsd: Number(r.cost), tokens: Number(r.tokens) })),

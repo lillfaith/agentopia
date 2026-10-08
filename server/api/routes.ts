@@ -1,18 +1,23 @@
-import { timingSafeEqual } from "node:crypto";
-import { Hono, type Context, type MiddlewareHandler } from "hono";
+import { randomUUID } from "node:crypto";
+import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import type { SystemStatus, TownEvent, TownSnapshot } from "../../shared/types.js";
+import type { Schedule, SystemStatus, TownEvent, TownSnapshot } from "../../shared/types.js";
 import type { Config } from "../config.js";
 import { transaction } from "../db/database.js";
 import type { Store } from "../db/store.js";
-import { getTool, toolInfo } from "../agents/tools.js";
+import { AGENT_TEMPLATES } from "../agents/templates.js";
 import { MODELS } from "../llm/models.js";
+import { getSkill, skillInfo } from "../skills/index.js";
+import { budgetStatus } from "../engine/budget.js";
 import type { TaskRunner } from "../engine/runner.js";
+import { computeNextRun, isValidTimezone, validateCadence } from "../engine/scheduler.js";
 import { treasurySummary } from "../engine/treasury.js";
+import { runVerification } from "../engine/verify.js";
 import { startCampaignWorkflow } from "../engine/workflows.js";
+import { body, security } from "./security.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 
 export interface ApiDeps {
   config: Config;
@@ -23,134 +28,169 @@ export interface ApiDeps {
 // ───────────────────────── validation schemas ─────────────────────────
 
 const modelId = z.string().regex(/^claude-[a-z0-9.-]{2,60}$/, "Model ids look like claude-opus-5-5");
-const toolId = z.string().refine((id) => !!getTool(id), "Unknown tool id");
+const skillIds = z
+  .array(z.string().refine((id) => !!getSkill(id), "Unknown skill id"))
+  .max(20)
+  .transform((ids) => [...new Set(ids)]);
+const slugish = z.string().regex(/^[a-z0-9-]{1,30}$/, "Use lowercase letters, numbers and dashes");
+const priority = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
+const money = z.number().min(0).max(100000);
 
-const agentPatch = z
+const agentFields = {
+  name: z.string().trim().min(1).max(40),
+  role: z.string().trim().min(1).max(60),
+  personality: z.string().max(1000),
+  systemPrompt: z.string().trim().min(1).max(20000),
+  responsibilities: z.array(z.string().trim().min(1).max(200)).max(20),
+  model: modelId,
+  effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
+  skills: skillIds,
+  avatar: z.object({ color: z.string().regex(/^#[0-9a-fA-F]{6}$/), accessory: z.string().regex(/^[a-z-]{1,30}$/) }),
+  buildingId: z.string().min(1),
+  dailyBudgetUsd: money.nullable(),
+};
+
+const agentPatch = z.object({ ...agentFields, enabled: z.boolean() }).partial().strict();
+const agentCreate = z
+  .object({ ...agentFields, personality: agentFields.personality.default(""), responsibilities: agentFields.responsibilities.default([]), dailyBudgetUsd: money.nullable().default(null) })
+  .partial({ model: true, effort: true })
+  .strict();
+
+const buildingCreate = z
   .object({
     name: z.string().trim().min(1).max(40),
-    role: z.string().trim().min(1).max(60),
-    personality: z.string().max(1000),
-    systemPrompt: z.string().trim().min(1).max(20000),
-    responsibilities: z.array(z.string().trim().min(1).max(200)).max(20),
-    model: modelId,
-    effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
-    tools: z.array(toolId).max(20).transform((ids) => [...new Set(ids)]),
-    avatar: z.object({
-      color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-      accessory: z.string().regex(/^[a-z-]{1,30}$/),
-    }),
-    enabled: z.boolean(),
+    department: z.string().trim().min(1).max(60),
+    kind: slugish,
+    slot: slugish,
+    description: z.string().max(500).default(""),
   })
-  .partial()
   .strict();
+const buildingPatch = buildingCreate.partial().strict();
 
 const newTask = z
   .object({
     agentId: z.string().min(1),
     title: z.string().trim().min(1).max(200),
     instructions: z.string().trim().min(1).max(20000),
-    priority: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]).default(1),
+    priority: priority.default(1),
     dependsOn: z.array(z.string()).max(20).default([]),
   })
   .strict();
+
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:MM");
+const cadence = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("interval"), everyMinutes: z.number().int().positive().max(60 * 24 * 31) }).strict(),
+  z.object({ kind: z.literal("daily"), time: hhmm }).strict(),
+  z
+    .object({ kind: z.literal("weekly"), days: z.array(z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7)])).min(1).max(7), time: hhmm })
+    .strict(),
+]);
+const target = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("task"), agentId: z.string().min(1), title: z.string().trim().min(1).max(200), instructions: z.string().trim().min(1).max(20000), priority: priority.default(1) }).strict(),
+  z.object({ type: z.literal("campaign"), topic: z.string().trim().min(3).max(500), audience: z.string().trim().max(500).default(""), goal: z.string().trim().max(1000).default("") }).strict(),
+]);
+const scheduleFields = {
+  name: z.string().trim().min(1).max(80),
+  enabled: z.boolean(),
+  cadence,
+  timezone: z.string().refine(isValidTimezone, "Unknown IANA timezone (e.g. Europe/London)"),
+  target,
+  overlap: z.enum(["skip", "queue"]),
+};
+const scheduleCreate = z.object({ ...scheduleFields, enabled: scheduleFields.enabled.default(true), overlap: scheduleFields.overlap.default("skip") }).strict();
+const schedulePatch = z.object(scheduleFields).partial().strict();
 
 const settingsPatch = z
   .object({
     townName: z.string().trim().min(1).max(40),
     themeId: z.string().regex(/^[a-z0-9-]{1,40}$/),
+    timezone: z.string().refine(isValidTimezone, "Unknown IANA timezone"),
     townTax: z
       .object({
         enabled: z.boolean(),
         mode: z.enum(["percent_of_cost", "per_million_tokens"]),
         rate: z.number().min(0).max(1000),
-        weeklyCapUsd: z.number().min(0).max(100000),
+        weeklyCapUsd: money,
         cause: z.string().max(200),
       })
       .partial()
       .strict(),
+    budget: z.object({ dailyUsd: money.nullable(), monthlyUsd: money.nullable(), perTaskUsd: money.nullable() }).partial().strict(),
   })
   .partial()
   .strict();
 
 const decision = z.object({ approve: z.boolean(), note: z.string().max(1000).nullable().optional() }).strict();
 
-// ───────────────────────── security middleware ─────────────────────────
+const slugify = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 24) || "item";
 
-const LOOPBACK_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+// ───────────────────────── status ─────────────────────────
 
-/**
- * - Bearer token when AGENTOPIA_ADMIN_TOKEN is set.
- * - Host header check on loopback deployments (DNS-rebinding protection).
- * - Mutations must be JSON with a same-origin (or absent) Origin (CSRF protection
- *   for the token-less local mode: browsers cannot send cross-site JSON without a
- *   CORS preflight, which this server never approves).
- */
-function security(config: Config): MiddlewareHandler {
-  return async (c, next) => {
-    if (c.req.path === "/api/health") return next();
-    const host = c.req.header("host") ?? "";
-    if (!config.adminToken && !LOOPBACK_HOSTS.test(host)) return c.json({ error: "Forbidden host" }, 403);
-    if (config.adminToken) {
-      const header = c.req.header("authorization") ?? "";
-      const given = Buffer.from(header.startsWith("Bearer ") ? header.slice(7) : "");
-      const expected = Buffer.from(config.adminToken);
-      if (given.length !== expected.length || !timingSafeEqual(given, expected)) return c.json({ error: "Unauthorized" }, 401);
-    }
-    if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method)) {
-      if (!(c.req.header("content-type") ?? "").includes("application/json")) return c.json({ error: "Expected application/json" }, 415);
-      const origin = c.req.header("origin");
-      if (origin) {
-        let originHost = "";
-        try {
-          originHost = new URL(origin).host;
-        } catch {
-          /* invalid origin */
-        }
-        if (originHost !== host) return c.json({ error: "Cross-origin request rejected" }, 403);
-      }
-    }
-    return next();
-  };
-}
-
-async function body<T extends z.ZodType>(c: Context, schema: T): Promise<{ ok: true; data: z.infer<T> } | { ok: false; res: Response }> {
-  let raw: unknown;
-  try {
-    raw = await c.req.json();
-  } catch {
-    return { ok: false, res: c.json({ error: "Invalid JSON body" }, 400) };
-  }
-  const parsed = schema.safeParse(raw);
-  if (!parsed.success) return { ok: false, res: c.json({ error: "Validation failed", issues: parsed.error.issues }, 400) };
-  return { ok: true, data: parsed.data };
-}
-
-// ───────────────────────── routes ─────────────────────────
-
-export function systemStatus({ config, runner }: ApiDeps): SystemStatus {
+export function systemStatus({ config, store, runner }: ApiDeps): SystemStatus {
   const p = runner.provider;
+  const base = process.env.ANTHROPIC_BASE_URL?.trim();
+  let baseUrlHost: string | null = null;
+  if (base) {
+    try {
+      const host = new URL(base).host;
+      baseUrlHost = host === "api.anthropic.com" ? null : host;
+    } catch {
+      baseUrlHost = "invalid ANTHROPIC_BASE_URL";
+    }
+  }
   return {
     version: VERSION,
+    role: config.role === "api" ? "api" : "all",
     provider: {
       id: p.id,
       mode: p.simulated ? "simulation" : config.anthropicApiKey ? "live" : "unconfigured",
       keyConfigured: !!config.anthropicApiKey,
       refusalFallback: config.refusalFallback,
+      baseUrlHost,
     },
     worker: { running: runner.running, concurrency: config.workerConcurrency, activeTasks: runner.activeCount },
-    limits: { dailyBudgetUsd: config.dailyBudgetUsd, maxTurnsPerTask: config.maxTurnsPerTask, maxDelegationDepth: config.maxDelegationDepth },
+    workers: store.listWorkers(),
+    limits: {
+      dailyBudgetUsd: config.dailyBudgetUsd,
+      maxTurnsPerTask: config.maxTurnsPerTask,
+      maxDelegationDepth: config.maxDelegationDepth,
+      minScheduleIntervalMinutes: config.minScheduleIntervalMinutes,
+    },
+    budget: budgetStatus(store, config, p.simulated),
     authRequired: !!config.adminToken,
     models: MODELS.map(({ id, label, inputPerMTok, outputPerMTok }) => ({ id, label, inputPerMTok, outputPerMTok })),
-    tools: toolInfo(),
+    skills: skillInfo(),
+    verifications: store.latestVerifications(),
   };
 }
+
+// ───────────────────────── routes ─────────────────────────
 
 export function createApi(deps: ApiDeps): Hono {
   const { config, store, runner } = deps;
   const api = new Hono();
   api.use("/api/*", security(config));
+  const err = (message: string) => ({ error: message });
 
   api.get("/api/health", (c) => c.json({ ok: true, version: VERSION }));
+
+  /** Readiness for orchestrators: database reachable and (unless API-only) a live worker. */
+  api.get("/api/ready", (c) => {
+    try {
+      store.maxEventId();
+    } catch {
+      return c.json({ ready: false, reason: "database unavailable" }, 503);
+    }
+    const workers = store.listWorkers().filter((w) => w.alive);
+    if (config.role !== "api" && !workers.length) return c.json({ ready: false, reason: "no live worker" }, 503);
+    return c.json({ ready: true, workers: workers.length });
+  });
 
   api.get("/api/snapshot", (c) => {
     const snapshot: TownSnapshot = {
@@ -161,97 +201,264 @@ export function createApi(deps: ApiDeps): Hono {
       tasks: store.listTasks({ limit: 300 }),
       approvals: store.listApprovals({ limit: 100 }),
       workflows: store.listWorkflows(50),
+      schedules: store.listSchedules(),
       events: store.listEvents({ limit: 300 }),
       status: systemStatus(deps),
+      templates: AGENT_TEMPLATES,
     };
     return c.json(snapshot);
   });
 
   api.get("/api/status", (c) => c.json(systemStatus(deps)));
+  api.get("/api/templates", (c) => c.json(AGENT_TEMPLATES));
 
-  // agents
+  // ── agents ──
   api.get("/api/agents", (c) => c.json(store.listAgents()));
   api.get("/api/agents/:id", (c) => {
     const agent = store.getAgent(c.req.param("id"));
-    if (!agent) return c.json({ error: "Agent not found" }, 404);
-    return c.json({
-      agent,
-      tasks: store.listTasks({ agentId: agent.id, limit: 50 }),
-      events: store.listEvents({ agentId: agent.id, limit: 100 }),
-    });
+    if (!agent) return c.json(err("Agent not found"), 404);
+    return c.json({ agent, tasks: store.listTasks({ agentId: agent.id, limit: 50 }), events: store.listEvents({ agentId: agent.id, limit: 100 }) });
   });
+
+  api.post("/api/agents", async (c) => {
+    const b = await body(c, agentCreate);
+    if (!b.ok) return b.res;
+    if (!store.getBuilding(b.data.buildingId)) return c.json(err("Unknown building"), 400);
+    let id = slugify(b.data.name);
+    if (store.getAgent(id)) id = `${id}-${randomUUID().slice(0, 4)}`;
+    const agent = store.insertAgent({
+      id,
+      name: b.data.name,
+      role: b.data.role,
+      personality: b.data.personality,
+      systemPrompt: b.data.systemPrompt,
+      responsibilities: b.data.responsibilities,
+      model: b.data.model ?? config.defaultModel,
+      effort: b.data.effort ?? "medium",
+      skills: b.data.skills,
+      avatar: b.data.avatar,
+      buildingId: b.data.buildingId,
+      enabled: true,
+      dailyBudgetUsd: b.data.dailyBudgetUsd,
+    });
+    store.addEvent({ type: "agent.created", agentId: agent.id, message: `${agent.name} the ${agent.role} moved into town`, data: { buildingId: agent.buildingId } });
+    return c.json(agent, 201);
+  });
+
   api.patch("/api/agents/:id", async (c) => {
     const id = c.req.param("id");
-    if (!store.getAgent(id)) return c.json({ error: "Agent not found" }, 404);
+    const current = store.getAgent(id);
+    if (!current) return c.json(err("Agent not found"), 404);
+    if (current.archived) return c.json(err("Restore this villager before editing"), 409);
     const b = await body(c, agentPatch);
     if (!b.ok) return b.res;
+    if (b.data.buildingId && !store.getBuilding(b.data.buildingId)) return c.json(err("Unknown building"), 400);
     const agent = store.updateAgent(id, b.data)!;
     store.addEvent({ type: "agent.updated", agentId: id, message: `${agent.name}'s profile was updated`, data: { fields: Object.keys(b.data) } });
     return c.json(agent);
   });
 
-  // tasks
+  /** Archive (soft delete): history is kept; queued work is cancelled; schedules targeting the agent are paused. */
+  api.delete("/api/agents/:id", (c) => {
+    const id = c.req.param("id");
+    const agent = store.getAgent(id);
+    if (!agent) return c.json(err("Agent not found"), 404);
+    if (agent.archived) return c.json({ ok: true });
+    const tasks = store.listTasks({ agentId: id, limit: 500 });
+    if (tasks.some((t) => t.status === "running")) return c.json(err(`${agent.name} is working right now — stop the task first`), 409);
+    for (const t of tasks) if (["queued", "blocked", "retry_wait", "waiting_approval"].includes(t.status)) runner.cancelTask(t.id);
+    for (const s of store.listSchedules()) {
+      if (s.target.type === "task" && s.target.agentId === id && s.enabled) {
+        store.updateSchedule(s.id, { enabled: false });
+        store.addEvent({ type: "schedule.skipped", message: `Paused schedule “${s.name}” because ${agent.name} left town`, data: { scheduleId: s.id } });
+      }
+    }
+    store.updateAgent(id, { archived: true, enabled: false });
+    store.setAgentStatus(id, "idle", null, null);
+    store.addEvent({ type: "agent.archived", agentId: id, message: `${agent.name} the ${agent.role} left town (archived — history kept)` });
+    return c.json({ ok: true });
+  });
+
+  api.post("/api/agents/:id/restore", (c) => {
+    const id = c.req.param("id");
+    const agent = store.getAgent(id);
+    if (!agent) return c.json(err("Agent not found"), 404);
+    const buildingId = store.getBuilding(agent.buildingId) ? agent.buildingId : store.listBuildings()[0]?.id;
+    if (!buildingId) return c.json(err("Create a building first"), 409);
+    const restored = store.updateAgent(id, { archived: false, enabled: true, buildingId })!;
+    store.addEvent({ type: "agent.created", agentId: id, message: `${restored.name} moved back into town` });
+    return c.json(restored);
+  });
+
+  // ── buildings ──
+  api.get("/api/buildings", (c) => c.json(store.listBuildings()));
+  api.post("/api/buildings", async (c) => {
+    const b = await body(c, buildingCreate);
+    if (!b.ok) return b.res;
+    if (store.isSlotTaken(b.data.slot)) return c.json(err("That plot is already occupied"), 409);
+    let id = slugify(b.data.name);
+    if (store.getBuilding(id)) id = `${id}-${randomUUID().slice(0, 4)}`;
+    store.upsertBuilding({ id, ...b.data });
+    const building = store.getBuilding(id)!;
+    store.addEvent({ type: "building.created", message: `${building.name} (${building.department}) was built`, data: { buildingId: id } });
+    return c.json(building, 201);
+  });
+  api.patch("/api/buildings/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!store.getBuilding(id)) return c.json(err("Building not found"), 404);
+    const b = await body(c, buildingPatch);
+    if (!b.ok) return b.res;
+    if (b.data.slot && store.isSlotTaken(b.data.slot, id)) return c.json(err("That plot is already occupied"), 409);
+    const building = store.updateBuilding(id, b.data)!;
+    store.addEvent({ type: "building.updated", message: `${building.name} was updated`, data: { buildingId: id, fields: Object.keys(b.data) } });
+    return c.json(building);
+  });
+  api.delete("/api/buildings/:id", (c) => {
+    const id = c.req.param("id");
+    const building = store.getBuilding(id);
+    if (!building) return c.json(err("Building not found"), 404);
+    const residents = store.listAgents().filter((a) => a.buildingId === id && !a.archived);
+    if (residents.length) return c.json(err(`Move ${residents.map((a) => a.name).join(", ")} to another building first`), 409);
+    store.deleteBuilding(id);
+    store.addEvent({ type: "building.deleted", message: `${building.name} was demolished`, data: { buildingId: id } });
+    return c.json({ ok: true });
+  });
+
+  // ── tasks ──
   api.get("/api/tasks", (c) => c.json(store.listTasks({ agentId: c.req.query("agentId"), workflowId: c.req.query("workflowId"), limit: 300 })));
   api.get("/api/tasks/:id", (c) => {
     const task = store.getTask(c.req.param("id"));
-    if (!task) return c.json({ error: "Task not found" }, 404);
+    if (!task) return c.json(err("Task not found"), 404);
     return c.json({ task, events: store.listEvents({ taskId: task.id, limit: 500 }), approvals: store.listApprovals({ taskId: task.id }) });
   });
   api.post("/api/tasks", async (c) => {
     const b = await body(c, newTask);
     if (!b.ok) return b.res;
     const agent = store.getAgent(b.data.agentId);
-    if (!agent) return c.json({ error: "Unknown agent" }, 400);
-    for (const dep of b.data.dependsOn) if (!store.getTask(dep)) return c.json({ error: `Unknown dependency ${dep}` }, 400);
+    if (!agent || agent.archived) return c.json(err("Unknown agent"), 400);
+    for (const dep of b.data.dependsOn) if (!store.getTask(dep)) return c.json(err(`Unknown dependency ${dep}`), 400);
     const task = store.createTask({ ...b.data, createdBy: "user" });
-    store.addEvent({
-      type: "task.created",
-      agentId: agent.id,
-      taskId: task.id,
-      message: `You assigned “${task.title}” to ${agent.name}`,
-      data: { createdBy: "user" },
-    });
-    void runner.tick();
+    store.addEvent({ type: "task.created", agentId: agent.id, taskId: task.id, message: `You assigned “${task.title}” to ${agent.name}`, data: { createdBy: "user" } });
+    runner.poke();
     return c.json(task, 201);
   });
   api.post("/api/tasks/:id/cancel", (c) => {
     const r = runner.cancelTask(c.req.param("id"));
-    return r.ok ? c.json({ ok: true }) : c.json({ error: r.error }, 409);
+    return r.ok ? c.json({ ok: true }) : c.json(err(r.error!), 409);
   });
   api.post("/api/tasks/:id/retry", (c) => {
     const r = runner.retryTask(c.req.param("id"));
-    return r.ok ? c.json({ ok: true }) : c.json({ error: r.error }, 409);
+    return r.ok ? c.json({ ok: true }) : c.json(err(r.error!), 409);
   });
 
-  // workflows
+  // ── workflows ──
   api.get("/api/workflows", (c) => c.json(store.listWorkflows(50)));
   api.post("/api/workflows/campaign", async (c) => {
     let raw: unknown;
     try {
       raw = await c.req.json();
     } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
+      return c.json(err("Invalid JSON body"), 400);
     }
     try {
       const wf = transaction(store.db, () => startCampaignWorkflow(store, raw));
-      void runner.tick();
+      runner.poke();
       return c.json(wf, 201);
-    } catch (err) {
-      if (err instanceof z.ZodError) return c.json({ error: "Validation failed", issues: err.issues }, 400);
-      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    } catch (e) {
+      if (e instanceof z.ZodError) return c.json({ error: "Validation failed", issues: e.issues }, 400);
+      return c.json(err(e instanceof Error ? e.message : String(e)), 400);
     }
   });
 
-  // approvals
+  // ── schedules ──
+  const checkScheduleTarget = (t: Schedule["target"]): string | null => {
+    if (t.type !== "task") return null;
+    const a = store.getAgent(t.agentId);
+    return !a || a.archived ? "Unknown or archived agent" : null;
+  };
+  api.get("/api/schedules", (c) => c.json(store.listSchedules()));
+  api.post("/api/schedules", async (c) => {
+    const b = await body(c, scheduleCreate);
+    if (!b.ok) return b.res;
+    try {
+      validateCadence(b.data.cadence, config.minScheduleIntervalMinutes);
+    } catch (e) {
+      return c.json(err(String(e instanceof Error ? e.message : e)), 400);
+    }
+    const targetError = checkScheduleTarget(b.data.target as Schedule["target"]);
+    if (targetError) return c.json(err(targetError), 400);
+    const schedule = store.insertSchedule({
+      id: randomUUID(),
+      ...b.data,
+      target: b.data.target as Schedule["target"],
+      nextRunAt: b.data.enabled ? computeNextRun(b.data.cadence, b.data.timezone, new Date()).toISOString() : null,
+    });
+    store.addEvent({ type: "system.notice", message: `New schedule “${schedule.name}” — next run ${schedule.nextRunAt ?? "paused"}`, data: { scheduleId: schedule.id } });
+    return c.json(schedule, 201);
+  });
+  api.patch("/api/schedules/:id", async (c) => {
+    const id = c.req.param("id");
+    const current = store.getSchedule(id);
+    if (!current) return c.json(err("Schedule not found"), 404);
+    const b = await body(c, schedulePatch);
+    if (!b.ok) return b.res;
+    const next = { ...current, ...b.data } as Schedule;
+    try {
+      validateCadence(next.cadence, config.minScheduleIntervalMinutes);
+    } catch (e) {
+      return c.json(err(String(e instanceof Error ? e.message : e)), 400);
+    }
+    const targetError = checkScheduleTarget(next.target);
+    if (targetError) return c.json(err(targetError), 400);
+    const timingChanged = b.data.cadence !== undefined || b.data.timezone !== undefined || b.data.enabled !== undefined;
+    const nextRunAt = !next.enabled ? null : timingChanged || !current.nextRunAt ? computeNextRun(next.cadence, next.timezone, new Date()).toISOString() : current.nextRunAt;
+    const schedule = store.updateSchedule(id, { ...b.data, target: next.target, nextRunAt })!;
+    return c.json(schedule);
+  });
+  api.delete("/api/schedules/:id", (c) => {
+    const id = c.req.param("id");
+    const s = store.getSchedule(id);
+    if (!s) return c.json(err("Schedule not found"), 404);
+    store.deleteSchedule(id);
+    store.addEvent({ type: "system.notice", message: `Deleted schedule “${s.name}”`, data: { scheduleId: id } });
+    return c.json({ ok: true });
+  });
+  api.post("/api/schedules/:id/run", (c) => {
+    const s = store.getSchedule(c.req.param("id"));
+    if (!s) return c.json(err("Schedule not found"), 404);
+    const r = runner.scheduler.fire(s, "manual");
+    runner.poke();
+    return r.fired ? c.json(r) : c.json(err(r.outcome), 409);
+  });
+
+  // ── approvals ──
   api.get("/api/approvals", (c) => c.json(store.listApprovals({ limit: 100 })));
   api.post("/api/approvals/:id/decide", async (c) => {
     const b = await body(c, decision);
     if (!b.ok) return b.res;
     const r = runner.decideApproval(c.req.param("id"), b.data.approve, b.data.note ?? null);
-    return r.ok ? c.json({ ok: true }) : c.json({ error: r.error }, 409);
+    return r.ok ? c.json({ ok: true }) : c.json(err(r.error!), 409);
   });
 
-  // events
+  // ── system: live connection test ──
+  api.post("/api/system/test-connection", async (c) => {
+    const provider = runner.provider;
+    if (provider.simulated) return c.json(err("Simulation mode is on — there is no API to test. Add ANTHROPIC_API_KEY and restart."), 409);
+    if (!config.anthropicApiKey) return c.json(err("No ANTHROPIC_API_KEY is configured on the server."), 409);
+    if (budgetStatus(store, config).globalHold) return c.json(err("Budget limit reached — raise it before testing."), 409);
+    const [r] = await runVerification(provider, { model: config.defaultModel, checks: ["messages"], maxTokens: 1024 });
+    if (r.requestId) {
+      store.recordUsage({
+        agentId: "system", taskId: null, model: r.model ?? config.defaultModel, inputTokens: r.inputTokens, outputTokens: r.outputTokens, cacheReadTokens: 0, cacheWriteTokens: 0,
+        webSearchRequests: 0, webFetchRequests: 0, codeExecutions: 0, costUsd: r.costUsd, simulated: false, requestId: r.requestId, requestedModel: config.defaultModel,
+      });
+    }
+    const v = store.addVerification({ checkId: r.checkId, ok: r.ok, detail: r.detail, requestId: r.requestId, model: r.model, costUsd: r.costUsd, source: "connection-test" });
+    store.addEvent({ type: "system.verification", message: `Connection test ${r.ok ? "passed" : "FAILED"}: ${r.detail}`, data: { checkId: r.checkId, ok: r.ok, requestId: r.requestId } });
+    return c.json(v, r.ok ? 200 : 502);
+  });
+
+  // ── events ──
   api.get("/api/events", (c) => {
     const since = c.req.query("since");
     return c.json(
@@ -264,40 +471,48 @@ export function createApi(deps: ApiDeps): Hono {
     );
   });
 
-  /** Live event stream (Server-Sent Events). Resumes from Last-Event-ID / ?since. */
+  /**
+   * Live event stream (SSE). Tails the events TABLE, so events written by a
+   * separate worker process reach the browser too. In-process events wake the
+   * loop immediately; otherwise it polls every second. Resumes from Last-Event-ID / ?since.
+   */
   api.get("/api/stream", (c) =>
     streamSSE(c, async (stream) => {
-      const since = Number(c.req.header("last-event-id") ?? c.req.query("since") ?? NaN);
-      const queue: TownEvent[] = [];
+      const sinceRaw = Number(c.req.header("last-event-id") ?? c.req.query("since") ?? NaN);
+      let lastId = Number.isFinite(sinceRaw) ? sinceRaw : store.maxEventId();
       let wake: (() => void) | null = null;
-      const onEvent = (e: TownEvent) => {
-        queue.push(e);
-        wake?.();
-      };
+      const onEvent = () => wake?.();
       store.bus.on("event", onEvent);
       stream.onAbort(() => {
         store.bus.off("event", onEvent);
         wake?.();
       });
-      if (Number.isFinite(since)) queue.unshift(...store.listEvents({ sinceId: since, limit: 1000 }));
       await stream.writeSSE({ event: "hello", data: JSON.stringify({ version: VERSION }) });
+      let idleMs = 0;
       while (!stream.aborted) {
-        while (queue.length) {
-          const e = queue.shift()!;
+        const batch: TownEvent[] = store.tailEvents(lastId, 500);
+        for (const e of batch) {
           await stream.writeSSE({ id: String(e.id), event: "town", data: JSON.stringify(e) });
+          lastId = e.id;
         }
+        if (batch.length === 500) continue;
+        if (batch.length) idleMs = 0;
         await new Promise<void>((resolve) => {
           wake = resolve;
-          setTimeout(resolve, 15_000);
+          setTimeout(resolve, 1000);
         });
         wake = null;
-        if (!queue.length && !stream.aborted) await stream.writeSSE({ event: "ping", data: "{}" });
+        idleMs += 1000;
+        if (idleMs >= 15_000 && !stream.aborted) {
+          idleMs = 0;
+          await stream.writeSSE({ event: "ping", data: "{}" });
+        }
       }
     }),
   );
 
-  // treasury & settings
-  api.get("/api/treasury", (c) => c.json(treasurySummary(store, config.dailyBudgetUsd)));
+  // ── treasury & settings ──
+  api.get("/api/treasury", (c) => c.json(treasurySummary(store, config, runner.provider.simulated)));
   api.get("/api/settings", (c) => c.json(store.getSettings()));
   api.patch("/api/settings", async (c) => {
     const b = await body(c, settingsPatch);
@@ -307,10 +522,10 @@ export function createApi(deps: ApiDeps): Hono {
     return c.json(settings);
   });
 
-  api.all("/api/*", (c) => c.json({ error: "Not found" }, 404));
-  api.onError((err, c) => {
-    console.error("[api]", err);
-    return c.json({ error: "Internal server error" }, 500);
+  api.all("/api/*", (c) => c.json(err("Not found"), 404));
+  api.onError((e, c) => {
+    console.error("[api]", e);
+    return c.json(err("Internal server error"), 500);
   });
   return api;
 }

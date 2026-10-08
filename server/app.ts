@@ -44,6 +44,8 @@ export function createApp(config: Config, opts: AppOptions = {}) {
   const provider = opts.provider ?? createProvider(config) ?? new UnconfiguredProvider();
   const runner = new TaskRunner(store, provider, config, opts.timings);
   const api = createApi({ config, store, runner });
-  if (opts.startWorker !== false) runner.start();
+  // API-only processes never run tasks or schedules; a separate worker process does.
+  const startWorker = opts.startWorker ?? config.role !== "api";
+  if (startWorker) runner.start();
   return { db, store, runner, api, provider };
 }

@@ -1,13 +1,17 @@
 import { randomUUID } from "node:crypto";
+import os from "node:os";
 import type { Task } from "../../shared/types.js";
 import type { Config } from "../config.js";
 import type { Store } from "../db/store.js";
 import type { LLMProvider } from "../llm/provider.js";
+import { budgetStatus } from "./budget.js";
 import { AgentExecutor } from "./executor.js";
+import { Scheduler } from "./scheduler.js";
 
 const LEASE_MS = 60_000;
 const RETRY_BASE_MS = 5_000;
 const STATUS_DECAY_MS = 6_000;
+const WORKER_HEARTBEAT_MS = 5_000;
 
 /**
  * Durable background worker. The queue lives in the database, so tasks keep
@@ -22,6 +26,10 @@ export class TaskRunner {
   private readonly executor: AgentExecutor;
   private ticking = false;
   private stopping = false;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private readonly startedAt = new Date().toISOString();
+  private lastHoldNotice = "";
+  readonly scheduler: Scheduler;
 
   private readonly retryBaseMs: number;
   private readonly statusDecayMs: number;
@@ -33,6 +41,7 @@ export class TaskRunner {
     timings: { retryBaseMs?: number; statusDecayMs?: number } = {},
   ) {
     this.executor = new AgentExecutor(store, provider, config);
+    this.scheduler = new Scheduler(store, config, provider.simulated);
     this.retryBaseMs = timings.retryBaseMs ?? RETRY_BASE_MS;
     this.statusDecayMs = timings.statusDecayMs ?? STATUS_DECAY_MS;
   }
@@ -49,19 +58,40 @@ export class TaskRunner {
     if (this.timer) return;
     this.stopping = false;
     this.recover();
+    this.heartbeat();
+    this.heartbeatTimer = setInterval(() => this.heartbeat(), WORKER_HEARTBEAT_MS);
     this.timer = setInterval(() => void this.tick(), this.config.workerPollMs);
     void this.tick();
+  }
+
+  /** Register liveness so the API (possibly another process) can show worker health. */
+  private heartbeat(): void {
+    try {
+      this.store.heartbeatWorker({
+        id: this.workerId,
+        role: this.config.role === "worker" ? "worker" : "all",
+        hostname: os.hostname(),
+        pid: process.pid,
+        startedAt: this.startedAt,
+        activeTasks: this.active.size,
+      });
+    } catch (err) {
+      console.error("[worker] heartbeat failed", err);
+    }
   }
 
   /** Graceful stop: in-flight tasks go back to the queue and resume (append-only) on next start. */
   async stop(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.timer = null;
+    this.heartbeatTimer = null;
     this.stopping = true;
     for (const [taskId, c] of this.active) {
       c.abort();
       this.store.updateTask(taskId, { status: "queued", releaseLease: true });
     }
+    this.store.removeWorker(this.workerId);
   }
 
   /** Crash recovery on boot: expired leases go back to the queue, stale agent states reset. */
@@ -78,14 +108,34 @@ export class TaskRunner {
     }
   }
 
+  /** Ask a started worker to look for work now (no-op in API-only processes). */
+  poke(): void {
+    if (this.timer) void this.tick();
+  }
+
   /** Claim and start as many tasks as concurrency allows. Exposed for tests. */
   async tick(): Promise<void> {
     if (this.ticking) return;
     this.ticking = true;
     try {
       this.store.requeueExpiredLeases();
+      try {
+        this.scheduler.tick();
+      } catch (err) {
+        console.error("[scheduler]", err);
+      }
+      // Strict budgets: when a global cap is reached nothing new starts; capped agents are skipped.
+      const budget = budgetStatus(this.store, this.config, this.provider.simulated);
+      if (budget.globalHold) {
+        const key = budget.resetsAt.day.slice(0, 10);
+        if (this.lastHoldNotice !== key && this.store.claimNextTaskPreview()) {
+          this.lastHoldNotice = key;
+          this.store.addEvent({ type: "budget.hold", message: "Budget limit reached — queued work is paused until the limit resets or is raised.", data: { budget } });
+        }
+        return;
+      }
       while (this.active.size < this.config.workerConcurrency) {
-        const task = this.store.claimNextTask(this.workerId, LEASE_MS);
+        const task = this.store.claimNextTask(this.workerId, LEASE_MS, budget.agentHolds);
         if (!task) break;
         void this.run(task);
       }
@@ -99,18 +149,31 @@ export class TaskRunner {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       await this.tick();
-      if (this.active.size === 0 && !this.store.claimNextTaskPreview()) return;
+      if (this.active.size === 0 && !this.hasClaimableWork()) return;
       await new Promise((r) => setTimeout(r, 10));
     }
     throw new Error("drain timed out");
+  }
+
+  /** Is there work this worker could start right now (respecting budget holds)? */
+  hasClaimableWork(): boolean {
+    const budget = budgetStatus(this.store, this.config, this.provider.simulated);
+    if (budget.globalHold) return false;
+    if (!budget.agentHolds.length) return this.store.claimNextTaskPreview();
+    return this.store.claimNextTaskPreview(budget.agentHolds);
   }
 
   private async run(task: Task): Promise<void> {
     const controller = new AbortController();
     this.active.set(task.id, controller);
     const sim = this.provider.simulated;
-    if (sim && !task.simulated) this.store.updateTask(task.id, { simulated: true });
-    const heartbeat = setInterval(() => this.store.renewLease(task.id, this.workerId, LEASE_MS), LEASE_MS / 3);
+    // Label the task by how THIS attempt runs (a task re-run live after a simulated run becomes live).
+    if (task.simulated !== sim) this.store.updateTask(task.id, { simulated: sim });
+    // Lease heartbeat; also notices a cancel issued by another process (e.g. a separate API server).
+    const heartbeat = setInterval(() => {
+      this.store.renewLease(task.id, this.workerId, LEASE_MS);
+      if (this.store.getTask(task.id)?.status === "cancelled") controller.abort();
+    }, Math.min(LEASE_MS / 3, 2_000));
     this.store.addEvent({
       type: "task.started",
       agentId: task.agentId,
@@ -134,6 +197,11 @@ export class TaskRunner {
       } else if (outcome.kind === "waiting_approval") {
         this.store.updateTask(task.id, { status: "waiting_approval", releaseLease: true });
         this.store.setAgentStatus(task.agentId, "waiting_approval", "Waiting for your approval", task.id, sim);
+      } else if (outcome.kind === "budget_hold") {
+        // Not a failure: give the attempt back and wait for the budget window to reset.
+        this.store.updateTask(task.id, { status: "queued", runAfter: outcome.resumeAt, attempts: Math.max(0, task.attempts - 1), releaseLease: true });
+        this.store.addEvent({ type: "budget.hold", agentId: task.agentId, taskId: task.id, message: `Paused “${task.title}”: ${outcome.message}`, data: { resumeAt: outcome.resumeAt } });
+        this.store.setAgentStatus(task.agentId, "idle", null, null, sim);
       } else {
         this.handleFailure(current, outcome.error, outcome.retryable);
       }

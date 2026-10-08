@@ -103,6 +103,7 @@ export class SimulatedProvider implements LLMProvider {
       fallbackUsed: false,
       refusal: null,
       hostedActivity: [],
+      requestId: null,
     };
   }
 }

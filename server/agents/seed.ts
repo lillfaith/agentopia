@@ -28,7 +28,7 @@ export const DEFAULT_BUILDINGS: Building[] = [
   },
 ];
 
-type SeedAgent = Omit<Agent, "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "model">;
+type SeedAgent = Omit<Agent, "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "model" | "archived" | "dailyBudgetUsd">;
 
 export const DEFAULT_AGENTS: SeedAgent[] = [
   {
@@ -45,7 +45,7 @@ export const DEFAULT_AGENTS: SeedAgent[] = [
     ].join("\n"),
     responsibilities: ["Plan projects and write briefs", "Delegate to specialists", "Review and approve deliverables"],
     effort: "medium",
-    tools: ["delegate_task"],
+    skills: ["writing", "delegation"],
     avatar: { color: "#f6a5c0", accessory: "crown" },
     buildingId: "town-hall",
     enabled: true,
@@ -63,7 +63,7 @@ export const DEFAULT_AGENTS: SeedAgent[] = [
     ].join("\n"),
     responsibilities: ["Market & audience research", "Competitor analysis", "Organise findings for the copy team"],
     effort: "high",
-    tools: ["web_search"],
+    skills: ["research", "writing"],
     avatar: { color: "#9fd3f5", accessory: "goggles" },
     buildingId: "observatory",
     enabled: true,
@@ -81,7 +81,7 @@ export const DEFAULT_AGENTS: SeedAgent[] = [
     ].join("\n"),
     responsibilities: ["Headlines & taglines", "Landing-page and social copy", "Adapt tone to audience"],
     effort: "medium",
-    tools: ["publish_content"],
+    skills: ["writing", "publishing"],
     avatar: { color: "#c4b5fd", accessory: "beret" },
     buildingId: "ink-studio",
     enabled: true,

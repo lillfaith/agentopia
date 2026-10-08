@@ -2,7 +2,9 @@ import type { Agent, Task } from "../../shared/types.js";
 import type { Config } from "../config.js";
 import type { Store } from "../db/store.js";
 import { buildBrief, buildSystemPrompt } from "../agents/prompt.js";
-import { requiresApproval, toolsForAgent, type LocalTool } from "../agents/tools.js";
+import { requiresApproval, type LocalTool } from "../agents/tools.js";
+import { capabilitiesFor } from "../skills/index.js";
+import { preflight, worstCaseCallCost } from "./budget.js";
 import { estimateCostUsd } from "../llm/models.js";
 import { NonRetryableError, type LLMProvider, type ProviderMessage, type ToolCall, type ToolResult } from "../llm/provider.js";
 
@@ -17,9 +19,9 @@ interface TaskState {
 export type ExecOutcome =
   | { kind: "completed"; output: string }
   | { kind: "waiting_approval"; approvalIds: string[] }
+  /** A global/agent budget would be exceeded: pause (no attempt burned) until `resumeAt`. */
+  | { kind: "budget_hold"; message: string; resumeAt: string }
   | { kind: "failed"; error: string; retryable: boolean };
-
-export class BudgetExceededError extends NonRetryableError {}
 
 const excerpt = (s: string, n = 160) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
@@ -38,8 +40,8 @@ export class AgentExecutor {
     const agent = this.store.getAgent(task.agentId);
     if (!agent) return { kind: "failed", error: `Agent ${task.agentId} no longer exists`, retryable: false };
     const sim = this.provider.simulated;
-    const { local, specs, hosted } = toolsForAgent(this.store, agent);
-    const system = buildSystemPrompt(agent);
+    const { local, specs, hosted, prompts } = capabilitiesFor(this.store, agent);
+    const system = buildSystemPrompt(agent, prompts);
 
     let state = this.store.getConversation<TaskState>(task.id);
     if (!state) {
@@ -63,7 +65,19 @@ export class AgentExecutor {
         if (state.turns >= this.config.maxTurnsPerTask) {
           return { kind: "failed", error: `Stopped after ${state.turns} model turns (AGENTOPIA_MAX_TURNS_PER_TASK).`, retryable: false };
         }
-        this.assertBudget();
+        if (!sim) {
+          const reserveUsd = worstCaseCallCost({
+            model: agent.model,
+            promptChars: system.length + JSON.stringify(state.messages).length + JSON.stringify(specs).length,
+            maxTokens: this.config.maxOutputTokens,
+            hostedTools: hosted,
+          });
+          const gate = preflight(this.store, this.config, { agent, taskId: task.id, reserveUsd });
+          if (!gate.ok) {
+            if (gate.scope === "task") return { kind: "failed", error: gate.message, retryable: false };
+            return { kind: "budget_hold", message: gate.message, resumeAt: gate.resumeAt };
+          }
+        }
 
         this.store.setAgentStatus(agent.id, "working", state.turns === 0 ? `Thinking about “${excerpt(task.title, 60)}”` : "Continuing…", task.id, sim);
         const result = await this.provider.generate({
@@ -83,18 +97,26 @@ export class AgentExecutor {
           agentId: agent.id,
           taskId: task.id,
           model: result.servedModel,
-          ...result.usage,
+          inputTokens: result.usage.inputTokens,
+          outputTokens: result.usage.outputTokens,
+          cacheReadTokens: result.usage.cacheReadTokens,
+          cacheWriteTokens: result.usage.cacheWriteTokens,
+          webSearchRequests: result.usage.webSearchRequests,
+          webFetchRequests: result.usage.webFetchRequests ?? 0,
+          codeExecutions: result.usage.codeExecutions ?? 0,
           costUsd: cost,
           simulated: sim,
+          requestId: result.requestId,
+          requestedModel: agent.model,
         });
         this.store.addEvent({
           type: "usage.recorded",
           agentId: agent.id,
           taskId: task.id,
           message: sim
-            ? "Simulated call — 0 tokens, $0"
-            : `${result.usage.inputTokens + result.usage.cacheReadTokens + result.usage.cacheWriteTokens} in / ${result.usage.outputTokens} out tokens · ~$${cost.toFixed(4)} (${result.servedModel})`,
-          data: { ...result.usage, costUsd: cost, model: result.servedModel, fallbackUsed: result.fallbackUsed },
+            ? "Simulated call — no API request, 0 tokens, $0"
+            : `Claude API ${result.requestId ?? "(no request id)"} · ${result.usage.inputTokens + result.usage.cacheReadTokens + result.usage.cacheWriteTokens} in / ${result.usage.outputTokens} out tokens · ~$${cost.toFixed(4)} (${result.servedModel})`,
+          data: { ...result.usage, costUsd: cost, model: result.servedModel, fallbackUsed: result.fallbackUsed, requestId: result.requestId },
           simulated: sim,
         });
 
@@ -217,6 +239,12 @@ export class AgentExecutor {
           continue;
         }
       }
+      // Exactly-once: if this call already ran (e.g. before a crash), reuse its recorded result.
+      const prior = this.store.getToolRun(task.id, call.id);
+      if (prior) {
+        results.push({ toolCallId: call.id, content: prior.content, isError: prior.isError });
+        continue;
+      }
       const summary = tool.summarize(parsed.data);
       this.store.addEvent({ type: "task.tool_call", agentId: agent.id, taskId: task.id, message: summary, data: { toolId: tool.id }, simulated: sim });
       if (tool.id === "delegate_task") this.store.setAgentStatus(agent.id, "delivering", summary, task.id, sim);
@@ -228,23 +256,14 @@ export class AgentExecutor {
           maxDelegationDepth: this.config.maxDelegationDepth,
           simulated: sim,
         });
+        this.store.saveToolRun(task.id, call.id, tool.id, outcome.content, !!outcome.isError);
         results.push({ toolCallId: call.id, content: outcome.content, isError: outcome.isError });
       } catch (err) {
-        results.push({ toolCallId: call.id, content: `Tool failed: ${err instanceof Error ? err.message : String(err)}`, isError: true });
+        const content = `Tool failed: ${err instanceof Error ? err.message : String(err)}`;
+        this.store.saveToolRun(task.id, call.id, tool.id, content, true);
+        results.push({ toolCallId: call.id, content, isError: true });
       }
     }
     return { kind: "ok", results };
-  }
-
-  private assertBudget(): void {
-    if (this.provider.simulated || this.config.dailyBudgetUsd <= 0) return;
-    const startOfDay = new Date();
-    startOfDay.setUTCHours(0, 0, 0, 0);
-    const spent = this.store.spendSince(startOfDay.toISOString());
-    if (spent >= this.config.dailyBudgetUsd) {
-      throw new BudgetExceededError(
-        `Daily budget reached (~$${spent.toFixed(2)} of $${this.config.dailyBudgetUsd.toFixed(2)}). Raise AGENTOPIA_DAILY_BUDGET_USD or retry tomorrow.`,
-      );
-    }
   }
 }
