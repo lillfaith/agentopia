@@ -8,7 +8,8 @@ import { budgetStatus } from "./budget.js";
 import { AgentExecutor } from "./executor.js";
 import { Scheduler } from "./scheduler.js";
 
-const LEASE_MS = 60_000;
+/** A crashed worker's tasks are recovered at most this long after its last heartbeat. */
+const LEASE_MS = 30_000;
 const RETRY_BASE_MS = 5_000;
 const STATUS_DECAY_MS = 6_000;
 const WORKER_HEARTBEAT_MS = 5_000;
@@ -89,7 +90,9 @@ export class TaskRunner {
     this.stopping = true;
     for (const [taskId, c] of this.active) {
       c.abort();
-      this.store.updateTask(taskId, { status: "queued", releaseLease: true });
+      const t = this.store.getTask(taskId);
+      // An interrupted attempt is not a failed one: give it back.
+      this.store.updateTask(taskId, { status: "queued", releaseLease: true, attempts: Math.max(0, (t?.attempts ?? 1) - 1) });
     }
     this.store.removeWorker(this.workerId);
   }
@@ -118,7 +121,9 @@ export class TaskRunner {
     if (this.ticking) return;
     this.ticking = true;
     try {
-      this.store.requeueExpiredLeases();
+      for (const t of this.store.requeueExpiredLeases()) {
+        this.store.addEvent({ type: "system.notice", taskId: t.id, agentId: t.agentId, message: `Recovered “${t.title}” from a worker that stopped responding — re-queued.` });
+      }
       try {
         this.scheduler.tick();
       } catch (err) {

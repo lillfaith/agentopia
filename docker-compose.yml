@@ -1,0 +1,55 @@
+# Agentopia for 24/7 operation on one host: an API/web container and a separate
+# worker container sharing one SQLite volume. Workers keep running tasks and
+# schedules whether or not any browser is open; both restart automatically.
+#
+#   mkdir -p secrets
+#   printf '%s' 'sk-ant-...'  > secrets/anthropic_api_key
+#   openssl rand -hex 32      > secrets/admin_token
+#   docker compose up -d --build
+#
+# Put a TLS reverse proxy (Caddy, nginx, a cloud load balancer) in front of port 8787.
+
+x-common: &common
+  build: .
+  image: agentopia:latest
+  restart: unless-stopped
+  volumes:
+    - agentopia-data:/data
+  secrets:
+    - anthropic_api_key
+    - admin_token
+  environment: &env
+    ANTHROPIC_API_KEY_FILE: /run/secrets/anthropic_api_key
+    AGENTOPIA_ADMIN_TOKEN_FILE: /run/secrets/admin_token
+    AGENTOPIA_DB_PATH: /data/agentopia.sqlite
+    # Hard spending ceilings — the web UI can only lower these.
+    AGENTOPIA_DAILY_BUDGET_USD: "5"
+    AGENTOPIA_MONTHLY_BUDGET_USD: "50"
+    AGENTOPIA_MAX_TASK_COST_USD: "1"
+
+services:
+  api:
+    <<: *common
+    environment:
+      <<: *env
+      AGENTOPIA_ROLE: api
+    ports:
+      - "127.0.0.1:8787:8787"
+    stop_grace_period: 20s
+
+  worker:
+    <<: *common
+    environment:
+      <<: *env
+      AGENTOPIA_ROLE: worker
+      AGENTOPIA_WORKER_CONCURRENCY: "2"
+    stop_grace_period: 30s
+
+volumes:
+  agentopia-data:
+
+secrets:
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
+  admin_token:
+    file: ./secrets/admin_token

@@ -1,0 +1,11 @@
+node_modules
+dist
+data
+.env
+.env.*
+*.sqlite
+*.sqlite-*
+.git
+docs/images
+coverage
+secrets
