@@ -53,8 +53,13 @@ function num(value: string | undefined, fallback: number): number {
   return n;
 }
 
-function parseMode(v: string | undefined): Config["mode"] {
-  const m = v?.trim() || "local";
+/** Railway injects these into every deployment; on Railway the app defaults to SaaS mode. */
+export function onRailway(env: NodeJS.ProcessEnv): boolean {
+  return !!(env.RAILWAY_PROJECT_ID || env.RAILWAY_ENVIRONMENT_ID || env.RAILWAY_SERVICE_ID || env.RAILWAY_ENVIRONMENT_NAME);
+}
+
+function parseMode(v: string | undefined, fallback: Config["mode"]): Config["mode"] {
+  const m = v?.trim() || fallback;
   if (m !== "local" && m !== "saas") throw new Error(`AGENTOPIA_MODE must be local or saas (got "${m}")`);
   return m;
 }
@@ -79,6 +84,9 @@ function readSecret(env: NodeJS.ProcessEnv, name: string): string | null {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const railway = onRailway(env);
+  // Railway gives the service a public domain once one is generated; use it unless an origin is set explicitly.
+  const railwayOrigin = railway && env.RAILWAY_PUBLIC_DOMAIN?.trim() ? `https://${env.RAILWAY_PUBLIC_DOMAIN.trim()}` : null;
   const host = env.HOST?.trim() || "127.0.0.1";
   const adminToken = readSecret(env, "AGENTOPIA_ADMIN_TOKEN");
   const config: Config = {
@@ -101,10 +109,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     workerConcurrency: Math.max(1, num(env.AGENTOPIA_WORKER_CONCURRENCY, 2)),
     workerPollMs: Math.max(200, num(env.AGENTOPIA_WORKER_POLL_MS, 1500)),
     simulation: env.AGENTOPIA_SIMULATION?.trim() === "true",
-    mode: parseMode(env.AGENTOPIA_MODE),
-    dataDir: path.resolve(env.AGENTOPIA_DATA_DIR?.trim() || "./data"),
-    trustProxy: env.AGENTOPIA_TRUST_PROXY?.trim() === "true",
-    publicOrigin: env.AGENTOPIA_PUBLIC_ORIGIN?.trim().replace(/\/$/, "") || null,
+    mode: parseMode(env.AGENTOPIA_MODE, railway ? "saas" : "local"),
+    dataDir: path.resolve(env.AGENTOPIA_DATA_DIR?.trim() || (railway ? "/data" : "./data")),
+    trustProxy: (env.AGENTOPIA_TRUST_PROXY?.trim() || (railway ? "true" : "false")) === "true",
+    publicOrigin: env.AGENTOPIA_PUBLIC_ORIGIN?.trim().replace(/\/$/, "") || railwayOrigin,
     globalConcurrency: Math.max(1, num(env.AGENTOPIA_GLOBAL_CONCURRENCY, 8)),
     sessionDays: Math.max(1, num(env.AGENTOPIA_SESSION_DAYS, 30)),
     globalDailyBudgetUsd: num(env.AGENTOPIA_GLOBAL_DAILY_BUDGET_USD, 0),

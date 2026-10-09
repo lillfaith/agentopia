@@ -31,5 +31,7 @@ ENTRYPOINT ["sh", "/app/scripts/docker-entrypoint.sh"]
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["node_modules/.bin/tsx", "server/healthcheck.ts"]
-# Single-town mode: binding to 0.0.0.0 REQUIRES AGENTOPIA_ADMIN_TOKEN (or _FILE). SaaS mode (AGENTOPIA_MODE=saas) uses user sessions instead.
-CMD ["node_modules/.bin/tsx", "server/index.ts"]
+# Runs migrations, then the server. On Railway (detected from its RAILWAY_* variables) the
+# app defaults to SaaS mode with data in /data. Elsewhere it is a single town, which on
+# 0.0.0.0 REQUIRES AGENTOPIA_ADMIN_TOKEN (or _FILE); set AGENTOPIA_MODE=saas for multi-user.
+CMD ["sh", "scripts/start.sh"]
