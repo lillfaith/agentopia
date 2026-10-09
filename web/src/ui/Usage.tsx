@@ -43,6 +43,7 @@ function Breakdown({ data }: { data: TaskUsageBreakdown }) {
           <b>{data.models.map(modelLabel).join(", ")}</b>
         </span>
         {data.depth && <span>{DEPTH_LABEL[data.depth]} depth</span>}
+        {data.calls.some((x) => x.billing === "own") && <span>Billed to your own API key</span>}
         <span>
           {t.apiCalls} API call{t.apiCalls === 1 ? "" : "s"}
           {t.serverIterations > t.apiCalls ? ` · ${t.serverIterations} model steps` : ""}

@@ -76,6 +76,27 @@ export function modelSpec(id: string): ModelSpec {
   return MODELS.find((m) => m.id === id) ?? { ...FALLBACK_SPEC, id, label: id };
 }
 
+/** Prices an owner entered for a model Agentopia has no price for (e.g. OpenAI or Gemini models). */
+export type CustomPrices = { inputPerMTok: number; outputPerMTok: number } | null | undefined;
+
+/**
+ * The price table entry for a call. Owner-entered prices win; unknown models are priced
+ * conservatively at the most expensive tier so budget caps still bite.
+ */
+export function priceSpec(id: string, custom?: CustomPrices): ModelSpec {
+  if (!custom) return modelSpec(id);
+  return {
+    ...FALLBACK_SPEC,
+    id,
+    label: id,
+    inputPerMTok: custom.inputPerMTok,
+    outputPerMTok: custom.outputPerMTok,
+    // Providers discount cached input differently; a quarter of the input price errs on the high side.
+    cacheReadPerMTok: custom.inputPerMTok * 0.25,
+    cacheWritePerMTok: custom.inputPerMTok * 1.25,
+  };
+}
+
 export function isKnownModel(id: string): boolean {
   return MODELS.some((m) => m.id === id);
 }
@@ -92,10 +113,10 @@ export interface TokenUsage {
   codeExecutions?: number;
 }
 
-export function estimateCostUsd(modelId: string, u: TokenUsage): number {
-  const p = modelSpec(modelId);
+export function estimateCostUsd(modelId: string, u: TokenUsage, custom?: CustomPrices): number {
+  const p = priceSpec(modelId, custom);
   // Haiku 5.5 list price rises above 100K-token prompts; approximate with the higher tier.
-  const longPrompt = modelId === "claude-haiku-5-5" && u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens > 100_000;
+  const longPrompt = !custom && modelId === "claude-haiku-5-5" && u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens > 100_000;
   const inRate = longPrompt ? 0.5 : p.inputPerMTok;
   const outRate = longPrompt ? 2.5 : p.outputPerMTok;
   const cost =

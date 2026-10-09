@@ -4,6 +4,7 @@ import { toolInfo, type LocalTool } from "../agents/tools.js";
 import type { HostedTool, ToolSpec } from "../llm/provider.js";
 import { coding } from "./coding.js";
 import { delegation } from "./delegation.js";
+import { github } from "./github.js";
 import { email } from "./email.js";
 import { memory } from "./memory.js";
 import { imageGeneration, modeling3d } from "./planned.js";
@@ -15,7 +16,7 @@ import { writing } from "./writing.js";
 export type { SkillDefinition } from "./types.js";
 
 /** Registry order is display order. */
-export const SKILLS: SkillDefinition[] = [research, writing, delegation, memory, coding, publishing, email, imageGeneration, modeling3d];
+export const SKILLS: SkillDefinition[] = [research, writing, delegation, memory, coding, github, publishing, email, imageGeneration, modeling3d];
 
 export function getSkill(id: string): SkillDefinition | undefined {
   return SKILLS.find((s) => s.id === id);

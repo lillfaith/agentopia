@@ -40,6 +40,7 @@ export function taskUsageBreakdown(taskId: string, depth: TaskUsageBreakdown["de
     requestedModel: r.requestedModel,
     requestId: r.requestId,
     simulated: r.simulated,
+    billing: r.billing ?? "platform",
     freshInputTokens: r.inputTokens,
     cacheReadTokens: r.cacheReadTokens,
     cacheWriteTokens: r.cacheWriteTokens,

@@ -29,7 +29,10 @@ export const DEFAULT_BUILDINGS: Building[] = [
   },
 ];
 
-type SeedAgent = Omit<Agent, "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "model" | "archived" | "dailyBudgetUsd" | "appearance" | "voice" | "avatar">;
+type SeedAgent = Omit<
+  Agent,
+  "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "model" | "archived" | "dailyBudgetUsd" | "appearance" | "voice" | "avatar" | "provider" | "credentialId" | "githubCredentialId" | "customPrices"
+>;
 
 export const DEFAULT_AGENTS: SeedAgent[] = [
   {

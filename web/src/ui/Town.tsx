@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { AgentTemplate, Building, Effort } from "../../../shared/types";
 import { api } from "../api/client";
 import { STATUS_LABEL, useTown } from "../state/store";
+import { AiSetup, aiSetupFrom, aiSetupPayload } from "./AiSetup";
 import { useTheme } from "../theme-engine/ThemeContext";
 import { Badge, Drawer, Empty, SkillChip, StatusDot, fmtUsd } from "./common";
 
@@ -128,7 +129,13 @@ function Hire({ onDone }: { onDone: () => void }) {
     skills: ["writing"] as string[],
     color: "#ffc9d9",
     accessory: "sprout",
-    model: snap.status.models[0]?.id ?? "claude-opus-5-5",
+    ai: aiSetupFrom({
+      provider: "anthropic",
+      credentialId: null,
+      model: snap.status.models.find((m) => !snap.status.allowedModels || snap.status.allowedModels.includes(m.id))?.id ?? snap.status.models[0]?.id ?? "claude-opus-5-5",
+      githubCredentialId: null,
+      customPrices: null,
+    }),
     effort: "medium" as Effort,
     buildingId: snap.buildings[0]?.id ?? "",
     dailyBudget: "",
@@ -176,7 +183,7 @@ function Hire({ onDone }: { onDone: () => void }) {
         skills: form.skills,
         avatar: { color: form.color, accessory: form.accessory },
         buildingId,
-        model: form.model,
+        ...aiSetupPayload(form.ai),
         effort: form.effort,
         dailyBudgetUsd: form.dailyBudget.trim() ? Number(form.dailyBudget) : null,
       });
@@ -226,17 +233,8 @@ function Hire({ onDone }: { onDone: () => void }) {
         <textarea rows={2} value={form.responsibilities} onChange={(e) => set("responsibilities", e.target.value)} />
       </label>
       <SkillPicker value={form.skills} onChange={(v) => set("skills", v)} />
+      <AiSetup value={form.ai} onChange={(v) => set("ai", v)} skills={form.skills} />
       <div className="grid2">
-        <label>
-          Model
-          <select value={form.model} onChange={(e) => set("model", e.target.value)}>
-            {snap.status.models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label} — ${m.inputPerMTok}/${m.outputPerMTok} per MTok
-              </option>
-            ))}
-          </select>
-        </label>
         <label>
           Effort
           <select value={form.effort} onChange={(e) => set("effort", e.target.value as Effort)}>

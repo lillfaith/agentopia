@@ -7,9 +7,9 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
   return { ...base, dbPath: ":memory:", anthropicApiKey: null, simulation: false, workerPollMs: 10_000, ...overrides };
 }
 
-export function harness(provider: LLMProvider, overrides: Partial<Config> = {}) {
+export function harness(provider: LLMProvider, overrides: Partial<Config> = {}, appOpts: Partial<Parameters<typeof createApp>[1]> = {}) {
   const config = testConfig({ role: "all", ...overrides });
-  const app = createApp(config, { provider, startWorker: false, timings: { retryBaseMs: 1, statusDecayMs: 5 } });
+  const app = createApp(config, { provider, startWorker: false, timings: { retryBaseMs: 1, statusDecayMs: 5 }, ...appOpts });
   const request = (path: string, init: RequestInit = {}) =>
     app.api.request(path, {
       ...init,

@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import type { Schedule, SystemStatus, TownEvent, TownSnapshot } from "../../shared/types.js";
+import type { AIProvider, Schedule, SystemStatus, TownEvent, TownSnapshot } from "../../shared/types.js";
 import type { Config } from "../config.js";
 import { transaction } from "../db/database.js";
 import type { Store } from "../db/store.js";
 import { AGENT_TEMPLATES } from "../agents/templates.js";
 import { MODELS, isKnownModel } from "../llm/models.js";
+import { SERVICE_LABEL, checkKey, type KeyCheckers, type ProviderResolver } from "../llm/keys.js";
 import { taskUsageBreakdown } from "../llm/usage.js";
 import { DEPTHS, DEPTH_IDS } from "../engine/depth.js";
 import { getSkill, skillInfo } from "../skills/index.js";
@@ -27,13 +28,17 @@ export interface ApiDeps {
   config: Config;
   store: Store;
   runner: TaskRunner;
+  /** Builds providers from owners' keys; forgets them when a key is deleted. */
+  resolver?: ProviderResolver;
+  keyCheckers?: KeyCheckers;
   /** True when mounted behind the SaaS account layer (which authenticates and checks CSRF). */
   embedded?: boolean;
 }
 
 // ───────────────────────── validation schemas ─────────────────────────
 
-const modelId = z.string().regex(/^claude-[a-z0-9.-]{2,60}$/, "Model ids look like claude-opus-5-5");
+// Claude ids look like claude-opus-5-5; OpenAI and Gemini ids vary (gpt-…, o3, gemini-…, models/…).
+const modelId = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]{1,100}$/, "That doesn't look like a model id");
 const skillIds = z
   .array(z.string().refine((id) => !!getSkill(id), "Unknown skill id"))
   .max(20)
@@ -69,6 +74,10 @@ const agentFields = {
         .strict(),
     })
     .strict(),
+  provider: z.enum(["anthropic", "openai", "gemini"]),
+  credentialId: z.string().min(1).max(80).nullable(),
+  githubCredentialId: z.string().min(1).max(80).nullable(),
+  customPrices: z.object({ inputPerMTok: z.number().min(0).max(1000), outputPerMTok: z.number().min(0).max(1000) }).strict().nullable(),
   voice: z
     .object({
       preset: z.enum(VOICE_PRESET_IDS),
@@ -85,7 +94,7 @@ const agentFields = {
 const agentPatch = z.object({ ...agentFields, enabled: z.boolean() }).partial().strict();
 const agentCreate = z
   .object({ ...agentFields, personality: agentFields.personality.default(""), responsibilities: agentFields.responsibilities.default([]), dailyBudgetUsd: money.nullable().default(null) })
-  .partial({ model: true, effort: true, avatar: true, appearance: true, voice: true })
+  .partial({ model: true, effort: true, avatar: true, appearance: true, voice: true, provider: true, credentialId: true, githubCredentialId: true, customPrices: true })
   .strict();
 
 const LEGACY_ACCESSORY: Record<string, string> = { crown: "crown", beret: "beret", goggles: "goggles", sprout: "sprout" };
@@ -113,6 +122,15 @@ const newTask = z
     modelOverride: z.string().min(1).max(80).nullable().optional(),
   })
   .strict();
+
+const credentialCreate = z
+  .object({
+    service: z.enum(["anthropic", "openai", "gemini", "github"]),
+    label: z.string().trim().min(1).max(40),
+    secret: z.string().trim().min(8).max(500).regex(/^\S+$/, "Keys don't contain spaces"),
+  })
+  .strict();
+const credentialPatch = z.object({ label: z.string().trim().min(1).max(40) }).strict();
 
 const chatMessage = z.object({ text: z.string().trim().min(1).max(20000) }).strict();
 const newChat = z
@@ -266,6 +284,7 @@ export function createApi(deps: ApiDeps): Hono {
       events: store.listEvents({ limit: 300 }),
       status: systemStatus(deps),
       templates: AGENT_TEMPLATES,
+      credentials: store.listCredentials(),
     };
     return c.json(snapshot);
   });
@@ -284,11 +303,78 @@ export function createApi(deps: ApiDeps): Hono {
   const modelNotAllowed = (model: string | undefined) =>
     model && config.allowedModels && !config.allowedModels.includes(model) ? `Your plan includes ${config.allowedModels.join(", ")}; ${model} needs an upgrade.` : null;
 
+  /**
+   * Check a villager's AI setup: which service, whose key, which model. Agentopia's own Claude is
+   * limited to the plan's models; on the owner's own key, any model that key can use.
+   */
+  const aiSetupProblem = (a: { provider: AIProvider; credentialId: string | null; githubCredentialId: string | null; model: string }): { status: 400 | 403; error: string } | null => {
+    if (a.credentialId) {
+      const cred = store.getCredential(a.credentialId);
+      if (!cred) return { status: 400, error: "Unknown API key" };
+      if (cred.service !== a.provider) return { status: 400, error: `That key is for ${SERVICE_LABEL[cred.service]}, not ${SERVICE_LABEL[a.provider]}` };
+    } else if (a.provider !== "anthropic") {
+      return { status: 400, error: `${SERVICE_LABEL[a.provider]} needs your own API key. Add one in Settings → API keys.` };
+    } else {
+      const blocked = modelNotAllowed(a.model);
+      if (blocked) return { status: 403, error: blocked };
+    }
+    if (a.provider === "anthropic" && !a.model.startsWith("claude-")) return { status: 400, error: "Claude model ids start with claude-" };
+    if (a.provider !== "anthropic" && a.model.startsWith("claude-")) return { status: 400, error: `Pick a ${SERVICE_LABEL[a.provider]} model` };
+    if (a.githubCredentialId && store.getCredential(a.githubCredentialId)?.service !== "github") return { status: 400, error: "Unknown GitHub token" };
+    return null;
+  };
+
+  // ── owners' own API keys (stored encrypted; the secret is never sent back) ──
+  api.get("/api/credentials", (c) => c.json(store.listCredentials()));
+  api.post("/api/credentials", async (c) => {
+    const b = await body(c, credentialCreate);
+    if (!b.ok) return b.res;
+    if (!store.vault) return c.json(err("Key storage is not configured on this server"), 503);
+    // Check the key with one read-only call before storing it, so a typo is caught now.
+    const check = await checkKey(b.data.service, b.data.secret, deps.keyCheckers);
+    if (!check.ok) return c.json(err(`That key didn't work: ${check.detail}`), 400);
+    const cred = store.addCredential(b.data);
+    store.setCredentialStatus(cred.id, "ok", check.detail, check.models);
+    store.addEvent({ type: "system.notice", message: `Added ${SERVICE_LABEL[cred.service]} key “${cred.label}” (${cred.hint})`, data: { credentialId: cred.id } });
+    return c.json(store.getCredential(cred.id), 201);
+  });
+  api.post("/api/credentials/:id/check", async (c) => {
+    const cred = store.getCredential(c.req.param("id"));
+    if (!cred) return c.json(err("Key not found"), 404);
+    const secret = store.credentialSecret(cred.id);
+    if (!secret) return c.json(err("This server can't read stored keys"), 503);
+    const check = await checkKey(cred.service, secret, deps.keyCheckers);
+    store.setCredentialStatus(cred.id, check.ok ? "ok" : "error", check.detail, check.ok ? check.models : undefined);
+    return c.json(store.getCredential(cred.id));
+  });
+  api.patch("/api/credentials/:id", async (c) => {
+    const id = c.req.param("id");
+    if (!store.getCredential(id)) return c.json(err("Key not found"), 404);
+    const b = await body(c, credentialPatch);
+    if (!b.ok) return b.res;
+    store.renameCredential(id, b.data.label);
+    return c.json(store.getCredential(id));
+  });
+  api.delete("/api/credentials/:id", (c) => {
+    const cred = store.getCredential(c.req.param("id"));
+    if (!cred) return c.json(err("Key not found"), 404);
+    const affected = store.deleteCredential(cred.id, config.defaultModel);
+    deps.resolver?.forget(cred.id);
+    store.addEvent({
+      type: "system.notice",
+      message: `Removed ${SERVICE_LABEL[cred.service]} key “${cred.label}”${affected.length ? `; ${affected.length} villager(s) went back to Agentopia's Claude` : ""}`,
+      data: { credentialId: cred.id, agents: affected },
+    });
+    return c.json({ ok: true, agents: affected });
+  });
+
   api.post("/api/agents", async (c) => {
     const b = await body(c, agentCreate);
     if (!b.ok) return b.res;
-    const blocked = modelNotAllowed(b.data.model);
-    if (blocked) return c.json(err(blocked), 403);
+    const provider = b.data.provider ?? "anthropic";
+    if (provider !== "anthropic" && !b.data.model) return c.json(err("Pick a model for this villager"), 400);
+    const setup = aiSetupProblem({ provider, credentialId: b.data.credentialId ?? null, githubCredentialId: b.data.githubCredentialId ?? null, model: b.data.model ?? config.defaultModel });
+    if (setup) return c.json(err(setup.error), setup.status);
     const locked = b.data.appearance ? unownedWearables(store, {}, b.data.appearance.wearables as Record<string, string | undefined>) : [];
     if (locked.length) return c.json(err(`Buy ${locked.join(", ")} in the shop first`), 403);
     if (!store.getBuilding(b.data.buildingId)) return c.json(err("Unknown building"), 400);
@@ -309,6 +395,10 @@ export function createApi(deps: ApiDeps): Hono {
       buildingId: b.data.buildingId,
       enabled: true,
       dailyBudgetUsd: b.data.dailyBudgetUsd,
+      provider,
+      credentialId: b.data.credentialId ?? null,
+      githubCredentialId: b.data.githubCredentialId ?? null,
+      customPrices: b.data.customPrices ?? null,
     });
     store.addEvent({ type: "agent.created", agentId: agent.id, message: `${agent.name} the ${agent.role} moved into town`, data: { buildingId: agent.buildingId } });
     return c.json(agent, 201);
@@ -328,8 +418,17 @@ export function createApi(deps: ApiDeps): Hono {
     if (current.archived) return c.json(err("Restore this villager before editing"), 409);
     const b = await body(c, agentPatch);
     if (!b.ok) return b.res;
-    const blocked = modelNotAllowed(b.data.model);
-    if (blocked) return c.json(err(blocked), 403);
+    const aiFields = ["provider", "credentialId", "githubCredentialId", "model"] as const;
+    if (aiFields.some((f) => b.data[f] !== undefined)) {
+      const next = {
+        provider: b.data.provider ?? current.provider,
+        credentialId: b.data.credentialId !== undefined ? b.data.credentialId : current.credentialId,
+        githubCredentialId: b.data.githubCredentialId !== undefined ? b.data.githubCredentialId : current.githubCredentialId,
+        model: b.data.model ?? current.model,
+      };
+      const setup = aiSetupProblem(next);
+      if (setup) return c.json(err(setup.error), setup.status);
+    }
     if (b.data.appearance) {
       const locked = unownedWearables(store, current.appearance.wearables, b.data.appearance.wearables as Record<string, string | undefined>);
       if (locked.length) return c.json(err(`Buy ${locked.join(", ")} in the shop first`), 403);

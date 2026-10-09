@@ -1,4 +1,4 @@
-import type { Achievement, Agent, AgentMemory, Building, CoinEntry, Project, ResearchDepth, Schedule, Task, TaskMessage, TaskUsageBreakdown, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
+import type { Achievement, Agent, AgentMemory, Building, CoinEntry, CredentialInfo, CredentialService, Project, ResearchDepth, Schedule, Task, TaskMessage, TaskUsageBreakdown, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
 
 import { DemoError, demoCall, demoSubscribe } from "../demo/demoServer";
 
@@ -83,7 +83,8 @@ export interface AccountInfo {
   };
 }
 
-export type NewAgent = Pick<Agent, "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "skills" | "avatar" | "buildingId" | "model" | "effort" | "dailyBudgetUsd">;
+export type NewAgent = Pick<Agent, "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "skills" | "avatar" | "buildingId" | "model" | "effort" | "dailyBudgetUsd"> &
+  Partial<Pick<Agent, "provider" | "credentialId" | "githubCredentialId" | "customPrices">>;
 export type NewSchedule = Pick<Schedule, "name" | "cadence" | "timezone" | "target" | "overlap" | "enabled">;
 
 export const api = {
@@ -108,6 +109,9 @@ export const api = {
     depth?: ResearchDepth | null;
     modelOverride?: string | null;
   }) => post<Task>("/api/tasks", body),
+  addCredential: (body: { service: CredentialService; label: string; secret: string }) => post<CredentialInfo>("/api/credentials", body),
+  checkCredential: (id: string) => post<CredentialInfo>(`/api/credentials/${id}/check`, {}),
+  deleteCredential: (id: string) => del<{ ok: true; agents: string[] }>(`/api/credentials/${id}`),
   taskMessages: (id: string) => call<TaskMessage[]>(`/api/tasks/${id}/messages`),
   replyToTask: (id: string, text: string) => post<Task>(`/api/tasks/${id}/messages`, { text }),
   startChat: (body: { agentId: string; text: string; depth?: ResearchDepth | null; modelOverride?: string | null }) => post<Task>("/api/chats", body),

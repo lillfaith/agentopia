@@ -128,6 +128,24 @@ try {
   const chatDone: any = chat.status === 201 ? await waitDone(chat.body.id) : null;
   check("start a free-form chat", chatDone?.status === "completed" && chatDone.kind === "chat" && (chatDone.output ?? "").trim().length > 10, JSON.stringify((chatDone?.output ?? chatDone?.lastError ?? "").slice(0, 120)));
 
+  // Own key: the owner adds their own Claude key; work on it is billed to them, not the plan.
+  if (!simulate) {
+    const key = await alice("/api/credentials", "POST", { service: "anthropic", label: "e2e own key", secret: process.env.ANTHROPIC_API_KEY });
+    check("add own Claude key (checked, never echoed)", key.status === 201 && key.body.status === "ok" && !JSON.stringify(key.body).includes(process.env.ANTHROPIC_API_KEY!), key.body.statusDetail ?? key.body.error ?? "");
+    const own = await alice("/api/agents/copywriter", "PATCH", { provider: "anthropic", credentialId: key.body.id, model: MODEL });
+    const planBefore = (await alice("/api/status")).body.budget.spent.todayUsd;
+    const ownTask = await alice("/api/tasks", "POST", { agentId: "copywriter", title: "Own-key tagline", instructions: "Reply with one short tagline for a lavender latte. Nothing else." });
+    const ownDone: any = own.status === 200 && ownTask.status === 201 ? await waitDone(ownTask.body.id) : null;
+    const ownUsage = ownDone ? (await alice(`/api/tasks/${ownTask.body.id}/usage`)).body : null;
+    const planAfter = (await alice("/api/status")).body.budget.spent.todayUsd;
+    check(
+      "villager works on the owner's own key, outside the plan",
+      ownDone?.status === "completed" && ownUsage?.calls.length > 0 && ownUsage.calls.every((x: any) => x.billing === "own") && planAfter === planBefore,
+      `${ownDone?.status ?? "not run"}${ownDone?.lastError ? `: ${ownDone.lastError}` : ""} · plan spend ${planBefore} → ${planAfter}`,
+    );
+    await alice("/api/agents/copywriter", "PATCH", { provider: "anthropic", credentialId: null, model: MODEL });
+  }
+
   const bob = browser(first.base);
   await bob("/api/auth/signup", "POST", { email: `other-${email}`, password });
   const peek = await bob(`/api/tasks/${task.body.id}`);

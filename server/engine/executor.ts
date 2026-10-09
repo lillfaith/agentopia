@@ -6,7 +6,8 @@ import { requiresApproval, type LocalTool } from "../agents/tools.js";
 import { capabilitiesFor } from "../skills/index.js";
 import { preflight, worstCaseCallCost } from "./budget.js";
 import { depthSpendCap, planTaskRun, usesWebResearch, type DepthProfile } from "./depth.js";
-import { estimateCostUsd } from "../llm/models.js";
+import { estimateCostUsd, type CustomPrices } from "../llm/models.js";
+import type { ProviderResolver } from "../llm/keys.js";
 import { NonRetryableError, type LLMProvider, type ProviderMessage, type ToolCall, type ToolResult } from "../llm/provider.js";
 
 /** Persisted per-task executor state (stored in tasks.conversation). */
@@ -19,7 +20,11 @@ interface TaskState {
   lastContextTokens?: number;
   /** Usage rows after this id belong to the current exchange (since the owner's last message). */
   exchangeStartUsageId?: number;
+  /** Provider and key this transcript was written with (see ProviderResolver). */
+  providerKey?: string;
 }
+
+const PROVIDER_NAME: Record<string, string> = { anthropic: "Claude", openai: "OpenAI", gemini: "Gemini", simulated: "Simulated" };
 
 /**
  * Added to the transcript before the final call when a depth limit is reached. It is stored, not
@@ -59,24 +64,32 @@ const excerpt = (s: string, n = 160) => (s.length > n ? s.slice(0, n - 1).trimEn
 export class AgentExecutor {
   constructor(
     private readonly store: Store,
-    private readonly provider: LLMProvider,
+    private readonly platform: LLMProvider,
     private readonly config: Config,
+    /** Picks each villager's provider (Agentopia's Claude or the owner's own key). */
+    private readonly resolver?: ProviderResolver,
   ) {}
 
   async execute(task: Task, signal: AbortSignal): Promise<ExecOutcome> {
     const stored = this.store.getAgent(task.agentId);
     if (!stored) return { kind: "failed", error: `Agent ${task.agentId} no longer exists`, retryable: false };
+    const resolved = this.resolver ? this.resolver.resolve(stored) : { provider: this.platform, billing: "platform" as const, key: "platform" };
+    if ("error" in resolved) return { kind: "failed", error: resolved.error, retryable: false };
+    const provider = resolved.provider;
+    const ownKey = resolved.billing === "own";
     // A model outside the owner's plan (e.g. after a downgrade) runs on the plan's default instead.
-    const allowed = this.config.allowedModels;
+    // On the owner's own key, any model that key can use is fine.
+    const allowed = ownKey ? null : this.config.allowedModels;
     const own = allowed && !allowed.includes(stored.model) ? { ...stored, model: this.config.defaultModel } : stored;
-    const sim = this.provider.simulated;
+    const sim = provider.simulated;
+    const prices = stored.customPrices;
     const { local, specs, hosted, prompts } = capabilitiesFor(this.store, own);
     const system = buildSystemPrompt(own, prompts);
 
     // Research depth decides the model, effort and limits for this task. Fixed for the whole
     // task: model, effort and tools are part of the cached prompt prefix.
     const research = usesWebResearch(hosted);
-    const plan = planTaskRun(task, own, { defaultDepth: this.store.getSettings().defaultDepth, allowedModels: allowed ?? null, research });
+    const plan = planTaskRun(task, own, { defaultDepth: this.store.getSettings().defaultDepth, allowedModels: allowed ?? null, research, provider: stored.provider });
     const agent = { ...own, model: plan.model, effort: plan.effort };
     const depth = research ? plan.depth : null;
     const maxTurns = depth ? Math.min(depth.maxTurns, this.config.maxTurnsPerTask) : this.config.maxTurnsPerTask;
@@ -86,6 +99,9 @@ export class AgentExecutor {
     if (depth && !task.depth) this.store.setTaskDepth(task.id, depth.id);
 
     let state = this.store.getConversation<TaskState>(task.id);
+    // A transcript belongs to one provider and key. If the villager switched since, start over
+    // (the conversation so far is carried over as text).
+    if (state && (state.providerKey ?? "platform") !== resolved.key) state = null;
     const unread = this.store.unreadOwnerMessages(task.id);
     if (!state) {
       const budget = depth ? { searches: depth.maxSearches, fetches: depth.maxFetches } : undefined;
@@ -93,7 +109,7 @@ export class AgentExecutor {
       // Rebuilt from scratch (e.g. a retry) after the owner had replied: carry the conversation over as text.
       const earlier = this.store.listTaskMessages(task.id).filter((m) => m.role !== "brief");
       if (earlier.some((m) => m.role === "owner")) brief += `\n\n${threadRecap(earlier)}\n\n(Reply to the owner's latest message.)`;
-      state = { messages: [this.provider.userMessage(brief)], pendingToolCalls: null, turns: 0, exchangeStartUsageId: this.store.lastUsageId() };
+      state = { messages: [provider.userMessage(brief)], pendingToolCalls: null, turns: 0, exchangeStartUsageId: this.store.lastUsageId(), providerKey: resolved.key };
       this.store.markOwnerMessagesRead(task.id);
       this.store.saveConversation(task.id, state);
       if (depth) {
@@ -102,7 +118,7 @@ export class AgentExecutor {
           type: "task.step",
           agentId: agent.id,
           taskId: task.id,
-          message: `${depth.label} research${why}: up to ${depth.maxSearches} searches and ${depth.maxFetches} page reads, ~$${depthSpendCap(depth, agent.model).toFixed(2)} max.`,
+          message: `${depth.label} research${why}: up to ${depth.maxSearches} searches and ${depth.maxFetches} page reads, ~$${depthSpendCap(depth, agent.model, prices).toFixed(2)} max${ownKey ? ", on your own key" : ""}.`,
           data: { depth: depth.id, model: agent.model, effort: agent.effort },
           simulated: sim,
         });
@@ -111,11 +127,11 @@ export class AgentExecutor {
       // The owner replied: continue the same conversation, so the villager keeps everything it found.
       if (state.pendingToolCalls?.length) {
         const skipped = state.pendingToolCalls.map((c) => ({ toolCallId: c.id, content: "Not run: the owner sent a new message instead.", isError: true }));
-        state.messages.push(this.provider.toolResultsMessage(skipped));
+        state.messages.push(provider.toolResultsMessage(skipped));
         state.pendingToolCalls = null;
       }
       const reply = ownerReply(task, unread.map((m) => m.content));
-      state.messages = this.provider.appendNote ? this.provider.appendNote(state.messages, reply) : [...state.messages, this.provider.userMessage(reply)];
+      state.messages = provider.appendNote ? provider.appendNote(state.messages, reply) : [...state.messages, provider.userMessage(reply)];
       // Limits (turns, research budget, per-task spend) apply to each exchange.
       state.turns = 0;
       state.exchangeStartUsageId = this.store.lastUsageId();
@@ -129,9 +145,9 @@ export class AgentExecutor {
 
         // Resume point: answer outstanding tool calls (possibly after an approval pause).
         if (state.pendingToolCalls?.length) {
-          const handled = await this.handleToolCalls(agent, task, local, state.pendingToolCalls);
+          const handled = await this.handleToolCalls(agent, task, local, state.pendingToolCalls, sim);
           if (handled.kind === "waiting") return { kind: "waiting_approval", approvalIds: handled.approvalIds };
-          state.messages.push(this.provider.toolResultsMessage(handled.results));
+          state.messages.push(provider.toolResultsMessage(handled.results));
           state.pendingToolCalls = null;
           this.store.saveConversation(task.id, state);
         }
@@ -141,19 +157,19 @@ export class AgentExecutor {
         }
 
         // Research depth: once a limit is reached, the next call is a tool-free write-up.
-        let wrapUp: string | null = depth && state.turns > 0 ? this.depthLimitReached(task.id, state, depth, maxTurns, agent.model) : null;
+        let wrapUp: string | null = depth && state.turns > 0 ? this.depthLimitReached(task.id, state, depth, maxTurns, agent.model, sim, prices) : null;
         let maxTokens = wrapUp ? Math.min(this.config.maxOutputTokens, WRAP_UP_MAX_TOKENS) : this.config.maxOutputTokens;
         if (!sim) {
           const promptChars = system.length + JSON.stringify(state.messages).length + JSON.stringify(specs).length;
           const reserve = (tokens: number, searches: number) =>
-            worstCaseCallCost({ model: agent.model, promptChars, maxTokens: tokens, hostedTools: hosted, maxSearches: searches });
-          const capUsd = depth ? depthSpendCap(depth, agent.model) : undefined;
+            worstCaseCallCost({ model: agent.model, promptChars, maxTokens: tokens, hostedTools: hosted, maxSearches: searches, customPrices: prices });
+          const capUsd = depth ? depthSpendCap(depth, agent.model, prices) : undefined;
           const sinceUsageId = state.exchangeStartUsageId ?? 0;
-          let gate = preflight(this.store, this.config, { agent, taskId: task.id, reserveUsd: reserve(maxTokens, wrapUp ? 0 : (depth?.maxSearches ?? 5)), capUsd, sinceUsageId });
+          let gate = preflight(this.store, this.config, { agent, taskId: task.id, reserveUsd: reserve(maxTokens, wrapUp ? 0 : (depth?.maxSearches ?? 5)), capUsd, sinceUsageId, ownKey });
           if (!gate.ok && gate.scope === "task" && depth && !wrapUp && state.turns > 0) {
             // Not enough budget left for more research, but maybe enough to write up what was found.
             const tokens = Math.min(this.config.maxOutputTokens, WRAP_UP_MAX_TOKENS);
-            const fallback = preflight(this.store, this.config, { agent, taskId: task.id, reserveUsd: reserve(tokens, 0), capUsd, sinceUsageId });
+            const fallback = preflight(this.store, this.config, { agent, taskId: task.id, reserveUsd: reserve(tokens, 0), capUsd, sinceUsageId, ownKey });
             if (fallback.ok) {
               gate = fallback;
               wrapUp = "spend";
@@ -166,9 +182,7 @@ export class AgentExecutor {
           }
         }
         if (wrapUp) {
-          state.messages = this.provider.appendNote
-            ? this.provider.appendNote(state.messages, WRAP_UP_NOTE)
-            : [...state.messages, this.provider.userMessage(WRAP_UP_NOTE)];
+          state.messages = provider.appendNote ? provider.appendNote(state.messages, WRAP_UP_NOTE) : [...state.messages, provider.userMessage(WRAP_UP_NOTE)];
           this.store.saveConversation(task.id, state);
           this.store.addEvent({
             type: "task.step",
@@ -190,7 +204,7 @@ export class AgentExecutor {
             this.store.addEvent({ type: "task.step", agentId: agent.id, taskId: task.id, message: text, data: { hosted: true }, simulated: sim });
           }
         };
-        const result = await this.provider.generate({
+        const result = await provider.generate({
           model: agent.model,
           effort: agent.effort,
           system,
@@ -208,7 +222,7 @@ export class AgentExecutor {
         state.turns += 1;
         if (result.contextTokens) state.lastContextTokens = result.contextTokens + result.usage.outputTokens;
 
-        const cost = sim ? 0 : estimateCostUsd(result.servedModel, result.usage);
+        const cost = sim ? 0 : estimateCostUsd(result.servedModel, result.usage, prices);
         this.store.recordUsage({
           agentId: agent.id,
           taskId: task.id,
@@ -227,6 +241,7 @@ export class AgentExecutor {
           thinkingTokens: result.thinkingTokens ?? null,
           serverIterations: result.serverIterations ?? null,
           contextTokens: result.contextTokens ?? null,
+          billing: resolved.billing,
         });
         this.store.addEvent({
           type: "usage.recorded",
@@ -234,8 +249,8 @@ export class AgentExecutor {
           taskId: task.id,
           message: sim
             ? "Simulated call — no API request, 0 tokens, $0"
-            : `Claude API ${result.requestId ?? "(no request id)"} · ${result.usage.inputTokens + result.usage.cacheReadTokens + result.usage.cacheWriteTokens} in / ${result.usage.outputTokens} out tokens · ~$${cost.toFixed(4)} (${result.servedModel})`,
-          data: { ...result.usage, costUsd: cost, model: result.servedModel, fallbackUsed: result.fallbackUsed, requestId: result.requestId },
+            : `${PROVIDER_NAME[provider.id] ?? "AI"} API ${result.requestId ?? "(no request id)"} · ${result.usage.inputTokens + result.usage.cacheReadTokens + result.usage.cacheWriteTokens} in / ${result.usage.outputTokens} out tokens · ~$${cost.toFixed(4)} (${result.servedModel})${ownKey ? " · your key" : ""}`,
+          data: { ...result.usage, costUsd: cost, model: result.servedModel, fallbackUsed: result.fallbackUsed, requestId: result.requestId, billing: resolved.billing },
           simulated: sim,
         });
 
@@ -290,14 +305,22 @@ export class AgentExecutor {
   }
 
   /** Which research-depth limit, if any, the next call would cross. */
-  private depthLimitReached(taskId: string, state: TaskState, depth: DepthProfile, maxTurns: number, model: string): WrapUpReason | null {
+  private depthLimitReached(
+    taskId: string,
+    state: TaskState,
+    depth: DepthProfile,
+    maxTurns: number,
+    model: string,
+    sim: boolean,
+    prices: CustomPrices,
+  ): WrapUpReason | null {
     if (state.turns >= maxTurns - 1) return "turns";
     const since = state.exchangeStartUsageId ?? 0;
     const used = this.store.taskToolUse(taskId, since);
     if (used.webSearches >= depth.maxSearches) return "searches";
     if (used.webFetches >= depth.maxFetches) return "fetches";
     if ((state.lastContextTokens ?? 0) >= depth.maxContextTokens) return "context";
-    if (!this.provider.simulated && this.store.taskSpend(taskId, since) >= depthSpendCap(depth, model) * SPEND_WRAP_UP_SHARE) return "spend";
+    if (!sim && this.store.taskSpend(taskId, since) >= depthSpendCap(depth, model, prices) * SPEND_WRAP_UP_SHARE) return "spend";
     return null;
   }
 
@@ -311,8 +334,8 @@ export class AgentExecutor {
     task: Task,
     local: LocalTool[],
     calls: ToolCall[],
+    sim: boolean,
   ): Promise<{ kind: "ok"; results: ToolResult[] } | { kind: "waiting"; approvalIds: string[] }> {
-    const sim = this.provider.simulated;
     const byId = new Map(local.map((t) => [t.id, t]));
     const existing = this.store.listApprovals({ taskId: task.id, limit: 500 });
 

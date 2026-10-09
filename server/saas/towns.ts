@@ -151,8 +151,9 @@ export class Towns {
       },
     });
     // Mirror every model call's cost into the accounts database (operator cap, per-user cost reporting).
+    // Calls on the owner's own API key cost the operator nothing and are left out.
     app.store.bus.on("event", (e: TownEvent) => {
-      if (e.type !== "usage.recorded" || e.simulated) return;
+      if (e.type !== "usage.recorded" || e.simulated || e.data.billing === "own") return;
       const cost = Number(e.data.costUsd ?? 0);
       if (cost > 0) this.accounts.addUsage(ownerId, cost);
     });

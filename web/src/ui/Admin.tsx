@@ -6,6 +6,7 @@ import { listThemes } from "../theme-engine/registry";
 import { browserTimezone } from "../environment/dayCycle";
 import { useTheme } from "../theme-engine/ThemeContext";
 import { AgentName, Badge, Drawer, Empty, fmtTokens, fmtUsd, timeAgo } from "./common";
+import { ApiKeys } from "./AiSetup";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -514,6 +515,8 @@ export function SettingsPanel() {
         {b.globalHold && <div className="error-box">Budget limit reached — new work is paused.</div>}
         {b.agentHolds.length > 0 && <div className="warn-box">Paused by their own daily cap: {b.agentHolds.join(", ")}</div>}
       </section>
+
+      <ApiKeys />
 
       <ResearchDefaults />
 
