@@ -163,7 +163,7 @@ export const useTown = create<UIState>((set, get) => ({
 
 function noteActivity(activity: UIState["activity"], e: TownEvent) {
   if (!e.agentId) return;
-  if (e.type === "task.step" || e.type === "task.tool_call" || e.type === "task.started") {
+  if (e.type === "task.progress" || e.type === "task.step" || e.type === "task.tool_call" || e.type === "task.started") {
     activity[e.agentId] = { text: e.message, ts: Date.parse(e.ts), taskId: e.taskId };
   }
 }
@@ -208,7 +208,7 @@ function handleEvent(e: TownEvent, set: Set, get: Get) {
   for (const l of eventListeners) l(e);
 
   // Anything structural (tasks, approvals, stats) → refresh the authoritative snapshot, debounced.
-  if (e.type !== "agent.status" && e.type !== "task.step") {
+  if (e.type !== "agent.status" && e.type !== "task.step" && e.type !== "task.progress") {
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => void get().load(), 250);
   }

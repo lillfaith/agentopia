@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Agent, AgentMemory, Effort, Task } from "../../../shared/types";
 import { PRIORITY_LABELS } from "../../../shared/types";
 import { DEMO, api } from "../api/client";
@@ -93,8 +94,14 @@ function Overview({ agent }: { agent: Agent }) {
   const tasks = snap.tasks.filter((t) => t.agentId === agent.id);
   const current = tasks.find((t) => t.id === agent.currentTaskId) ?? tasks.find((t) => t.status === "running" || t.status === "waiting_approval");
   const upcoming = tasks.filter((t) => ["queued", "blocked", "retry_wait"].includes(t.status) && t.id !== current?.id).reverse();
-  const live = current ? snap.events.filter((e) => e.taskId === current.id && e.type !== "agent.status").slice(-8) : [];
-  const recent = snap.events.filter((e) => e.agentId === agent.id && e.type !== "agent.status" && e.type !== "usage.recorded").slice(-6).reverse();
+  const live = current ? snap.events.filter((e) => e.taskId === current.id && LIVE_TYPES.has(e.type)).slice(-30) : [];
+  const recent = snap.events.filter((e) => e.agentId === agent.id && e.type !== "agent.status" && e.type !== "usage.recorded" && e.type !== "task.progress").slice(-6).reverse();
+  // Most recent finished task: its full answer is readable right here, links and all.
+  const latest = tasks.find((t) => t.status === "completed" || t.status === "failed");
+  const feed = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    feed.current?.scrollTo({ top: feed.current.scrollHeight });
+  }, [live.length]);
   const [busy, setBusy] = useState(false);
 
   return (
@@ -108,13 +115,20 @@ function Overview({ agent }: { agent: Agent }) {
               <Badge tone={TASK_TONE[current.status]}>{TASK_LABEL[current.status]}</Badge>
             </div>
             <ExecutionBadge task={current} verbose />
-            <ul className="live-feed">
-              {live.map((e) => (
-                <li key={e.id}>
-                  <EventBadge e={e} /> <span>{e.message}</span>
-                </li>
-              ))}
-              {!live.length && <li className="muted">Starting…</li>}
+            <ul className="work-feed" ref={feed} aria-live="polite">
+              {live.map((e) =>
+                e.type === "task.progress" ? (
+                  <li key={e.id} className="note">
+                    {e.message}
+                    <small className="muted">{timeAgo(e.ts)}</small>
+                  </li>
+                ) : (
+                  <li key={e.id} className="step">
+                    {STEP_ICON[e.type] ?? "·"} {e.message}
+                  </li>
+                ),
+              )}
+              {!live.length && <li className="step">Reading the brief…</li>}
             </ul>
             {current.status === "waiting_approval" && (
               <button className="btn warn full" onClick={() => useTown.getState().openPanel("approvals")}>
@@ -157,6 +171,8 @@ function Overview({ agent }: { agent: Agent }) {
         </section>
       )}
 
+      {latest && <LatestResult task={latest} agentName={agent.name} />}
+
       <section className="card">
         <h3>Recent activity</h3>
         <ul className="live-feed">
@@ -171,6 +187,56 @@ function Overview({ agent }: { agent: Agent }) {
 
       <AssignTask agent={agent} />
     </div>
+  );
+}
+
+const LIVE_TYPES = new Set(["task.started", "task.progress", "task.step", "task.tool_call", "task.approval_requested", "task.approval_resolved", "task.retry_scheduled", "budget.hold"]);
+const STEP_ICON: Record<string, string> = { "task.started": "▶", "task.step": "🔎", "task.tool_call": "🛠", "task.approval_requested": "🔔", "task.approval_resolved": "✔", "task.retry_scheduled": "↻", "budget.hold": "⏸" };
+
+/** The villager's latest finished answer, in full: formatted, with clickable links. */
+function LatestResult({ task, agentName }: { task: Task; agentName: string }) {
+  const push = useTown((s) => s.pushToast);
+  const trail = useTown(useShallow((s) => s.snapshot!.events.filter((e) => e.taskId === task.id && (e.type === "task.progress" || e.type === "task.step" || e.type === "task.tool_call"))));
+  return (
+    <section className="card">
+      <div className="row between">
+        <h3>Latest result</h3>
+        <span className="row gap-s">
+          <ExecutionBadge task={task} />
+          <Badge tone={TASK_TONE[task.status]}>{TASK_LABEL[task.status]}</Badge>
+        </span>
+      </div>
+      <div className="row between">
+        <b>{task.title}</b>
+        <small className="muted">{task.completedAt ? timeAgo(task.completedAt) : ""}</small>
+      </div>
+      {task.output ? <div className="result-body"><Markdown text={task.output} /></div> : task.lastError && <div className="error-box">{task.lastError}</div>}
+      {trail.length > 0 && (
+        <details>
+          <summary className="muted small">How {agentName} got there · {trail.length} update{trail.length === 1 ? "" : "s"}</summary>
+          <ul className="work-feed">
+            {trail.map((e) =>
+              e.type === "task.progress" ? (
+                <li key={e.id} className="note">
+                  {e.message}
+                </li>
+              ) : (
+                <li key={e.id} className="step">
+                  {STEP_ICON[e.type] ?? "·"} {e.message}
+                </li>
+              ),
+            )}
+          </ul>
+        </details>
+      )}
+      {task.output && (
+        <div className="row gap-s">
+          <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(task.output ?? "").then(() => push({ tone: "info", text: "Copied" }), () => {})}>
+            Copy
+          </button>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -249,7 +315,7 @@ function Memories({ agent }: { agent: Agent }) {
 }
 
 function WorkHistory({ agent }: { agent: Agent }) {
-  const tasks = useTown((s) => s.snapshot!.tasks.filter((t) => t.agentId === agent.id && ["completed", "failed", "cancelled"].includes(t.status)));
+  const tasks = useTown(useShallow((s) => s.snapshot!.tasks.filter((t) => t.agentId === agent.id && ["completed", "failed", "cancelled"].includes(t.status))));
   const [open, setOpen] = useState<string | null>(tasks[0]?.id ?? null);
   if (!tasks.length) {
     return (

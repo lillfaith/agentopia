@@ -70,17 +70,44 @@ export class AnthropicProvider implements LLMProvider {
     let requestId: string | null = null;
     try {
       const stream = this.client.beta.messages.stream(params, { signal: req.signal });
+      if (req.onProgress) {
+        // Text is only known to be a progress note once a tool step follows it; whatever
+        // text ends the response is the answer, which is never sent as a note.
+        let pending: string[] = [];
+        stream.on("contentBlock", (b) => {
+          try {
+            if (b.type === "text") {
+              if (b.text.trim()) pending.push(b.text.trim());
+              return;
+            }
+            if (!isToolBlock(b.type)) return;
+            for (const text of pending) req.onProgress!({ kind: "note", text });
+            pending = [];
+            const activity = b.type === "server_tool_use" ? describeHosted(b.name, b.input) : null;
+            if (activity) req.onProgress!({ kind: "activity", text: activity });
+          } catch {
+            /* progress reporting must never break the call */
+          }
+        });
+      }
       message = await stream.finalMessage();
       requestId = stream.request_id ?? null;
     } catch (err) {
       throw mapError(err);
     }
 
-    const text = message.content
-      .filter((b): b is Anthropic.Beta.Messages.BetaTextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
+    // Text before the last tool step is the agent's running commentary; text after it is the answer.
+    const lastTool = message.content.reduce((last, b, i) => (isToolBlock(b.type) ? i : last), -1);
+    const textBlocks = message.content
+      .map((b, i) => ({ b, i }))
+      .filter((x): x is { b: Anthropic.Beta.Messages.BetaTextBlock; i: number } => x.b.type === "text");
+    const notes = textBlocks.filter((x) => x.i < lastTool).map((x) => x.b.text.trim()).filter(Boolean);
+    const answer = textBlocks
+      .filter((x) => x.i > lastTool)
+      .map((x) => x.b.text)
+      .join("")
       .trim();
+    const text = answer ? withSources(answer, textBlocks.map((x) => x.b)) : notes.join("\n\n");
 
     const toolCalls = message.content
       .filter((b): b is Anthropic.Beta.Messages.BetaToolUseBlock => b.type === "tool_use")
@@ -91,19 +118,10 @@ export class AnthropicProvider implements LLMProvider {
     let webFetches = 0;
     for (const b of message.content) {
       if (b.type !== "server_tool_use") continue;
-      const input = (b.input ?? {}) as { query?: string; url?: string; command?: string; path?: string; code?: string };
-      if (b.name === "web_search") hostedActivity.push(input.query ? `Web search: “${input.query}”` : "Web search");
-      else if (b.name === "web_fetch") {
-        webFetches += 1;
-        hostedActivity.push(input.url ? `Read page: ${input.url}` : "Read a web page");
-      } else if (b.name === "bash_code_execution" || b.name === "code_execution") {
-        codeExecutions += 1;
-        const cmd = (input.command ?? input.code ?? "").split("\n")[0].slice(0, 100);
-        hostedActivity.push(cmd ? `Ran code: ${cmd}` : "Ran code in sandbox");
-      } else if (b.name === "text_editor_code_execution") {
-        codeExecutions += 1;
-        hostedActivity.push(input.path ? `Edited file in sandbox: ${input.path}` : "Edited a file in the sandbox");
-      }
+      if (b.name === "web_fetch") webFetches += 1;
+      if (b.name === "bash_code_execution" || b.name === "code_execution" || b.name === "text_editor_code_execution") codeExecutions += 1;
+      const note = describeHosted(b.name, b.input);
+      if (note) hostedActivity.push(note);
     }
 
     const u = message.usage;
@@ -131,9 +149,42 @@ export class AnthropicProvider implements LLMProvider {
             }
           : null,
       hostedActivity,
+      notes,
+      progressStreamed: !!req.onProgress,
       requestId,
     };
   }
+}
+
+/** tool_use, server_tool_use and every *_tool_result block. */
+function isToolBlock(type: string): boolean {
+  return type === "tool_use" || type === "server_tool_use" || type.endsWith("_tool_result");
+}
+
+function describeHosted(name: string, rawInput: unknown): string | null {
+  const input = (rawInput ?? {}) as { query?: string; url?: string; command?: string; path?: string; code?: string };
+  if (name === "web_search") return input.query ? `Web search: “${input.query}”` : "Web search";
+  if (name === "web_fetch") return input.url ? `Read page: ${input.url}` : "Read a web page";
+  if (name === "bash_code_execution" || name === "code_execution") {
+    const cmd = (input.command ?? input.code ?? "").split("\n")[0].slice(0, 100);
+    return cmd ? `Ran code: ${cmd}` : "Ran code in sandbox";
+  }
+  if (name === "text_editor_code_execution") return input.path ? `Edited file in sandbox: ${input.path}` : "Edited a file in the sandbox";
+  return null;
+}
+
+/** Append the web pages the answer cites as clickable Markdown links (skipping any already linked). */
+export function withSources(answer: string, blocks: { citations?: unknown }[]): string {
+  const seen = new Map<string, string>();
+  for (const b of blocks) {
+    for (const c of (b.citations ?? []) as { url?: string; title?: string | null }[]) {
+      if (!c?.url || !/^https?:\/\//.test(c.url) || seen.has(c.url) || answer.includes(c.url)) continue;
+      seen.set(c.url, (c.title || new URL(c.url).hostname).replace(/[[\]]/g, ""));
+    }
+  }
+  if (!seen.size) return answer;
+  const list = [...seen].slice(0, 12).map(([url, title]) => `- [${title}](${url})`);
+  return `${answer}\n\n**Sources**\n${list.join("\n")}`;
 }
 
 /**

@@ -36,7 +36,7 @@ export class ScriptedProvider implements LLMProvider {
     return { role: "user", content: results };
   }
   async generate(req: GenerateRequest): Promise<GenerateResult> {
-    this.calls.push(structuredClone({ ...req, signal: undefined }));
+    this.calls.push(structuredClone({ ...req, signal: undefined, onProgress: undefined }));
     const step = this.steps.shift();
     if (!step) throw new Error("ScriptedProvider ran out of steps");
     const out = await step(req);
