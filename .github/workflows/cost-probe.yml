@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         run: ${{ fromJSON(needs.plan.outputs.matrix) }}
     name: probe (${{ matrix.run.name }})

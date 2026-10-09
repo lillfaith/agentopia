@@ -1,9 +1,100 @@
 [
-  { "name": "1-before-sonnet", "ref": "ba2809e", "model": "claude-sonnet-5-5", "depth": "", "webTools": "" },
-  { "name": "2-before-haiku", "ref": "ba2809e", "model": "claude-haiku-5-5", "depth": "", "webTools": "" },
-  { "name": "3-after-sonnet-standard", "ref": "", "model": "claude-sonnet-5-5", "depth": "standard", "webTools": "" },
-  { "name": "4-after-sonnet-standard-basic", "ref": "", "model": "claude-sonnet-5-5", "depth": "standard", "webTools": "basic" },
-  { "name": "5-after-quick", "ref": "", "model": "claude-sonnet-5-5", "depth": "quick", "webTools": "" },
-  { "name": "6-after-haiku-standard", "ref": "", "model": "claude-haiku-5-5", "depth": "standard", "webTools": "" },
-  { "name": "7-after-sonnet-deep", "ref": "", "model": "claude-sonnet-5-5", "depth": "deep", "webTools": "" }
+  {
+    "name": "1-before-sonnet-a",
+    "ref": "ba2809e",
+    "model": "claude-sonnet-5-5",
+    "depth": "",
+    "webTools": ""
+  },
+  {
+    "name": "1-before-sonnet-b",
+    "ref": "ba2809e",
+    "model": "claude-sonnet-5-5",
+    "depth": "",
+    "webTools": ""
+  },
+  {
+    "name": "1-before-sonnet-c",
+    "ref": "ba2809e",
+    "model": "claude-sonnet-5-5",
+    "depth": "",
+    "webTools": ""
+  },
+  {
+    "name": "2-after-sonnet-standard-a",
+    "ref": "",
+    "model": "claude-sonnet-5-5",
+    "depth": "standard",
+    "webTools": ""
+  },
+  {
+    "name": "2-after-sonnet-standard-b",
+    "ref": "",
+    "model": "claude-sonnet-5-5",
+    "depth": "standard",
+    "webTools": ""
+  },
+  {
+    "name": "2-after-sonnet-standard-c",
+    "ref": "",
+    "model": "claude-sonnet-5-5",
+    "depth": "standard",
+    "webTools": ""
+  },
+  {
+    "name": "3-before-haiku-a",
+    "ref": "ba2809e",
+    "model": "claude-haiku-5-5",
+    "depth": "",
+    "webTools": ""
+  },
+  {
+    "name": "3-before-haiku-b",
+    "ref": "ba2809e",
+    "model": "claude-haiku-5-5",
+    "depth": "",
+    "webTools": ""
+  },
+  {
+    "name": "3-before-haiku-c",
+    "ref": "ba2809e",
+    "model": "claude-haiku-5-5",
+    "depth": "",
+    "webTools": ""
+  },
+  {
+    "name": "4-after-haiku-standard-a",
+    "ref": "",
+    "model": "claude-haiku-5-5",
+    "depth": "standard",
+    "webTools": ""
+  },
+  {
+    "name": "4-after-haiku-standard-b",
+    "ref": "",
+    "model": "claude-haiku-5-5",
+    "depth": "standard",
+    "webTools": ""
+  },
+  {
+    "name": "4-after-haiku-standard-c",
+    "ref": "",
+    "model": "claude-haiku-5-5",
+    "depth": "standard",
+    "webTools": ""
+  },
+  {
+    "name": "5-after-quick-a",
+    "ref": "",
+    "model": "claude-sonnet-5-5",
+    "depth": "quick",
+    "webTools": ""
+  },
+  {
+    "name": "5-after-quick-b",
+    "ref": "",
+    "model": "claude-sonnet-5-5",
+    "depth": "quick",
+    "webTools": ""
+  }
 ]

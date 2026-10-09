@@ -1,11 +1,12 @@
 import { useShallow } from "zustand/react/shallow";
 import { useMemo, useState } from "react";
-import type { Task, TaskStatus } from "../../../shared/types";
+import type { ResearchDepth, Task, TaskStatus } from "../../../shared/types";
 import { PRIORITY_LABELS } from "../../../shared/types";
 import { api } from "../api/client";
 import { STATUS_LABEL, useTown } from "../state/store";
 import { useTheme } from "../theme-engine/ThemeContext";
 import { TaskOutputCard } from "./AgentPanel";
+import { TaskRunOptions } from "./Usage";
 import { AgentName, Badge, Drawer, Empty, EventBadge, ExecutionBadge, ExecutionProof, Markdown, SimTag, StatusDot, TASK_LABEL, TASK_TONE, clock, timeAgo } from "./common";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -196,6 +197,7 @@ function NewTaskForm() {
   const open = snap.tasks.filter((t) => !["failed", "cancelled"].includes(t.status)).slice(0, 30);
   const projects = snap.projects.filter((p) => p.status === "active");
   const [form, setForm] = useState({ agentId: agents[0]?.id ?? "", title: "", instructions: "", priority: 1, dependsOn: "", projectId: "" });
+  const [run, setRun] = useState<{ depth: ResearchDepth | ""; model: string }>({ depth: "", model: "" });
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     setBusy(true);
@@ -207,6 +209,8 @@ function NewTaskForm() {
         priority: form.priority,
         dependsOn: form.dependsOn ? [form.dependsOn] : [],
         projectId: form.projectId || null,
+        depth: run.depth || null,
+        modelOverride: run.model || null,
       });
       setForm((f) => ({ ...f, title: "", instructions: "", dependsOn: "" }));
       push({ tone: "info", text: "Task assigned" });
@@ -256,6 +260,7 @@ function NewTaskForm() {
       )}
       <input placeholder="Title" value={form.title} maxLength={200} onChange={(e) => setForm({ ...form, title: e.target.value })} />
       <textarea placeholder="Instructions" rows={3} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} />
+      <TaskRunOptions agent={agents.find((a) => a.id === form.agentId)} depth={run.depth} model={run.model} onChange={setRun} />
       <label>
         Wait for (dependency, optional) — its output is passed in automatically
         <select value={form.dependsOn} onChange={(e) => setForm({ ...form, dependsOn: e.target.value })}>

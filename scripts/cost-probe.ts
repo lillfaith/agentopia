@@ -25,6 +25,8 @@ import { seedTown } from "../server/agents/seed.js";
 import { AgentExecutor } from "../server/engine/executor.js";
 import { AnthropicProvider } from "../server/llm/anthropic.js";
 import { PROBE_TASK } from "./cost-probe-task.js";
+import Anthropic from "@anthropic-ai/sdk";
+import { estimateCostUsd } from "../server/llm/models.js";
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -61,6 +63,7 @@ interface CallRecord {
   ms: number;
 }
 const calls: CallRecord[] = [];
+let lastBody: any = null;
 const pending: Promise<void>[] = [];
 
 /** Count cache_control markers anywhere in the request body. */
@@ -78,6 +81,7 @@ const recordingFetch: typeof fetch = async (input, init) => {
   }
   const res = await fetch(input, init);
   if (!String(typeof input === "string" ? input : (input as Request).url ?? input).includes("/v1/messages")) return res;
+  lastBody = parsed;
   const rec: CallRecord = {
     request: {
       model: parsed.model,
@@ -164,6 +168,7 @@ for (const m of convo?.messages ?? []) {
     if (b.type === "server_tool_use" && b.name === "web_fetch" && b.input?.url) urls.push(b.input.url);
   }
 }
+const MODEL_SERVED = () => (lastBody?.model as string) ?? MODEL;
 const dupes = (xs: string[]) => xs.filter((x, i) => xs.indexOf(x) !== i);
 
 /** One line per hosted-tool step: who called it, what it asked, and what came back. */
@@ -193,6 +198,30 @@ const iterations = calls.flatMap((c) => ((c.usage?.iterations as any[]) ?? []).f
 const thinking = calls.reduce((s, c) => s + Number((c.usage?.output_tokens_details as any)?.thinking_tokens ?? 0), 0);
 const output = outcome.kind === "completed" ? outcome.output : "";
 
+/**
+ * Cache check: send the task's next call as the engine would (same model, system, tools and
+ * history, plus one short user turn) and see how much of the history is read from the cache.
+ * This is what any follow-up call in a task (after a tool result or an approval) pays.
+ */
+let cacheCheck: Record<string, unknown> | null = null;
+if (lastBody && convo?.messages?.length) {
+  const { stream: _s, fallbacks: _f, ...rest } = lastBody;
+  const client = new Anthropic({ apiKey, maxRetries: 2 });
+  const msg = await client.beta.messages.create({
+    ...rest,
+    max_tokens: 2048,
+    messages: [...convo.messages, { role: "user", content: "Thanks. Reply with just OK." }],
+  } as never);
+  const u = (msg as any).usage;
+  cacheCheck = {
+    freshInput: u.input_tokens,
+    cacheRead: u.cache_read_input_tokens,
+    cacheWrite: u.cache_creation_input_tokens,
+    output: u.output_tokens,
+    costUsd: estimateCostUsd(MODEL_SERVED(), { inputTokens: u.input_tokens, outputTokens: u.output_tokens, cacheReadTokens: u.cache_read_input_tokens ?? 0, cacheWriteTokens: u.cache_creation_input_tokens ?? 0, webSearchRequests: 0 }),
+  };
+}
+
 const report = {
   label: LABEL,
   model: MODEL,
@@ -220,6 +249,7 @@ const report = {
   duplicateUrls: dupes(urls),
   transcriptCharsByBlock: blockChars,
   toolSteps,
+  cacheCheck,
   outputChars: output.length,
   outputLinks: (output.match(/\]\(https?:\/\//g) ?? []).length,
   calls,

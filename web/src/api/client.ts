@@ -1,4 +1,4 @@
-import type { Achievement, Agent, AgentMemory, Building, CoinEntry, Project, Schedule, Task, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
+import type { Achievement, Agent, AgentMemory, Building, CoinEntry, Project, ResearchDepth, Schedule, Task, TaskUsageBreakdown, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
 
 import { DemoError, demoCall, demoSubscribe } from "../demo/demoServer";
 
@@ -98,7 +98,17 @@ export const api = {
   logout: () => post<{ ok: true }>("/api/auth/logout", {}),
   createProject: (body: { title: string; goal: string }) => post<Project>("/api/projects", body),
   updateProject: (id: string, body: Partial<Pick<Project, "title" | "goal" | "status">>) => patch<Project>(`/api/projects/${id}`, body),
-  createTask: (body: { agentId: string; title: string; instructions: string; priority: number; dependsOn?: string[]; projectId?: string | null }) => post<Task>("/api/tasks", body),
+  createTask: (body: {
+    agentId: string;
+    title: string;
+    instructions: string;
+    priority: number;
+    dependsOn?: string[];
+    projectId?: string | null;
+    depth?: ResearchDepth | null;
+    modelOverride?: string | null;
+  }) => post<Task>("/api/tasks", body),
+  taskUsage: (id: string) => call<TaskUsageBreakdown>(`/api/tasks/${id}/usage`),
   cancelTask: (id: string) => post<{ ok: true }>(`/api/tasks/${id}/cancel`, {}),
   retryTask: (id: string) => post<{ ok: true }>(`/api/tasks/${id}/retry`, {}),
   startCampaign: (body: { topic: string; audience?: string; goal?: string; managerId?: string; researcherId?: string; copywriterId?: string; projectId?: string }) => post<Workflow>("/api/workflows/campaign", body),

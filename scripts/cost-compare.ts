@@ -27,6 +27,7 @@ interface Report {
   duplicateUrls: string[];
   outputLinks: number;
   output: string;
+  cacheCheck?: { freshInput: number; cacheRead: number; cacheWrite: number; output: number; costUsd: number } | null;
 }
 
 const files = process.argv.slice(2).filter((f) => f.endsWith(".json"));
@@ -88,7 +89,9 @@ const rows = reports.map((r, i) => {
     `${r.seconds.toFixed(0)}s`,
   ];
 });
-const header = ["run", "model", "depth", "outcome", "cost", "calls", "iterations", "fresh in", "cache read", "cache write", "output", "thinking", "all tokens", "searches", "fetches", "dupes", "links", "quality", "time"];
+const cc = (r: Report) => (r.cacheCheck ? `${k(r.cacheCheck.freshInput)} fresh / ${k(r.cacheCheck.cacheRead)} cached · ${usd(r.cacheCheck.costUsd)}` : "—");
+rows.forEach((row, i) => row.push(cc(reports[i])));
+const header = ["run", "model", "depth", "outcome", "cost", "calls", "iterations", "fresh in", "cache read", "cache write", "output", "thinking", "all tokens", "searches", "fetches", "dupes", "links", "quality", "time", "next call (cache check)"];
 const table = [header, header.map(() => "---"), ...rows].map((r) => `| ${r.join(" | ")} |`).join("\n");
 const notes = reports
   .map((r, i) => {
@@ -97,6 +100,35 @@ const notes = reports
   })
   .filter(Boolean)
   .join("\n");
-const out = `## Cost probe comparison\n\n${table}\n\n### Grader notes\n${notes || "(no grades)"}\n`;
+// Averages per variant (labels ending in -a, -b, -c are repeats of one variant).
+const groups = new Map<string, number[]>();
+reports.forEach((r, i) => {
+  const key = r.label.replace(/-[a-z]$/, "");
+  groups.set(key, [...(groups.get(key) ?? []), i]);
+});
+const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / (xs.length || 1);
+const range = (xs: number[], f: (n: number) => string) => (xs.length > 1 ? ` (${f(Math.min(...xs))}–${f(Math.max(...xs))})` : "");
+const gHeader = ["variant", "runs", "avg cost", "avg calls", "avg all tokens", "avg cache read", "avg output", "avg searches", "avg links", "avg quality", "avg next-call cost"];
+const gRows = [...groups].map(([key, idx]) => {
+  const rs = idx.map((i) => reports[i]);
+  const q = idx.map((i) => (grades[i] as any)?.overall).filter((x): x is number => typeof x === "number");
+  const costs = rs.map((r) => r.estimatedCostUsd);
+  const checks = rs.map((r) => r.cacheCheck?.costUsd).filter((x): x is number => typeof x === "number");
+  return [
+    key,
+    String(rs.length),
+    usd(mean(costs)) + range(costs, usd),
+    mean(rs.map((r) => r.apiCalls)).toFixed(1),
+    k(Math.round(mean(rs.map((r) => r.tokens.topbarTotal)))),
+    k(Math.round(mean(rs.map((r) => r.tokens.cacheRead)))),
+    k(Math.round(mean(rs.map((r) => r.tokens.output)))),
+    mean(rs.map((r) => r.webSearches)).toFixed(1),
+    mean(rs.map((r) => r.outputLinks)).toFixed(0),
+    q.length ? `${mean(q).toFixed(1)}/10` + range(q, (x) => String(x)) : "—",
+    checks.length ? usd(mean(checks)) : "—",
+  ];
+});
+const gTable = [gHeader, gHeader.map(() => "---"), ...gRows].map((r) => `| ${r.join(" | ")} |`).join("\n");
+const out = `## Cost probe comparison\n\n### By variant\n\n${gTable}\n\n### Every run\n\n${table}\n\n### Grader notes\n${notes || "(no grades)"}\n`;
 console.log(out);
 if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, out);
