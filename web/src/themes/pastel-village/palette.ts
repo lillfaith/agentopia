@@ -163,26 +163,45 @@ export const TOKENS = {
   fireflies: "#ffd6e6",
 };
 
-/** UI tokens (CSS variables). Text colours meet WCAG AA on the panel colours. */
+/**
+ * UI tokens (CSS variables). Every panel, button and badge in the interface reads
+ * these, so another theme restyles the whole UI by supplying its own values.
+ * Contrast (WCAG): text #70455F is 7.1:1 on the panel colour #FFF1F7; muted
+ * #7B4767 is 6.4:1; on-accent #4A1C3A is 5.6:1 on the #FF82B6 accent.
+ */
 export const UI_VARS: Record<string, string> = {
   "--font": "'Nunito', ui-rounded, 'SF Pro Rounded', system-ui, sans-serif",
   "--bg": "#fde9f1",
-  "--panel": "rgba(255, 248, 251, 0.9)",
-  "--panel-solid": "#fffafc",
-  "--panel-tint": "linear-gradient(160deg, rgba(255, 236, 244, 0.95), rgba(255, 250, 252, 0.92) 45%, rgba(246, 238, 255, 0.92))",
-  "--panel-border": "rgba(232, 160, 192, 0.55)",
-  "--text": P.inkPlum, // 10.6:1 on panel
-  "--muted": "#7f5277", // 6.0:1 on panel, 5.1:1 on accent-soft
-  "--accent": "#d94f88", // white bold text 4.2:1; used for large/bold labels
-  "--accent-strong": "#b0306a", // links, headers and selected tabs: 5.8:1 on panel, 4.9:1 on accent-soft
+  // Frosted panels: a clearly pink tint that still lets the town show through.
+  "--panel": "rgba(255, 224, 238, 0.9)",
+  "--panel-tint": "linear-gradient(160deg, rgba(255, 214, 233, 0.92), rgba(255, 228, 240, 0.9) 45%, rgba(255, 219, 236, 0.91))",
+  "--panel-blur": "blur(16px) saturate(1.35)",
+  // Cards, inputs and tiles inside panels.
+  "--panel-solid": "#fff1f7",
+  "--panel-border": "#f9d7e7",
+  // Outer frame of floating panels (a touch deeper so they separate from the world).
+  "--panel-edge": "#f2b9d3",
+  "--chip": "#fff1f7",
+  "--chip-hover": "#ffe2ef",
+  "--text": "#70455f",
+  "--muted": "#7b4767",
+  "--accent": "#ff82b6",
+  "--accent-gradient": "linear-gradient(135deg, #ff9cc6, #ff82b6 55%, #f877ad)",
+  "--on-accent": "#4a1c3a",
+  "--accent-strong": "#962a5f", // headings, links and selected tabs: 6.9:1 on #FFF1F7, 4.8:1 on the frosted panel over dark scenery
+  "--accent-soft": "#ffd3e6",
   "--accent-2": P.deepLilac,
-  "--accent-soft": "#ffe0ec",
-  "--accent-gradient": "linear-gradient(135deg, #cc4a84, #a92c64)", // white bold text 4.3–6.3:1
   "--good": "#2f9e78",
+  "--good-soft": "#e3f6ec",
   "--warn": "#d98a14",
+  "--warn-soft": "#fff1d6",
+  "--warn-edge": "#ffd98a",
+  "--warn-text": "#7d5100",
   "--bad": "#d9435f",
+  "--bad-soft": "#ffe1e8",
+  "--bad-edge": "#ffb3c1",
+  "--bad-text": "#952140",
   "--info": "#4a8fd4",
-  "--chip": "rgba(255, 255, 255, 0.94)",
   "--radius": "18px",
-  "--shadow": "0 10px 30px rgba(200, 90, 140, 0.18), 0 2px 6px rgba(160, 80, 130, 0.12)",
+  "--shadow": "0 10px 30px rgba(214, 92, 150, 0.2), 0 2px 6px rgba(170, 80, 130, 0.14)",
 };
