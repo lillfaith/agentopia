@@ -10,7 +10,7 @@ import { createApi } from "./api/routes.js";
 
 /** Pick the provider. Simulation is only ever used when explicitly enabled AND no key is set. */
 export function createProvider(config: Config): LLMProvider | null {
-  if (config.anthropicApiKey) return new AnthropicProvider(config.anthropicApiKey, config.refusalFallback);
+  if (config.anthropicApiKey) return new AnthropicProvider(config.anthropicApiKey, config.refusalFallback, {}, { webToolMode: config.webToolMode });
   if (config.simulation) return new SimulatedProvider();
   return null;
 }

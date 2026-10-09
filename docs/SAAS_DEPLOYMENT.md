@@ -67,6 +67,9 @@ Optional tuning, which applies to every town:
 - `AGENTOPIA_MAX_DELEGATION_DEPTH` (3)
 - `AGENTOPIA_MIN_SCHEDULE_INTERVAL_MINUTES` (15)
 - `AGENTOPIA_LOG_FORMAT=json` to get JSON logs outside production
+- `AGENTOPIA_WEB_TOOLS=basic` to use the plain web search and fetch tools on every model, instead of the
+  code-filtering versions on Sonnet and Opus. Measured on Sonnet, the plain tools cost more per research
+  task (see `docs/COSTS.md`), so leave this unset unless you have a reason.
 
 In SaaS mode the following are ignored, because each user's plan decides them (see `server/saas/plans.ts`):
 - the per-town budget variables (`AGENTOPIA_DAILY_BUDGET_USD`, …)
@@ -143,7 +146,9 @@ Do these in order. Do not announce the service until each one passes.
   sessions. Then delete `towns/<id>.sqlite`.
 - **Cost watch:**
   - `accounts.sqlite` → `usage_daily` holds model spend per user per day.
-  - Compare it against `docs/PRICING.md` monthly.
+  - Every finished task has a **Usage & cost breakdown** (also `GET /api/tasks/:id/usage`): tokens by
+    category, API calls, web searches and page reads, and the estimated cost of each charge.
+  - Compare it against `docs/PRICING.md` monthly. `docs/COSTS.md` explains where research spend goes.
 
 ## Not yet implemented (labelled in the product)
 

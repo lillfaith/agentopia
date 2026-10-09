@@ -7,7 +7,9 @@ import type { Config } from "../config.js";
 import { transaction } from "../db/database.js";
 import type { Store } from "../db/store.js";
 import { AGENT_TEMPLATES } from "../agents/templates.js";
-import { MODELS } from "../llm/models.js";
+import { MODELS, isKnownModel } from "../llm/models.js";
+import { taskUsageBreakdown } from "../llm/usage.js";
+import { DEPTHS, DEPTH_IDS } from "../engine/depth.js";
 import { getSkill, skillInfo } from "../skills/index.js";
 import { budgetStatus } from "../engine/budget.js";
 import type { TaskRunner } from "../engine/runner.js";
@@ -107,6 +109,8 @@ const newTask = z
     priority: priority.default(1),
     dependsOn: z.array(z.string()).max(20).default([]),
     projectId: z.string().min(1).nullable().optional(),
+    depth: z.enum(["quick", "standard", "deep"]).nullable().optional(),
+    modelOverride: z.string().min(1).max(80).nullable().optional(),
   })
   .strict();
 
@@ -153,6 +157,7 @@ const settingsPatch = z
       .partial()
       .strict(),
     budget: z.object({ dailyUsd: money.nullable(), monthlyUsd: money.nullable(), perTaskUsd: money.nullable() }).partial().strict(),
+    defaultDepth: z.enum(["quick", "standard", "deep"]),
   })
   .partial()
   .strict();
@@ -203,6 +208,11 @@ export function systemStatus({ config, store, runner, embedded }: ApiDeps): Syst
     budget: budgetStatus(store, config, p.simulated),
     authRequired: !!config.adminToken,
     models: MODELS.map(({ id, label, inputPerMTok, outputPerMTok }) => ({ id, label, inputPerMTok, outputPerMTok })),
+    allowedModels: config.allowedModels ?? null,
+    depths: DEPTH_IDS.map((id) => {
+      const d = DEPTHS[id];
+      return { id, label: d.label, description: d.description, maxSearches: d.maxSearches, maxFetches: d.maxFetches, maxTaskUsd: d.maxTaskUsd };
+    }),
     skills: skillInfo(),
     verifications: store.latestVerifications(),
   };
@@ -433,10 +443,18 @@ export function createApi(deps: ApiDeps): Hono {
     if (!agent || agent.archived) return c.json(err("Unknown agent"), 400);
     for (const dep of b.data.dependsOn) if (!store.getTask(dep)) return c.json(err(`Unknown dependency ${dep}`), 400);
     if (b.data.projectId && store.getProject(b.data.projectId)?.status !== "active") return c.json(err("Unknown or archived project"), 400);
+    if (b.data.modelOverride && !isKnownModel(b.data.modelOverride)) return c.json(err(`Unknown model ${b.data.modelOverride}`), 400);
+    const blocked = modelNotAllowed(b.data.modelOverride ?? undefined);
+    if (blocked) return c.json(err(blocked), 403);
     const task = store.createTask({ ...b.data, createdBy: "user" });
     store.addEvent({ type: "task.created", agentId: agent.id, taskId: task.id, message: `You assigned “${task.title}” to ${agent.name}`, data: { createdBy: "user" } });
     runner.poke();
     return c.json(task, 201);
+  });
+  api.get("/api/tasks/:id/usage", (c) => {
+    const task = store.getTask(c.req.param("id"));
+    if (!task) return c.json(err("Task not found"), 404);
+    return c.json(taskUsageBreakdown(task.id, task.depth, store.taskUsage(task.id)));
   });
   api.post("/api/tasks/:id/cancel", (c) => {
     const r = runner.cancelTask(c.req.param("id"));

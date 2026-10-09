@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { TownTaxSettings, TreasurySummary } from "../../../shared/types";
+import type { ResearchDepth, TownTaxSettings, TreasurySummary } from "../../../shared/types";
 import { api, getToken, setToken } from "../api/client";
 import { useTown } from "../state/store";
 import { listThemes } from "../theme-engine/registry";
@@ -515,6 +515,8 @@ export function SettingsPanel() {
         {b.agentHolds.length > 0 && <div className="warn-box">Paused by their own daily cap: {b.agentHolds.join(", ")}</div>}
       </section>
 
+      <ResearchDefaults />
+
       <section className="card form">
         <h3>Town</h3>
         <label>
@@ -606,5 +608,42 @@ export function SettingsPanel() {
         </div>
       </section>
     </Drawer>
+  );
+}
+
+/** Town-wide research depth for tasks that don't choose one. */
+function ResearchDefaults() {
+  const settings = useTown((s) => s.snapshot!.settings);
+  const depths = useTown((s) => s.snapshot!.status.depths);
+  const push = useTown((s) => s.pushToast);
+  const load = useTown((s) => s.load);
+  const choose = async (defaultDepth: ResearchDepth) => {
+    try {
+      await api.updateSettings({ defaultDepth });
+      await load();
+      push({ tone: "info", text: "Default research depth saved" });
+    } catch (e) {
+      push({ tone: "bad", text: e instanceof Error ? e.message : String(e) });
+    }
+  };
+  return (
+    <section className="card form">
+      <h3>Research depth</h3>
+      <p className="muted small">
+        How much web research a task may do when it doesn't choose. Each task can still pick its own depth and model when you assign it.
+      </p>
+      <div className="depth-choices">
+        {depths.map((d) => (
+          <label key={d.id} className={`depth-choice ${settings.defaultDepth === d.id ? "on" : ""}`}>
+            <input type="radio" name="default-depth" checked={settings.defaultDepth === d.id} onChange={() => choose(d.id)} />
+            <b>{d.label}</b>
+            <small>{d.description}</small>
+            <small className="muted">
+              ≤ {d.maxSearches} searches · ≤ {d.maxFetches} page reads · ≈ {fmtUsd(d.maxTaskUsd)} max on Sonnet
+            </small>
+          </label>
+        ))}
+      </div>
+    </section>
   );
 }

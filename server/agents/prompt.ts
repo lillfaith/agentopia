@@ -31,7 +31,7 @@ export function neutralizeTags(text: string): string {
 }
 
 /** First user turn: the task brief plus outputs of completed dependencies. */
-export function buildBrief(store: Store, task: Task): string {
+export function buildBrief(store: Store, task: Task, research?: { searches: number; fetches: number }): string {
   const delegatedBy = task.createdBy !== "user" && !task.createdBy.startsWith("schedule:") ? store.getAgent(task.createdBy) : null;
   const parts = delegatedBy
     ? [
@@ -62,6 +62,13 @@ export function buildBrief(store: Store, task: Task): string {
   const notes = store.listMemories(task.agentId, 20);
   if (notes.length) {
     parts.push("", "## Your notes from earlier tasks", "<memory>", ...notes.reverse().map((m) => `- ${neutralizeTags(m.content)}`), "</memory>");
+  }
+  if (research) {
+    parts.push(
+      "",
+      `(Research budget for this task: up to ${research.searches} web searches and ${research.fetches} page reads in total. ` +
+        "Plan your queries before you start, never repeat a query or re-read a page, and stop searching once you can answer well.)",
+    );
   }
   parts.push("", `(Today's date: ${new Date().toISOString().slice(0, 10)})`);
   return parts.join("\n");

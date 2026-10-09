@@ -75,12 +75,12 @@ export function budgetStatus(store: Store, config: Config, simulated = false): B
 }
 
 /** Conservative upper bound for one model call. */
-export function worstCaseCallCost(input: { model: string; promptChars: number; maxTokens: number; hostedTools: HostedTool[] }): number {
+export function worstCaseCallCost(input: { model: string; promptChars: number; maxTokens: number; hostedTools: HostedTool[]; maxSearches?: number }): number {
   const p = modelSpec(input.model);
   // ~3 chars/token is pessimistic for English+JSON; input priced at the cache-write premium.
   const inputTokens = Math.ceil(input.promptChars / 3);
   const inputRate = Math.max(p.inputPerMTok, p.cacheWritePerMTok);
-  const searches = input.hostedTools.includes("web_search") ? 5 * WEB_SEARCH_USD_PER_REQUEST : 0;
+  const searches = input.hostedTools.includes("web_search") ? (input.maxSearches ?? 5) * WEB_SEARCH_USD_PER_REQUEST : 0;
   return (inputTokens * inputRate + input.maxTokens * p.outputPerMTok) / 1_000_000 + searches;
 }
 
@@ -89,8 +89,10 @@ export type PreflightResult =
   | { ok: false; scope: "daily" | "monthly" | "agent"; message: string; resumeAt: string }
   | { ok: false; scope: "task"; message: string; resumeAt: null };
 
-export function preflight(store: Store, config: Config, args: { agent: Agent; taskId: string; reserveUsd: number }): PreflightResult {
-  const { effective } = effectiveLimits(store, config);
+export function preflight(store: Store, config: Config, args: { agent: Agent; taskId: string; reserveUsd: number; capUsd?: number }): PreflightResult {
+  const { effective: limits } = effectiveLimits(store, config);
+  // A task's research depth can only lower its spend ceiling.
+  const effective = { ...limits, perTaskUsd: tighter(limits.perTaskUsd, args.capUsd ?? null) };
   const r = args.reserveUsd;
   const fmt = (n: number) => `$${n.toFixed(2)}`;
 

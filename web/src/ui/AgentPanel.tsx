@@ -1,11 +1,12 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Agent, AgentMemory, Effort, Task } from "../../../shared/types";
+import type { Agent, AgentMemory, Effort, ResearchDepth, Task } from "../../../shared/types";
 import { PRIORITY_LABELS } from "../../../shared/types";
 import { DEMO, api } from "../api/client";
 import { STATUS_LABEL, levelFor, statsFor, useTown } from "../state/store";
 import { Badge, Drawer, Empty, EventBadge, ExecutionBadge, ExecutionProof, Markdown, StatusDot, TASK_LABEL, TASK_TONE, clock, fmtTokens, fmtUsd, timeAgo } from "./common";
 import { SkillPicker } from "./Town";
+import { TaskRunOptions, TaskUsage } from "./Usage";
 
 type Tab = "overview" | "work" | "config";
 
@@ -229,6 +230,7 @@ function LatestResult({ task, agentName }: { task: Task; agentName: string }) {
           </ul>
         </details>
       )}
+      <TaskUsage taskId={task.id} calls={task.execution.calls} />
       {task.output && (
         <div className="row gap-s">
           <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(task.output ?? "").then(() => push({ tone: "info", text: "Copied" }), () => {})}>
@@ -244,13 +246,21 @@ export function AssignTask({ agent }: { agent: Agent }) {
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [priority, setPriority] = useState(1);
+  const [run, setRun] = useState<{ depth: ResearchDepth | ""; model: string }>({ depth: "", model: "" });
   const [busy, setBusy] = useState(false);
   const push = useTown((s) => s.pushToast);
   const submit = async () => {
     if (!title.trim()) return;
     setBusy(true);
     try {
-      await api.createTask({ agentId: agent.id, title: title.trim(), instructions: instructions.trim() || title.trim(), priority });
+      await api.createTask({
+        agentId: agent.id,
+        title: title.trim(),
+        instructions: instructions.trim() || title.trim(),
+        priority,
+        depth: run.depth || null,
+        modelOverride: run.model || null,
+      });
       setTitle("");
       setInstructions("");
       push({ tone: "info", text: `Assigned to ${agent.name}` });
@@ -265,6 +275,7 @@ export function AssignTask({ agent }: { agent: Agent }) {
       <h3>Assign a task to {agent.name}</h3>
       <input placeholder={`e.g. ${agent.role === "Researcher" ? "Research eco-friendly packaging trends" : agent.role === "Copywriter" ? "Write 3 taglines for our bakery" : "Plan a product launch"}`} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && submit()} />
       <textarea placeholder="Details, context, constraints (optional)" value={instructions} rows={3} onChange={(e) => setInstructions(e.target.value)} />
+      <TaskRunOptions agent={agent} depth={run.depth} model={run.model} onChange={setRun} />
       <div className="row between">
         <select value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
           {[0, 1, 2, 3].map((p) => (
@@ -350,6 +361,7 @@ export function TaskOutputCard({ task, open, onToggle }: { task: Task; open: boo
       {open && (
         <>
           <ExecutionProof task={task} />
+          <TaskUsage taskId={task.id} calls={task.execution.calls} />
           {task.output && <Markdown text={task.output} />}
           {task.lastError && <div className="error-box">{task.lastError}</div>}
           <div className="row gap-s">

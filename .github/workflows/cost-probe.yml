@@ -1,0 +1,88 @@
+# Cost probe: runs the same research task through the real executor and the REAL Claude API
+# and reports every usage record (tokens by category, API calls, web searches/fetches, cost).
+# Rows in scripts/cost-probe-matrix.json with a "ref" run the engine as it was at that commit
+# (server/ and shared/ checked out from it), so before/after comparisons use one probe script.
+# Each row costs roughly $0.01–$0.40; the compare job grades every answer blind with Claude Opus 5.5 (~$0.03 each).
+name: cost-probe
+
+# Runs only when started by hand (Actions → cost-probe → Run workflow): a full comparison spends about $2.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cost-probe
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: echo "matrix=$(jq -c . scripts/cost-probe-matrix.json)" >> "$GITHUB_OUTPUT"
+
+  probe:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        run: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: probe (${{ matrix.run.name }})
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Use the engine from ${{ matrix.run.ref || 'this commit' }}
+        if: matrix.run.ref != ''
+        run: git checkout "${{ matrix.run.ref }}" -- server shared
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Run the probe
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          AGENTOPIA_WEB_TOOLS: ${{ matrix.run.webTools }}
+          NODE_NO_WARNINGS: "1"
+        run: |
+          depth=""
+          if [ -n "${{ matrix.run.depth }}" ]; then depth="--depth ${{ matrix.run.depth }}"; fi
+          npx tsx scripts/cost-probe.ts --label "${{ matrix.run.name }}" --model "${{ matrix.run.model }}" $depth --out "probe-${{ matrix.run.name }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-${{ matrix.run.name }}
+          path: probe-${{ matrix.run.name }}.json
+          if-no-files-found: ignore
+
+  compare:
+    needs: probe
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: probe-*
+          merge-multiple: true
+          path: reports
+      - name: Compare runs and grade answer quality (blind)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          NODE_NO_WARNINGS: "1"
+        run: npx tsx scripts/cost-compare.ts reports/*.json

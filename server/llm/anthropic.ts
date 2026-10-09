@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { GenerateRequest, GenerateResult, LLMProvider, StopReason, ToolResult } from "./provider.js";
+import type { GenerateRequest, GenerateResult, HostedLimits, LLMProvider, StopReason, ToolResult } from "./provider.js";
 import { NonRetryableError } from "./provider.js";
 import { modelSpec } from "./models.js";
 
@@ -22,12 +22,17 @@ export class AnthropicProvider implements LLMProvider {
     apiKey: string,
     private readonly refusalFallback: "default" | "off",
     clientOptions: Omit<ConstructorParameters<typeof Anthropic>[0] & object, "apiKey"> = {},
+    private readonly options: { webToolMode?: "auto" | "basic" } = {},
   ) {
     this.client = new Anthropic({ apiKey, maxRetries: 2, ...clientOptions });
   }
 
   userMessage(text: string): BetaMessageParam {
     return { role: "user", content: text };
+  }
+
+  appendNote(messages: unknown[], note: string): BetaMessageParam[] {
+    return withWrapUpNote(messages as BetaMessageParam[], note);
   }
 
   toolResultsMessage(results: ToolResult[]): BetaMessageParam {
@@ -51,7 +56,7 @@ export class AnthropicProvider implements LLMProvider {
       input_schema: t.inputSchema as Anthropic.Beta.Messages.BetaTool.InputSchema,
       eager_input_streaming: true,
     }));
-    tools.push(...hostedToolDefinitions(req.hostedTools, spec.supportsWebSearch));
+    tools.push(...hostedToolDefinitions(req.hostedTools, spec.supportsWebSearch && this.options.webToolMode !== "basic", req.hostedLimits));
 
     const useFallback = this.refusalFallback === "default" && spec.supportsServerFallback;
     const params: BetaParams = {
@@ -59,10 +64,14 @@ export class AnthropicProvider implements LLMProvider {
       max_tokens: req.maxTokens,
       // Stable per-agent system prompt first so it can be served from the prompt cache.
       system: [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }],
+      // Automatic caching of the conversation so far: the next call in this task (after a
+      // tool result, a pause or an approval) re-reads it at the cache price instead of in full.
+      cache_control: { type: "ephemeral" },
       messages: req.messages as BetaMessageParam[],
       output_config: { effort: req.effort },
       stream: true,
       ...(tools.length ? { tools } : {}),
+      ...(tools.length && req.noTools ? { tool_choice: { type: "none" as const } } : {}),
       ...(useFallback ? { betas: [FALLBACK_BETA], fallbacks: "default" as const } : {}),
     };
 
@@ -125,6 +134,9 @@ export class AnthropicProvider implements LLMProvider {
     }
 
     const u = message.usage;
+    const iterations = (u.iterations ?? []).filter((it): it is Anthropic.Beta.Messages.BetaMessageIterationUsage => it.type === "message");
+    const promptSize = (x: { input_tokens: number | null; cache_read_input_tokens: number | null; cache_creation_input_tokens: number | null }) =>
+      (x.input_tokens ?? 0) + (x.cache_read_input_tokens ?? 0) + (x.cache_creation_input_tokens ?? 0);
     return {
       assistantMessage: { role: "assistant", content: message.content } as BetaMessageParam,
       text,
@@ -152,6 +164,9 @@ export class AnthropicProvider implements LLMProvider {
       notes,
       progressStreamed: !!req.onProgress,
       requestId,
+      thinkingTokens: u.output_tokens_details?.thinking_tokens ?? null,
+      serverIterations: iterations.length || 1,
+      contextTokens: iterations.length ? Math.max(...iterations.map(promptSize)) : promptSize(u),
     };
   }
 }
@@ -194,18 +209,33 @@ export function withSources(answer: string, blocks: { citations?: unknown }[]): 
  * execution environment that can confuse the model, so when both are requested
  * we use the basic web tool versions and a single code sandbox.
  */
-export function hostedToolDefinitions(hosted: string[], modelSupportsDynamicWeb: boolean): BetaToolUnion[] {
+export function hostedToolDefinitions(hosted: string[], modelSupportsDynamicWeb: boolean, limits?: HostedLimits): BetaToolUnion[] {
   const out: BetaToolUnion[] = [];
   const wantsCode = hosted.includes("code_execution");
   const dynamic = modelSupportsDynamicWeb && !wantsCode;
+  const searches = Math.max(1, limits?.webSearchMaxUses ?? 5);
+  const fetches = Math.max(1, limits?.webFetchMaxUses ?? 5);
+  const pageTokens = limits?.webFetchMaxContentTokens ? { max_content_tokens: limits.webFetchMaxContentTokens } : {};
   if (hosted.includes("web_search")) {
-    out.push(dynamic ? { type: "web_search_20260209", name: "web_search", max_uses: 5 } : { type: "web_search_20250305", name: "web_search", max_uses: 5 });
+    out.push(dynamic ? { type: "web_search_20260209", name: "web_search", max_uses: searches } : { type: "web_search_20250305", name: "web_search", max_uses: searches });
   }
   if (hosted.includes("web_fetch")) {
-    out.push(dynamic ? { type: "web_fetch_20260209", name: "web_fetch", max_uses: 5 } : { type: "web_fetch_20250910", name: "web_fetch", max_uses: 5 });
+    out.push(
+      dynamic
+        ? { type: "web_fetch_20260209", name: "web_fetch", max_uses: fetches, ...pageTokens }
+        : { type: "web_fetch_20250910", name: "web_fetch", max_uses: fetches, ...pageTokens },
+    );
   }
   if (wantsCode) out.push({ type: "code_execution_20260521", name: "code_execution" });
   return out;
+}
+
+/** Add the write-up note after the last turn without changing any earlier message. */
+export function withWrapUpNote(messages: BetaMessageParam[], note: string): BetaMessageParam[] {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "user") return [...messages, { role: "user", content: note }];
+  const content = typeof last.content === "string" ? [{ type: "text" as const, text: last.content }] : last.content;
+  return [...messages.slice(0, -1), { ...last, content: [...content, { type: "text" as const, text: note }] }];
 }
 
 function mapStop(reason: string | null): StopReason {

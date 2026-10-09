@@ -385,3 +385,26 @@ h4 { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 .cam-hint { grid-column: 1 / -1; margin: 0; font-size: 10.5px; line-height: 1.35; color: var(--muted); font-weight: 700; }
 .cam-toggle { position: absolute; left: 12px; bottom: 14px; z-index: 19; width: 40px; height: 40px; border-radius: 12px; cursor: pointer; font-size: 18px; }
 @media (max-width: 760px) { .cam-pad, .cam-toggle { bottom: 92px; } .cam-hint { display: none; } }
+
+/* ── per-task usage breakdown ── */
+.usage { margin-top: 4px; }
+.usage > summary { cursor: pointer; }
+.usage-facts { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--text); }
+.usage-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.usage-table th, .usage-table td { padding: 3px 5px; text-align: right; border-bottom: 1px solid var(--panel-border); white-space: nowrap; }
+.usage-table td:first-child { white-space: normal; }
+.usage-table.calls { font-size: 11.5px; }
+.usage-table th:first-child, .usage-table td:first-child { text-align: left; }
+.usage-table.calls td:nth-child(2) { text-align: left; }
+.usage-table tr.total td { font-weight: 700; border-bottom: none; }
+.usage-notes { margin: 0; padding-left: 18px; }
+
+/* ── research depth / model choice ── */
+.run-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.run-options label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.run-options .run-hint { grid-column: 1 / -1; }
+.depth-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.depth-choice { min-width: 0; }
+.depth-choice { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--panel-border); border-radius: 12px; cursor: pointer; }
+.depth-choice.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.depth-choice input { align-self: flex-start; }

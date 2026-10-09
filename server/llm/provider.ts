@@ -26,6 +26,10 @@ export interface GenerateRequest {
   tools: ToolSpec[];
   hostedTools: HostedTool[];
   maxTokens: number;
+  /** Per-call limits for hosted web tools (research depth). Keep them constant within a task: tools are part of the cached prefix. */
+  hostedLimits?: HostedLimits;
+  /** Final write-up call: the model may not use any tool (the write-up note is already in `messages`). */
+  noTools?: boolean;
   signal?: AbortSignal;
   /**
    * Live progress while the call runs (streaming providers): "note" is the agent's
@@ -33,6 +37,12 @@ export interface GenerateRequest {
    * tool step (a web search, a page read). Called in order, as each block completes.
    */
   onProgress?: (p: { kind: "note" | "activity"; text: string }) => void;
+}
+
+export interface HostedLimits {
+  webSearchMaxUses: number;
+  webFetchMaxUses: number;
+  webFetchMaxContentTokens: number;
 }
 
 export interface ToolCall {
@@ -62,6 +72,12 @@ export interface GenerateResult {
   progressStreamed?: boolean;
   /** Provider request id (Anthropic `request-id` header). null for the simulator. */
   requestId: string | null;
+  /** Reasoning tokens included in usage.outputTokens, when the provider reports them. */
+  thinkingTokens?: number | null;
+  /** Sampling iterations inside the call (a server-side tool loop runs several). */
+  serverIterations?: number | null;
+  /** Largest single prompt the model read in this call, in tokens. */
+  contextTokens?: number | null;
 }
 
 export interface ToolResult {
@@ -77,6 +93,11 @@ export interface LLMProvider {
   generate(req: GenerateRequest): Promise<GenerateResult>;
   userMessage(text: string): ProviderMessage;
   toolResultsMessage(results: ToolResult[]): ProviderMessage;
+  /**
+   * Add a note after the last turn without changing any earlier message (append-only, so cached
+   * prefixes and the model's earlier reasoning stay valid). Providers without it get a new user turn.
+   */
+  appendNote?(messages: ProviderMessage[], note: string): ProviderMessage[];
 }
 
 /** Errors that should not be retried (bad request, auth, permission). */

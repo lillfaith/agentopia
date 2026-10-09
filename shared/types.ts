@@ -134,8 +134,81 @@ export interface Task {
   scheduleId: string | null;
   /** Project this task belongs to, if any. */
   projectId: string | null;
+  /** Research depth chosen for this task; null = the town's default. */
+  depth: ResearchDepth | null;
+  /** Model chosen for this task; null = the villager's own model (or the depth's choice). */
+  modelOverride: string | null;
   /** Proof of execution, derived from recorded API usage. */
   execution: TaskExecution;
+}
+
+/**
+ * How much research a task may do. Each depth sets limits on web searches, page reads,
+ * retrieved page size, model turns, context size and spend (see server/engine/depth.ts).
+ */
+export type ResearchDepth = "quick" | "standard" | "deep";
+
+/** One recorded model call of a task, with its cost split by charge. */
+export interface TaskUsageCall {
+  id: number;
+  ts: ISODate;
+  model: string;
+  requestedModel: string | null;
+  requestId: string | null;
+  simulated: boolean;
+  freshInputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  /** Part of outputTokens spent on reasoning (null for calls recorded before this was tracked). */
+  thinkingTokens: number | null;
+  /** Sampling iterations inside the call (a server-side search loop can run several). */
+  serverIterations: number | null;
+  /** Largest single prompt the model read in this call, in tokens. */
+  contextTokens: number | null;
+  webSearches: number;
+  webFetches: number;
+  costUsd: number;
+  cost: UsageCostSplit;
+}
+
+export interface UsageCostSplit {
+  freshInputUsd: number;
+  cacheReadUsd: number;
+  cacheWriteUsd: number;
+  outputUsd: number;
+  webSearchUsd: number;
+  /** Sum of the parts, recomputed from the price table. */
+  totalUsd: number;
+}
+
+/** GET /api/tasks/:id/usage — every recorded call of one task and the totals. */
+export interface TaskUsageBreakdown {
+  taskId: string;
+  depth: ResearchDepth | null;
+  models: string[];
+  calls: TaskUsageCall[];
+  totals: {
+    apiCalls: number;
+    serverIterations: number;
+    freshInputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    outputTokens: number;
+    thinkingTokens: number;
+    /** Every token above added together, as the town's token counter shows it. */
+    allTokens: number;
+    webSearches: number;
+    webFetches: number;
+    peakContextTokens: number;
+  };
+  cost: UsageCostSplit & {
+    /** What the treasury recorded for this task. */
+    recordedUsd: number;
+  };
+  /** Cache hit rate: cache reads / all input tokens. */
+  cacheHitRate: number;
+  notes: string[];
 }
 
 /**
@@ -285,6 +358,12 @@ export interface UsageRecord {
   requestId: string | null;
   /** Model the agent asked for (servedModel may differ after a refusal fallback). */
   requestedModel: string | null;
+  /** Reasoning tokens included in outputTokens (null when not reported). */
+  thinkingTokens?: number | null;
+  /** Sampling iterations inside this call (server-side tool loops run several). */
+  serverIterations?: number | null;
+  /** Largest single prompt read in this call, in tokens. */
+  contextTokens?: number | null;
 }
 
 export interface TownTaxSettings {
@@ -383,6 +462,10 @@ export interface SystemStatus {
   budget: BudgetStatus;
   authRequired: boolean;
   models: ModelInfo[];
+  /** Models the owner's plan allows; null = all of them. */
+  allowedModels: string[] | null;
+  /** Research depths a task can choose (limits shown in the composer). */
+  depths: { id: ResearchDepth; label: string; description: string; maxSearches: number; maxFetches: number; maxTaskUsd: number }[];
   skills: SkillInfo[];
   /** Latest result per verification check. */
   verifications: Verification[];
@@ -451,6 +534,8 @@ export interface TownSettings {
   timezoneMode: "auto" | "manual";
   /** Emergency stop: when true no task starts and no schedule fires until the owner resumes. */
   paused: boolean;
+  /** Research depth for new tasks that don't choose one. */
+  defaultDepth: ResearchDepth;
 }
 
 // ───────────────────────── Projects ─────────────────────────
