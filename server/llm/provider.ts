@@ -27,6 +27,12 @@ export interface GenerateRequest {
   hostedTools: HostedTool[];
   maxTokens: number;
   signal?: AbortSignal;
+  /**
+   * Live progress while the call runs (streaming providers): "note" is the agent's
+   * own short update written before a tool step; "activity" describes a hosted
+   * tool step (a web search, a page read). Called in order, as each block completes.
+   */
+  onProgress?: (p: { kind: "note" | "activity"; text: string }) => void;
 }
 
 export interface ToolCall {
@@ -50,6 +56,10 @@ export interface GenerateResult {
   refusal: { category: string | null; explanation: string | null } | null;
   /** Human-readable notes on hosted-tool activity, e.g. web searches run. */
   hostedActivity: string[];
+  /** The agent's own progress updates in this response (text written before a tool step). */
+  notes?: string[];
+  /** True when notes and hosted activity were already delivered through onProgress. */
+  progressStreamed?: boolean;
   /** Provider request id (Anthropic `request-id` header). null for the simulator. */
   requestId: string | null;
 }

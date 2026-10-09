@@ -83,6 +83,15 @@ export class AgentExecutor {
         }
 
         this.store.setAgentStatus(agent.id, "working", state.turns === 0 ? `Thinking about “${excerpt(task.title, 60)}”` : "Continuing…", task.id, sim);
+        const progress = (kind: "note" | "activity", text: string) => {
+          if (kind === "note") {
+            // The agent's own words, shown in full to the owner as the work happens.
+            this.store.addEvent({ type: "task.progress", agentId: agent.id, taskId: task.id, message: text.slice(0, 4000), simulated: sim });
+            this.store.setAgentStatus(agent.id, "working", excerpt(text.replace(/\s+/g, " "), 140), task.id, sim);
+          } else {
+            this.store.addEvent({ type: "task.step", agentId: agent.id, taskId: task.id, message: text, data: { hosted: true }, simulated: sim });
+          }
+        };
         const result = await this.provider.generate({
           model: agent.model,
           effort: agent.effort,
@@ -92,6 +101,9 @@ export class AgentExecutor {
           hostedTools: hosted,
           maxTokens: this.config.maxOutputTokens,
           signal,
+          onProgress: (p) => {
+            if (!signal.aborted) progress(p.kind, p.text);
+          },
         });
         state.turns += 1;
 
@@ -127,8 +139,10 @@ export class AgentExecutor {
         state.messages.push(result.assistantMessage);
         this.store.saveConversation(task.id, state);
 
-        for (const note of result.hostedActivity) {
-          this.store.addEvent({ type: "task.step", agentId: agent.id, taskId: task.id, message: note, data: { hosted: true }, simulated: sim });
+        // Providers that don't stream report progress here, after the call.
+        if (!result.progressStreamed) {
+          for (const note of result.notes ?? []) progress("note", note);
+          for (const note of result.hostedActivity) progress("activity", note);
         }
         if (result.fallbackUsed) {
           this.store.addEvent({
@@ -139,9 +153,8 @@ export class AgentExecutor {
             simulated: sim,
           });
         }
-        if (result.text) {
-          this.store.addEvent({ type: "task.step", agentId: agent.id, taskId: task.id, message: excerpt(result.text.replace(/\s+/g, " ")), simulated: sim });
-        }
+        // Text in a turn that goes on to use a tool is a progress update; a final answer becomes the task output.
+        if (result.text && result.stopReason === "tool_use" && result.toolCalls.length && !result.progressStreamed) progress("note", result.text);
 
         switch (result.stopReason) {
           case "refusal": {

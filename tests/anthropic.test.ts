@@ -102,3 +102,45 @@ describe("AnthropicProvider", () => {
     ).rejects.toBeInstanceOf(NonRetryableError);
   });
 });
+
+describe("AnthropicProvider progress and sources", () => {
+  it("streams the agent's notes and searches live, keeps them out of the answer, and links cited sources", async () => {
+    const ev = (event: string, data: Record<string, unknown>): [string, unknown] => [event, { type: event, ...data }];
+    const text = (index: number, t: string, citations?: unknown[]): Array<[string, unknown]> => [
+      ev("content_block_start", { index, content_block: { type: "text", text: "", ...(citations ? { citations: [] } : {}) } }),
+      ev("content_block_delta", { index, delta: { type: "text_delta", text: t } }),
+      ...(citations ?? []).map((c) => ev("content_block_delta", { index, delta: { type: "citations_delta", citation: c } })),
+      ev("content_block_stop", { index }),
+    ];
+    const events: Array<[string, unknown]> = [
+      ev("message_start", { message: { id: "m", type: "message", role: "assistant", model: "claude-sonnet-5-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } } }),
+      ...text(0, "I'll compare prices at the big retailers first."),
+      ev("content_block_start", { index: 1, content_block: { type: "server_tool_use", id: "srvtoolu_1", name: "web_search", input: {} } }),
+      ev("content_block_delta", { index: 1, delta: { type: "input_json_delta", partial_json: JSON.stringify({ query: "purple water bottle price" }) } }),
+      ev("content_block_stop", { index: 1 }),
+      ev("content_block_start", { index: 2, content_block: { type: "web_search_tool_result", tool_use_id: "srvtoolu_1", content: [] } }),
+      ev("content_block_stop", { index: 2 }),
+      ...text(3, "## Summary\nThe cheapest is the Mainstays 24oz "),
+      ...text(4, "at $4.97.", [{ type: "web_search_result_location", url: "https://www.walmart.com/ip/123", title: "Mainstays 24oz Bottle", cited_text: "…", encrypted_index: "x" }]),
+      ev("message_delta", { delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 40 } }),
+      ev("message_stop", {}),
+    ];
+    const p = new AnthropicProvider("sk-ant-test", "off", { fetch: (async () => sse(events)) as typeof fetch, maxRetries: 0 });
+    const live: string[] = [];
+    const r = await p.generate({
+      model: "claude-sonnet-5-5",
+      effort: "low",
+      system: "s",
+      messages: [p.userMessage("Find the cheapest purple bottle")],
+      tools: [],
+      hostedTools: ["web_search"],
+      maxTokens: 4000,
+      onProgress: (u) => live.push(`${u.kind}: ${u.text}`),
+    });
+    expect(live).toEqual(["note: I'll compare prices at the big retailers first.", "activity: Web search: “purple water bottle price”"]);
+    expect(r.progressStreamed).toBe(true);
+    expect(r.notes).toEqual(["I'll compare prices at the big retailers first."]);
+    expect(r.text).toBe("## Summary\nThe cheapest is the Mainstays 24oz at $4.97.\n\n**Sources**\n- [Mainstays 24oz Bottle](https://www.walmart.com/ip/123)");
+    expect(r.text).not.toContain("I'll compare");
+  });
+});

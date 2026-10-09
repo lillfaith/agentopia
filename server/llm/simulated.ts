@@ -37,8 +37,11 @@ export class SimulatedProvider implements LLMProvider {
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
-    if (this.latencyMs > 0) await sleep(this.latencyMs, req.signal);
     const msgs = req.messages as SimMessage[];
+    // Like a streaming model, the (labelled) progress update arrives before the work is done.
+    const update = `[Simulated update] Reading the brief for “${/^# Task: (.*)$/m.exec(typeof msgs[0]?.content === "string" ? msgs[0].content : "")?.[1] ?? "this task"}” and planning my approach.`;
+    req.onProgress?.({ kind: "note", text: update });
+    if (this.latencyMs > 0) await sleep(this.latencyMs, req.signal);
     const first = msgs[0];
     const brief = typeof first?.content === "string" ? first.content : "";
     const last = msgs[msgs.length - 1];
@@ -78,12 +81,17 @@ export class SimulatedProvider implements LLMProvider {
       "This placeholder stands in for model output so the town can be demoed offline.",
       "Configure ANTHROPIC_API_KEY to have this agent do real work.",
     ].join("\n");
-    return this.result(req, [{ type: "text", text }], text, [], "end_turn");
+    const res = this.result(req, [{ type: "text", text }], text, [], "end_turn");
+    res.notes = [update];
+    res.progressStreamed = !!req.onProgress;
+    return res;
   }
 
   private toolTurn(req: GenerateRequest, name: string, input: unknown): GenerateResult {
     const id = `sim_tool_${++this.counter}`;
-    return this.result(req, [{ type: "tool_use", id, name, input }], "", [{ id, name, input }], "tool_use");
+    const res = this.result(req, [{ type: "tool_use", id, name, input }], "", [{ id, name, input }], "tool_use");
+    res.progressStreamed = !!req.onProgress;
+    return res;
   }
 
   private result(

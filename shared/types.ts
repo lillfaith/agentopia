@@ -225,6 +225,7 @@ export type EventType =
   | "task.unblocked"
   | "task.started"
   | "task.step"
+  | "task.progress"
   | "task.tool_call"
   | "task.handoff"
   | "task.approval_requested"

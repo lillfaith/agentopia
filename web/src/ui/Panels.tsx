@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/react/shallow";
 import { useMemo, useState } from "react";
 import type { Task, TaskStatus } from "../../../shared/types";
 import { PRIORITY_LABELS } from "../../../shared/types";
@@ -280,9 +281,9 @@ export function NewProject() {
   const close = useTown((s) => s.openPanel);
   const push = useTown((s) => s.pushToast);
   const status = useTown((s) => s.snapshot!.status);
-  const agents = useTown((s) => s.snapshot!.agents.filter((a) => a.enabled && !a.archived));
+  const agents = useTown(useShallow((s) => s.snapshot!.agents.filter((a) => a.enabled && !a.archived)));
   const byRole = (role: string, fallbackId: string) => agents.find((a) => a.id === fallbackId)?.id ?? agents.find((a) => a.role.toLowerCase().includes(role))?.id ?? agents[0]?.id ?? "";
-  const projects = useTown((s) => s.snapshot!.projects.filter((p) => p.status === "active"));
+  const projects = useTown(useShallow((s) => s.snapshot!.projects.filter((p) => p.status === "active")));
   const [form, setForm] = useState({ topic: "", audience: "", goal: "", projectId: "" });
   const [team, setTeam] = useState(() => ({ managerId: byRole("manager", "manager"), researcherId: byRole("research", "researcher"), copywriterId: byRole("writ", "copywriter") }));
   const [busy, setBusy] = useState(false);
