@@ -44,6 +44,8 @@ interface UIState {
   sound: boolean;
   /** Incremented to ask the camera to fly back to the overview. */
   overviewRequest: number;
+  /** Ask the villager panel to open its Chat tab on a thread (null taskId = a new chat). */
+  chatRequest: { agentId: string; taskId: string | null; nonce: number } | null;
 
   load: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -52,6 +54,7 @@ interface UIState {
   selectBuilding: (id: string | null) => void;
   openPanel: (p: PanelId | null) => void;
   openWardrobe: (agentId: string | null) => void;
+  openChat: (agentId: string, taskId: string | null) => void;
   toggle: (key: "showNames" | "showBubbles" | "follow" | "sound") => void;
   setLightingOverride: (hour: number | null) => void;
   requestOverview: () => void;
@@ -98,6 +101,7 @@ export const useTown = create<UIState>((set, get) => ({
   follow: false,
   lightingOverride: pref<number | null>("lightingOverride", null),
   sound: pref("sound", false),
+  chatRequest: null,
   overviewRequest: 0,
 
   async load() {
@@ -143,6 +147,8 @@ export const useTown = create<UIState>((set, get) => ({
   selectBuilding: (id) => set({ selectedBuildingId: id, selectedAgentId: null, follow: false }),
   openPanel: (p) => set({ panel: get().panel === p ? null : p, wardrobeAgentId: null }),
   openWardrobe: (wardrobeAgentId) => set({ wardrobeAgentId, panel: wardrobeAgentId ? null : get().panel }),
+  openChat: (agentId, taskId) =>
+    set({ selectedAgentId: agentId, selectedBuildingId: null, wardrobeAgentId: null, chatRequest: { agentId, taskId, nonce: (get().chatRequest?.nonce ?? 0) + 1 } }),
   toggle: (key) => {
     const value = !get()[key];
     set({ [key]: value } as Partial<UIState>);

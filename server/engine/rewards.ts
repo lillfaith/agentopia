@@ -89,7 +89,8 @@ export function unverifiedReason(task: Task): string | null {
 /** Award coins for a just-completed task (idempotent; safe to call more than once). */
 export function rewardTask(store: Store, taskId: string, simulated: boolean): number {
   const task = store.getTask(taskId);
-  if (!task || simulated || unverifiedReason(task)) return 0;
+  // Chats are conversation, not deliverables: they never earn coins (no farming by chatting).
+  if (!task || simulated || task.kind === "chat" || unverifiedReason(task)) return 0;
   const contentKey = createHash("sha256").update(`${normalize(task.title)}\n${normalize(task.instructions)}`).digest("hex");
   let earned = 0;
   transaction(store.db, () => {

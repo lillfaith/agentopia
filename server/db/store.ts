@@ -14,6 +14,8 @@ import type {
   Schedule,
   Task,
   TaskExecution,
+  TaskKind,
+  TaskMessage,
   TaskPriority,
   TaskStatus,
   TownEvent,
@@ -151,6 +153,7 @@ function toTask(r: Row): Task {
     simulated: r.simulated === 1,
     scheduleId: (r.schedule_id as string) ?? null,
     projectId: (r.project_id as string) ?? null,
+    kind: ((r.kind as TaskKind) ?? "task") === "chat" ? "chat" : "task",
     depth: (r.depth as ResearchDepth) ?? null,
     modelOverride: (r.model_override as string) ?? null,
     execution: NO_EXECUTION,
@@ -229,6 +232,7 @@ export interface NewTask {
   projectId?: string | null;
   depth?: ResearchDepth | null;
   modelOverride?: string | null;
+  kind?: TaskKind;
 }
 
 export interface NewEvent {
@@ -509,14 +513,15 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO tasks (id, title, instructions, agent_id, status, priority, depends_on, parent_task_id, workflow_id,
-           created_by, delegation_depth, max_attempts, schedule_id, project_id, depth, model_override, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           created_by, delegation_depth, max_attempts, schedule_id, project_id, depth, model_override, kind, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id, t.title, t.instructions, t.agentId, status, t.priority ?? 1, json(deps), t.parentTaskId ?? null,
         t.workflowId ?? null, t.createdBy, t.delegationDepth ?? 0, t.maxAttempts ?? 3, t.scheduleId ?? null, t.projectId ?? null,
-        t.depth ?? null, t.modelOverride ?? null, ts, ts,
+        t.depth ?? null, t.modelOverride ?? null, t.kind ?? "task", ts, ts,
       );
+    this.addTaskMessage(id, "brief", t.instructions, true, ts);
     return this.getTask(id)!;
   }
 
@@ -683,6 +688,53 @@ export class Store {
     return this.getTask(id)!;
   }
 
+  // ── task conversations ──
+  addTaskMessage(taskId: string, role: TaskMessage["role"], content: string, consumed = true, at = now()): TaskMessage {
+    const res = this.db
+      .prepare("INSERT INTO task_messages (task_id, role, content, consumed, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run(taskId, role, content, consumed ? 1 : 0, at);
+    return { id: Number(res.lastInsertRowid), taskId, role, content, createdAt: at };
+  }
+
+  /**
+   * The task's conversation, oldest first. Tasks from before conversations existed get theirs
+   * reconstructed from the brief and the output (and stored, once anyone replies).
+   */
+  listTaskMessages(taskId: string): TaskMessage[] {
+    const rows = this.db.prepare("SELECT * FROM task_messages WHERE task_id = ? ORDER BY id").all(taskId) as Row[];
+    if (rows.length) {
+      return rows.map((r) => ({ id: Number(r.id), taskId, role: r.role as TaskMessage["role"], content: r.content as string, createdAt: r.created_at as string }));
+    }
+    const task = this.getTask(taskId);
+    if (!task) return [];
+    const out: TaskMessage[] = [{ id: 0, taskId, role: "brief", content: task.instructions, createdAt: task.createdAt }];
+    if (task.output) out.push({ id: 0, taskId, role: "agent", content: task.output, createdAt: task.completedAt ?? task.updatedAt });
+    return out;
+  }
+
+  /** Store a reconstructed conversation so new messages follow it. No-op when one exists. */
+  materializeTaskMessages(taskId: string): void {
+    const has = this.db.prepare("SELECT 1 FROM task_messages WHERE task_id = ? LIMIT 1").get(taskId);
+    if (has) return;
+    for (const m of this.listTaskMessages(taskId)) this.addTaskMessage(taskId, m.role, m.content, true, m.createdAt);
+  }
+
+  /** Owner messages the villager hasn't read yet. */
+  unreadOwnerMessages(taskId: string): TaskMessage[] {
+    const rows = this.db.prepare("SELECT * FROM task_messages WHERE task_id = ? AND role = 'owner' AND consumed = 0 ORDER BY id").all(taskId) as Row[];
+    return rows.map((r) => ({ id: Number(r.id), taskId, role: "owner", content: r.content as string, createdAt: r.created_at as string }));
+  }
+
+  markOwnerMessagesRead(taskId: string): void {
+    this.db.prepare("UPDATE task_messages SET consumed = 1 WHERE task_id = ? AND role = 'owner' AND consumed = 0").run(taskId);
+  }
+
+  /** Id of the newest usage row (0 if none); marks where a new exchange's usage starts. */
+  lastUsageId(): number {
+    const r = this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM usage").get() as Row;
+    return Number(r.id);
+  }
+
   /** Provider transcript + executor bookkeeping for a task (opaque to the store). */
   getConversation<T>(taskId: string): T | null {
     const r = this.db.prepare("SELECT conversation FROM tasks WHERE id = ?").get(taskId) as Row | undefined;
@@ -834,10 +886,10 @@ export class Store {
   }
 
   /** Web searches and page reads this task has used so far. */
-  taskToolUse(taskId: string): { webSearches: number; webFetches: number } {
+  taskToolUse(taskId: string, sinceUsageId = 0): { webSearches: number; webFetches: number } {
     const r = this.db
-      .prepare("SELECT COALESCE(SUM(web_search_requests), 0) AS s, COALESCE(SUM(web_fetch_requests), 0) AS f FROM usage WHERE task_id = ?")
-      .get(taskId) as Row;
+      .prepare("SELECT COALESCE(SUM(web_search_requests), 0) AS s, COALESCE(SUM(web_fetch_requests), 0) AS f FROM usage WHERE task_id = ? AND id > ?")
+      .get(taskId, sinceUsageId) as Row;
     return { webSearches: Number(r.s), webFetches: Number(r.f) };
   }
 
@@ -859,8 +911,9 @@ export class Store {
     return new Map(rows.map((r) => [r.agent_id as string, Number(r.c)]));
   }
 
-  taskSpend(taskId: string): number {
-    const r = this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM usage WHERE task_id = ? AND simulated = 0").get(taskId) as Row;
+  /** Real spend on a task, optionally only since a usage row (the start of the current exchange). */
+  taskSpend(taskId: string, sinceUsageId = 0): number {
+    const r = this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM usage WHERE task_id = ? AND simulated = 0 AND id > ?").get(taskId, sinceUsageId) as Row;
     return Number(r.c);
   }
 

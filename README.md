@@ -92,6 +92,8 @@ Try it locally with `AGENTOPIA_SIMULATION=true npm run dev:saas`. To host it on 
 | Budgets: daily / monthly / per-task / per-villager, worst case reserved before each call | **Verified** (tests) |
 | Hire / archive / restore villagers; custom departments and buildings | **Verified** (tests + browser) |
 | Human approval gate for sensitive actions | **Verified** |
+| Chat with villagers: reply to any finished task to refine it in the same conversation, or start a free-form chat | **Verified** (tests + live e2e) |
+| Research depth (Quick / Standard / Deep) and a per-task usage & cost breakdown | **Verified** (tests + live cost probe, [docs/COSTS.md](docs/COSTS.md)) |
 | Publishing, email | **Placeholder.** Approved actions are recorded, nothing is sent |
 | Image generation, 3D modeling | **Planned** skill slots: attachable, clearly inactive |
 | Token and cost tracking | Real token counts, **estimated** dollars ([docs/COSTS.md](docs/COSTS.md)) |

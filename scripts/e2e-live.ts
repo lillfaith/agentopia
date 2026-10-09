@@ -92,16 +92,17 @@ try {
   check("assign task in project", task.status === 201 && task.body.projectId === project.body.id);
 
   // The worker pool runs it in the background; the "browser" only polls.
-  const started = Date.now();
-  let done: any = null;
-  while (Date.now() - started < 180_000) {
-    const t = (await alice(`/api/tasks/${task.body.id}`)).body.task;
-    if (["completed", "failed", "cancelled"].includes(t.status)) {
-      done = t;
-      break;
+  const waitDone = async (id: string) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < 180_000) {
+      const t = (await alice(`/api/tasks/${id}`)).body.task;
+      if (["completed", "failed", "cancelled"].includes(t.status)) return t;
+      await new Promise((r) => setTimeout(r, 1000));
     }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
+    return null;
+  };
+  const started = Date.now();
+  const done: any = await waitDone(task.body.id);
   check("villager finished the task in the background", done?.status === "completed", done ? `${done.status} in ${Math.round((Date.now() - started) / 1000)}s${done.lastError ? `: ${done.lastError}` : ""}` : "timed out");
   const output: string = done?.output ?? "";
   check("real output appeared", output.trim().length > 20 && (simulate || !output.includes("SIMULATED")), JSON.stringify(output.slice(0, 160)));
@@ -112,6 +113,20 @@ try {
       `${done?.execution?.calls} call(s), ${done?.execution?.models?.join(",")}, ~$${Number(done?.execution?.costUsd ?? 0).toFixed(4)}, request ${done?.execution?.lastRequestId}`,
     );
   }
+
+  // Chat: reply to the finished task; the villager answers in the same conversation.
+  const reply = await alice(`/api/tasks/${task.body.id}/messages`, "POST", { text: "Pick the best one of those three and reply with only that tagline." });
+  const revised: any = reply.status === 202 ? await waitDone(task.body.id) : null;
+  const thread = (await alice(`/api/tasks/${task.body.id}/messages`)).body as { role: string; content: string }[];
+  const finalOutput: string = revised?.output ?? output;
+  check(
+    "reply to the villager and get a revised answer",
+    revised?.status === "completed" && finalOutput !== output && finalOutput.trim().length > 3 && (simulate || finalOutput.length < output.length) && thread.length === 4,
+    `${thread.map((m) => m.role).join(" → ")}: ${JSON.stringify(finalOutput.slice(0, 120))}`,
+  );
+  const chat = await alice("/api/chats", "POST", { agentId: "copywriter", text: "In one short sentence, what makes a tagline memorable?" });
+  const chatDone: any = chat.status === 201 ? await waitDone(chat.body.id) : null;
+  check("start a free-form chat", chatDone?.status === "completed" && chatDone.kind === "chat" && (chatDone.output ?? "").trim().length > 10, JSON.stringify((chatDone?.output ?? chatDone?.lastError ?? "").slice(0, 120)));
 
   const bob = browser(first.base);
   await bob("/api/auth/signup", "POST", { email: `other-${email}`, password });
@@ -129,7 +144,7 @@ try {
   const persisted = snap.tasks.find((t: any) => t.id === task.body.id);
   check(
     "results persist after refresh",
-    snap.projects.some((p: any) => p.id === project.body.id) && persisted?.status === "completed" && persisted?.output === output,
+    snap.projects.some((p: any) => p.id === project.body.id) && persisted?.status === "completed" && persisted?.output === finalOutput,
   );
   exitCode = results.every((r) => r.ok) ? 0 : 1;
 } catch (err) {

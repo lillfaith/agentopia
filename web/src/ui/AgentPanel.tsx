@@ -7,8 +7,9 @@ import { STATUS_LABEL, levelFor, statsFor, useTown } from "../state/store";
 import { Badge, Drawer, Empty, EventBadge, ExecutionBadge, ExecutionProof, Markdown, StatusDot, TASK_LABEL, TASK_TONE, clock, fmtTokens, fmtUsd, timeAgo } from "./common";
 import { SkillPicker } from "./Town";
 import { TaskRunOptions, TaskUsage } from "./Usage";
+import { Chat } from "./Chat";
 
-type Tab = "overview" | "work" | "config";
+type Tab = "overview" | "chat" | "work" | "config";
 
 export function AgentPanel({ agentId }: { agentId: string }) {
   const snap = useTown((s) => s.snapshot)!;
@@ -16,6 +17,10 @@ export function AgentPanel({ agentId }: { agentId: string }) {
   const openWardrobe = useTown((s) => s.openWardrobe);
   const agent = snap.agents.find((a) => a.id === agentId);
   const [tab, setTab] = useState<Tab>("overview");
+  const chatRequest = useTown((s) => s.chatRequest);
+  useEffect(() => {
+    if (chatRequest?.agentId === agentId) setTab("chat");
+  }, [chatRequest?.nonce]);
   if (!agent) return null;
   const stats = statsFor(snap, agent.id);
   const lv = levelFor(stats);
@@ -77,13 +82,14 @@ export function AgentPanel({ agentId }: { agentId: string }) {
         </div>
       </div>
       <div className="tabs">
-        {(["overview", "work", "config"] as Tab[]).map((t) => (
+        {(["overview", "chat", "work", "config"] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-            {t === "overview" ? "Now" : t === "work" ? "Work" : "Configure"}
+            {t === "overview" ? "Now" : t === "chat" ? "Chat" : t === "work" ? "Work" : "Configure"}
           </button>
         ))}
       </div>
       {tab === "overview" && <Overview agent={agent} />}
+      {tab === "chat" && <Chat agent={agent} />}
       {tab === "work" && <WorkHistory agent={agent} />}
       {tab === "config" && <Config agent={agent} key={agent.updatedAt} />}
     </Drawer>
@@ -231,11 +237,16 @@ function LatestResult({ task, agentName }: { task: Task; agentName: string }) {
         </details>
       )}
       <TaskUsage taskId={task.id} calls={task.execution.calls} />
-      {task.output && (
+      {(task.output || task.status === "failed") && (
         <div className="row gap-s">
-          <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(task.output ?? "").then(() => push({ tone: "info", text: "Copied" }), () => {})}>
-            Copy
+          <button className="btn primary" onClick={() => useTown.getState().openChat(task.agentId, task.id)}>
+            💬 Reply to {agentName}
           </button>
+          {task.output && (
+            <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(task.output ?? "").then(() => push({ tone: "info", text: "Copied" }), () => {})}>
+              Copy
+            </button>
+          )}
         </div>
       )}
     </section>
@@ -365,6 +376,11 @@ export function TaskOutputCard({ task, open, onToggle }: { task: Task; open: boo
           {task.output && <Markdown text={task.output} />}
           {task.lastError && <div className="error-box">{task.lastError}</div>}
           <div className="row gap-s">
+            {["completed", "failed", "cancelled"].includes(task.status) && (
+              <button className="btn ghost" onClick={() => useTown.getState().openChat(task.agentId, task.id)}>
+                💬 Reply
+              </button>
+            )}
             {task.output && (
               <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(task.output ?? "").then(() => push({ tone: "info", text: "Copied" }))}>
                 Copy

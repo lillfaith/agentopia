@@ -72,11 +72,14 @@ export class SimulatedProvider implements LLMProvider {
       }
     }
 
+    // A reply from the owner in an ongoing conversation: acknowledge what they asked.
+    const lastText = typeof last?.content === "string" ? last.content : Array.isArray(last?.content) ? last.content.map((b) => (b.type === "text" ? (b as { text?: string }).text ?? "" : "")).join("\n") : "";
+    const ownerAsked = /Message from the owner:\s*\n\s*\n([^\n]*)/.exec(lastText)?.[1];
     const text = [
       SIMULATION_BANNER,
       "",
       `Role: ${firstLine(req.system)}`,
-      `Brief: ${firstLine(brief) || "(continuation)"}`,
+      ownerAsked ? `Your message: ${ownerAsked}` : `Brief: ${firstLine(brief) || "(continuation)"}`,
       "",
       "This placeholder stands in for model output so the town can be demoed offline.",
       "Configure ANTHROPIC_API_KEY to have this agent do real work.",

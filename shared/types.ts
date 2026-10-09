@@ -134,6 +134,8 @@ export interface Task {
   scheduleId: string | null;
   /** Project this task belongs to, if any. */
   projectId: string | null;
+  /** "task" = assigned work; "chat" = a free-form conversation with the villager. */
+  kind: TaskKind;
   /** Research depth chosen for this task; null = the town's default. */
   depth: ResearchDepth | null;
   /** Model chosen for this task; null = the villager's own model (or the depth's choice). */
@@ -147,6 +149,20 @@ export interface Task {
  * retrieved page size, model turns, context size and spend (see server/engine/depth.ts).
  */
 export type ResearchDepth = "quick" | "standard" | "deep";
+
+export type TaskKind = "task" | "chat";
+
+/**
+ * One message in a task's conversation with the owner. "brief" is the work as assigned,
+ * "owner" a reply from the owner, "agent" the villager's answer (its output at that point).
+ */
+export interface TaskMessage {
+  id: number;
+  taskId: string;
+  role: "brief" | "owner" | "agent";
+  content: string;
+  createdAt: ISODate;
+}
 
 /** One recorded model call of a task, with its cost split by charge. */
 export interface TaskUsageCall {
@@ -307,6 +323,7 @@ export type EventType =
   | "task.failed"
   | "task.retry_scheduled"
   | "task.cancelled"
+  | "task.message"
   | "agent.status"
   | "agent.updated"
   | "agent.created"

@@ -212,7 +212,12 @@ export class TaskRunner {
       type: "task.started",
       agentId: task.agentId,
       taskId: task.id,
-      message: task.attempts > 1 ? `Retrying “${task.title}” (attempt ${task.attempts}/${task.maxAttempts})` : `Started: ${task.title}`,
+      message:
+        task.attempts > 1
+          ? `Retrying “${task.title}” (attempt ${task.attempts}/${task.maxAttempts})`
+          : this.store.unreadOwnerMessages(task.id).length
+            ? `Reading your message: ${task.title}`
+            : `Started: ${task.title}`,
       data: { attempt: task.attempts },
       simulated: sim,
     });
@@ -224,8 +229,18 @@ export class TaskRunner {
       if (this.stopping || !current || current.status !== "running") return; // cancelled or shutting down
 
       if (outcome.kind === "completed") {
+        this.store.materializeTaskMessages(task.id); // tasks from before conversations were stored
         this.store.updateTask(task.id, { status: "completed", output: outcome.output, completedAt: new Date().toISOString(), lastError: null, releaseLease: true });
-        this.store.addEvent({ type: "task.completed", agentId: task.agentId, taskId: task.id, message: `Finished: ${task.title}`, simulated: sim });
+        this.store.addTaskMessage(task.id, "agent", outcome.output);
+        const replied = this.store.listTaskMessages(task.id).some((m) => m.role === "owner");
+        const who = this.store.getAgent(task.agentId)?.name ?? "The villager";
+        this.store.addEvent({
+          type: "task.completed",
+          agentId: task.agentId,
+          taskId: task.id,
+          message: replied || task.kind === "chat" ? `${who} replied: ${task.title}` : `Finished: ${task.title}`,
+          simulated: sim,
+        });
         this.flashStatus(task.agentId, task.id, "completed", `Done: ${task.title}`);
         this.onCompleted(task);
         try {
@@ -404,6 +419,31 @@ export class TaskRunner {
     this.store.updateSettings({ paused: false });
     this.store.addEvent({ type: "system.notice", message: "▶️ Resumed: villagers are back to work.", data: { paused: false } });
     if (this.timer) void this.tick();
+  }
+
+  /**
+   * The owner replies to a finished task or chat. The villager picks the conversation up where
+   * it left off (same transcript, same findings) and answers; its answer becomes the new result.
+   */
+  sendMessage(taskId: string, text: string): { ok: true; task: Task } | { ok: false; error: string; status: number } {
+    const task = this.store.getTask(taskId);
+    if (!task) return { ok: false, error: "Task not found", status: 404 };
+    const agent = this.store.getAgent(task.agentId);
+    if (!agent || agent.archived) return { ok: false, error: "This villager has moved out", status: 409 };
+    if (!["completed", "failed", "cancelled"].includes(task.status)) {
+      return { ok: false, error: `${agent.name} is still working on this. You can reply once they've answered.`, status: 409 };
+    }
+    this.store.materializeTaskMessages(taskId);
+    this.store.addTaskMessage(taskId, "owner", text, false);
+    const updated = this.store.updateTask(taskId, { status: "queued", attempts: 0, lastError: null, completedAt: null, runAfter: null });
+    this.store.addEvent({
+      type: "task.message",
+      agentId: task.agentId,
+      taskId,
+      message: `You → ${agent.name}: ${text.length > 140 ? text.slice(0, 139) + "…" : text}`,
+    });
+    if (this.timer) void this.tick();
+    return { ok: true, task: updated };
   }
 
   /** Manually re-run a failed or cancelled task from scratch. */
