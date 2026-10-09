@@ -1,7 +1,7 @@
 import type { Agent, Task } from "../../shared/types.js";
 import type { Config } from "../config.js";
 import type { Store } from "../db/store.js";
-import { buildBrief, buildSystemPrompt } from "../agents/prompt.js";
+import { buildBrief, buildSystemPrompt, ownerReply, threadRecap } from "../agents/prompt.js";
 import { requiresApproval, type LocalTool } from "../agents/tools.js";
 import { capabilitiesFor } from "../skills/index.js";
 import { preflight, worstCaseCallCost } from "./budget.js";
@@ -17,6 +17,8 @@ interface TaskState {
   turns: number;
   /** Largest prompt (tokens) of the last call; drives the depth's context limit. */
   lastContextTokens?: number;
+  /** Usage rows after this id belong to the current exchange (since the owner's last message). */
+  exchangeStartUsageId?: number;
 }
 
 /**
@@ -84,9 +86,15 @@ export class AgentExecutor {
     if (depth && !task.depth) this.store.setTaskDepth(task.id, depth.id);
 
     let state = this.store.getConversation<TaskState>(task.id);
+    const unread = this.store.unreadOwnerMessages(task.id);
     if (!state) {
       const budget = depth ? { searches: depth.maxSearches, fetches: depth.maxFetches } : undefined;
-      state = { messages: [this.provider.userMessage(buildBrief(this.store, task, budget))], pendingToolCalls: null, turns: 0 };
+      let brief = buildBrief(this.store, task, budget);
+      // Rebuilt from scratch (e.g. a retry) after the owner had replied: carry the conversation over as text.
+      const earlier = this.store.listTaskMessages(task.id).filter((m) => m.role !== "brief");
+      if (earlier.some((m) => m.role === "owner")) brief += `\n\n${threadRecap(earlier)}\n\n(Reply to the owner's latest message.)`;
+      state = { messages: [this.provider.userMessage(brief)], pendingToolCalls: null, turns: 0, exchangeStartUsageId: this.store.lastUsageId() };
+      this.store.markOwnerMessagesRead(task.id);
       this.store.saveConversation(task.id, state);
       if (depth) {
         const why = plan.modelReason ? ` on ${agent.model} (${plan.modelReason})` : ` on ${agent.model}`;
@@ -99,6 +107,20 @@ export class AgentExecutor {
           simulated: sim,
         });
       }
+    } else if (unread.length) {
+      // The owner replied: continue the same conversation, so the villager keeps everything it found.
+      if (state.pendingToolCalls?.length) {
+        const skipped = state.pendingToolCalls.map((c) => ({ toolCallId: c.id, content: "Not run: the owner sent a new message instead.", isError: true }));
+        state.messages.push(this.provider.toolResultsMessage(skipped));
+        state.pendingToolCalls = null;
+      }
+      const reply = ownerReply(task, unread.map((m) => m.content));
+      state.messages = this.provider.appendNote ? this.provider.appendNote(state.messages, reply) : [...state.messages, this.provider.userMessage(reply)];
+      // Limits (turns, research budget, per-task spend) apply to each exchange.
+      state.turns = 0;
+      state.exchangeStartUsageId = this.store.lastUsageId();
+      this.store.markOwnerMessagesRead(task.id);
+      this.store.saveConversation(task.id, state);
     }
 
     try {
@@ -126,11 +148,12 @@ export class AgentExecutor {
           const reserve = (tokens: number, searches: number) =>
             worstCaseCallCost({ model: agent.model, promptChars, maxTokens: tokens, hostedTools: hosted, maxSearches: searches });
           const capUsd = depth ? depthSpendCap(depth, agent.model) : undefined;
-          let gate = preflight(this.store, this.config, { agent, taskId: task.id, reserveUsd: reserve(maxTokens, wrapUp ? 0 : (depth?.maxSearches ?? 5)), capUsd });
+          const sinceUsageId = state.exchangeStartUsageId ?? 0;
+          let gate = preflight(this.store, this.config, { agent, taskId: task.id, reserveUsd: reserve(maxTokens, wrapUp ? 0 : (depth?.maxSearches ?? 5)), capUsd, sinceUsageId });
           if (!gate.ok && gate.scope === "task" && depth && !wrapUp && state.turns > 0) {
             // Not enough budget left for more research, but maybe enough to write up what was found.
             const tokens = Math.min(this.config.maxOutputTokens, WRAP_UP_MAX_TOKENS);
-            const fallback = preflight(this.store, this.config, { agent, taskId: task.id, reserveUsd: reserve(tokens, 0), capUsd });
+            const fallback = preflight(this.store, this.config, { agent, taskId: task.id, reserveUsd: reserve(tokens, 0), capUsd, sinceUsageId });
             if (fallback.ok) {
               gate = fallback;
               wrapUp = "spend";
@@ -269,11 +292,12 @@ export class AgentExecutor {
   /** Which research-depth limit, if any, the next call would cross. */
   private depthLimitReached(taskId: string, state: TaskState, depth: DepthProfile, maxTurns: number, model: string): WrapUpReason | null {
     if (state.turns >= maxTurns - 1) return "turns";
-    const used = this.store.taskToolUse(taskId);
+    const since = state.exchangeStartUsageId ?? 0;
+    const used = this.store.taskToolUse(taskId, since);
     if (used.webSearches >= depth.maxSearches) return "searches";
     if (used.webFetches >= depth.maxFetches) return "fetches";
     if ((state.lastContextTokens ?? 0) >= depth.maxContextTokens) return "context";
-    if (!this.provider.simulated && this.store.taskSpend(taskId) >= depthSpendCap(depth, model) * SPEND_WRAP_UP_SHARE) return "spend";
+    if (!this.provider.simulated && this.store.taskSpend(taskId, since) >= depthSpendCap(depth, model) * SPEND_WRAP_UP_SHARE) return "spend";
     return null;
   }
 

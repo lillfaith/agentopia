@@ -313,6 +313,20 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE usage ADD COLUMN server_iterations INTEGER;
   ALTER TABLE usage ADD COLUMN context_tokens INTEGER;
   `,
+
+  /* 9 — chat: every task is a conversation the owner can reply to; free-form chats are tasks of kind "chat" */ `
+  ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT 'task';
+  CREATE TABLE task_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id     TEXT NOT NULL,
+    role        TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    -- Owner messages wait here until the villager picks them up (1 = already in its conversation).
+    consumed    INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX idx_task_messages_task ON task_messages(task_id, id);
+  `,
 ];
 
 export type Database = DatabaseSync;

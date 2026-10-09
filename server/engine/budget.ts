@@ -89,14 +89,19 @@ export type PreflightResult =
   | { ok: false; scope: "daily" | "monthly" | "agent"; message: string; resumeAt: string }
   | { ok: false; scope: "task"; message: string; resumeAt: null };
 
-export function preflight(store: Store, config: Config, args: { agent: Agent; taskId: string; reserveUsd: number; capUsd?: number }): PreflightResult {
+export function preflight(
+  store: Store,
+  config: Config,
+  args: { agent: Agent; taskId: string; reserveUsd: number; capUsd?: number; sinceUsageId?: number },
+): PreflightResult {
   const { effective: limits } = effectiveLimits(store, config);
   // A task's research depth can only lower its spend ceiling.
   const effective = { ...limits, perTaskUsd: tighter(limits.perTaskUsd, args.capUsd ?? null) };
   const r = args.reserveUsd;
   const fmt = (n: number) => `$${n.toFixed(2)}`;
 
-  const taskSpent = store.taskSpend(args.taskId);
+  // In a conversation the per-task limit applies to each exchange (the work since the owner's last message).
+  const taskSpent = store.taskSpend(args.taskId, args.sinceUsageId ?? 0);
   if (effective.perTaskUsd > 0 && taskSpent + r > effective.perTaskUsd) {
     return {
       ok: false,

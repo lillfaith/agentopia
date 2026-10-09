@@ -1,4 +1,4 @@
-import type { Achievement, Agent, AgentMemory, Building, CoinEntry, Project, ResearchDepth, Schedule, Task, TaskUsageBreakdown, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
+import type { Achievement, Agent, AgentMemory, Building, CoinEntry, Project, ResearchDepth, Schedule, Task, TaskMessage, TaskUsageBreakdown, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
 
 import { DemoError, demoCall, demoSubscribe } from "../demo/demoServer";
 
@@ -108,6 +108,9 @@ export const api = {
     depth?: ResearchDepth | null;
     modelOverride?: string | null;
   }) => post<Task>("/api/tasks", body),
+  taskMessages: (id: string) => call<TaskMessage[]>(`/api/tasks/${id}/messages`),
+  replyToTask: (id: string, text: string) => post<Task>(`/api/tasks/${id}/messages`, { text }),
+  startChat: (body: { agentId: string; text: string; depth?: ResearchDepth | null; modelOverride?: string | null }) => post<Task>("/api/chats", body),
   taskUsage: (id: string) => call<TaskUsageBreakdown>(`/api/tasks/${id}/usage`),
   cancelTask: (id: string) => post<{ ok: true }>(`/api/tasks/${id}/cancel`, {}),
   retryTask: (id: string) => post<{ ok: true }>(`/api/tasks/${id}/retry`, {}),

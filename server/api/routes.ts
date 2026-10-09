@@ -114,6 +114,17 @@ const newTask = z
   })
   .strict();
 
+const chatMessage = z.object({ text: z.string().trim().min(1).max(20000) }).strict();
+const newChat = z
+  .object({
+    agentId: z.string().min(1),
+    text: z.string().trim().min(1).max(20000),
+    depth: z.enum(["quick", "standard", "deep"]).nullable().optional(),
+    modelOverride: z.string().min(1).max(80).nullable().optional(),
+    projectId: z.string().min(1).nullable().optional(),
+  })
+  .strict();
+
 const projectCreate = z.object({ title: z.string().trim().min(1).max(80), goal: z.string().trim().max(2000).default("") }).strict();
 const projectPatch = z.object({ title: z.string().trim().min(1).max(80), goal: z.string().trim().max(2000), status: z.enum(["active", "archived"]) }).partial().strict();
 
@@ -451,6 +462,45 @@ export function createApi(deps: ApiDeps): Hono {
     runner.poke();
     return c.json(task, 201);
   });
+  // ── conversations: reply to any finished task, or chat freely with a villager ──
+  api.get("/api/tasks/:id/messages", (c) => {
+    const task = store.getTask(c.req.param("id"));
+    if (!task) return c.json(err("Task not found"), 404);
+    return c.json(store.listTaskMessages(task.id));
+  });
+  api.post("/api/tasks/:id/messages", async (c) => {
+    const b = await body(c, chatMessage);
+    if (!b.ok) return b.res;
+    const r = runner.sendMessage(c.req.param("id"), b.data.text);
+    if (!r.ok) return c.json(err(r.error), r.status as 404 | 409);
+    return c.json(r.task, 202);
+  });
+  api.post("/api/chats", async (c) => {
+    const b = await body(c, newChat);
+    if (!b.ok) return b.res;
+    const agent = store.getAgent(b.data.agentId);
+    if (!agent || agent.archived) return c.json(err("Unknown agent"), 400);
+    if (b.data.projectId && store.getProject(b.data.projectId)?.status !== "active") return c.json(err("Unknown or archived project"), 400);
+    if (b.data.modelOverride && !isKnownModel(b.data.modelOverride)) return c.json(err(`Unknown model ${b.data.modelOverride}`), 400);
+    const blocked = modelNotAllowed(b.data.modelOverride ?? undefined);
+    if (blocked) return c.json(err(blocked), 403);
+    const firstLine = b.data.text.split("\n")[0].trim();
+    const title = firstLine.length > 70 ? `${firstLine.slice(0, 69).trimEnd()}…` : firstLine;
+    const task = store.createTask({
+      agentId: agent.id,
+      title,
+      instructions: b.data.text,
+      createdBy: "user",
+      kind: "chat",
+      depth: b.data.depth ?? null,
+      modelOverride: b.data.modelOverride ?? null,
+      projectId: b.data.projectId ?? null,
+    });
+    store.addEvent({ type: "task.message", agentId: agent.id, taskId: task.id, message: `You → ${agent.name}: ${title}`, data: { chat: true } });
+    runner.poke();
+    return c.json(task, 201);
+  });
+
   api.get("/api/tasks/:id/usage", (c) => {
     const task = store.getTask(c.req.param("id"));
     if (!task) return c.json(err("Task not found"), 404);

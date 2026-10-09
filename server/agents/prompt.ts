@@ -33,7 +33,15 @@ export function neutralizeTags(text: string): string {
 /** First user turn: the task brief plus outputs of completed dependencies. */
 export function buildBrief(store: Store, task: Task, research?: { searches: number; fetches: number }): string {
   const delegatedBy = task.createdBy !== "user" && !task.createdBy.startsWith("schedule:") ? store.getAgent(task.createdBy) : null;
-  const parts = delegatedBy
+  const parts = task.kind === "chat"
+    ? [
+        "# Chat with the owner",
+        "",
+        task.instructions.trim(),
+        "",
+        "(This is a conversation with the owner, not an assigned task. Reply naturally and to the point, and use your tools only when they genuinely help.)",
+      ]
+    : delegatedBy
     ? [
         `# Task: ${task.title}`,
         "",
@@ -72,4 +80,24 @@ export function buildBrief(store: Store, task: Task, research?: { searches: numb
   }
   parts.push("", `(Today's date: ${new Date().toISOString().slice(0, 10)})`);
   return parts.join("\n");
+}
+
+/**
+ * The owner's reply in an ongoing task or chat. Kept outside the system prompt so the cached
+ * prefix and the earlier conversation stay untouched (append-only).
+ */
+export function ownerReply(task: Task, texts: string[]): string {
+  const body = texts.map((t) => t.trim()).join("\n\n");
+  const guide =
+    task.kind === "chat"
+      ? "(Reply to the owner directly.)"
+      : "(Reply to the owner directly. If they ask you to change your work, reply with the complete revised version, not only the changes, because your reply becomes the task's new result.)";
+  return `Message from the owner:\n\n${body}\n\n${guide}`;
+}
+
+/** Earlier conversation, for rebuilding a task from scratch after a retry. */
+export function threadRecap(messages: { role: string; content: string }[]): string {
+  const lines = ["## The conversation so far"];
+  for (const m of messages) lines.push("", m.role === "agent" ? "### Your earlier reply" : "### The owner wrote", m.content.trim());
+  return lines.join("\n");
 }

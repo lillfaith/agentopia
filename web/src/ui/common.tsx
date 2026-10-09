@@ -24,6 +24,7 @@ export const EVENT_BADGE: Partial<Record<EventType, { label: string; tone: strin
   "task.started": { label: "START", tone: "accent" },
   "task.step": { label: "STEP", tone: "muted" },
   "task.progress": { label: "UPDATE", tone: "accent" },
+  "task.message": { label: "YOU", tone: "info" },
   "task.tool_call": { label: "TOOL", tone: "accent2" },
   "task.handoff": { label: "SEND", tone: "accent2" },
   "task.approval_requested": { label: "ASK", tone: "warn" },
