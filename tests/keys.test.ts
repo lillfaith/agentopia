@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { Vault } from "../server/secrets/vault.js";
+import { Vault } from "../server/vault/vault.js";
 import { OpenAIProvider } from "../server/llm/openai.js";
 import { GeminiProvider } from "../server/llm/gemini.js";
 import { githubApi } from "../server/agents/github.js";

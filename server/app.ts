@@ -3,7 +3,7 @@ import { openDatabase } from "./db/database.js";
 import { Store } from "./db/store.js";
 import path from "node:path";
 import { seedTown } from "./agents/seed.js";
-import { Vault } from "./secrets/vault.js";
+import { Vault } from "./vault/vault.js";
 import { ProviderResolver, type KeyCheckers } from "./llm/keys.js";
 import { AnthropicProvider } from "./llm/anthropic.js";
 import type { LLMProvider } from "./llm/provider.js";

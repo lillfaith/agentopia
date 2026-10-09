@@ -29,7 +29,7 @@ import type {
   Workflow,
 } from "../../shared/types.js";
 import { transaction, type Database } from "./database.js";
-import type { Vault } from "../secrets/vault.js";
+import type { Vault } from "../vault/vault.js";
 import { normalizeAppearance, normalizeVoice, type Appearance, type VoiceConfig } from "../../shared/cosmetics.js";
 
 type Row = Record<string, unknown>;
