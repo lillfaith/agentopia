@@ -16,11 +16,10 @@ instance you would first need the Postgres path described in `docs/SAAS_PLAN.md`
 ## 1. Create the service
 
 1. In Railway, choose **New project → Deploy from GitHub repo** and pick this repository.
-   Railway reads `railway.json`, which does three things:
-   - builds with the `Dockerfile`;
-   - starts `scripts/railway-start.sh`, which defaults to SaaS mode with data in `/data`, runs the
-     migrations, and then starts the server;
-   - health-checks `/api/ready`.
+   Railway reads `railway.json`, which builds with the `Dockerfile` and health-checks `/api/ready`.
+   The image runs `scripts/start.sh`, which applies migrations and then starts the server. The app
+   detects Railway from the `RAILWAY_*` variables Railway sets, and then defaults to SaaS mode with
+   data in `/data`.
 2. **Add a volume** to the service with mount path `/data`. Railway volumes are owned by root. The
    start script makes the volume writable and then runs the app as the unprivileged `node` user, so
    no extra variable is needed.
@@ -34,12 +33,13 @@ Required:
 | Variable | Value |
 |---|---|
 | `ANTHROPIC_API_KEY` | Your key. Mark it as a secret. It never reaches the browser |
-| `AGENTOPIA_PUBLIC_ORIGIN` | `https://your-domain`, with no trailing slash. Used for CSRF origin checks, secure cookies and Stripe redirects |
 
-Already set by `scripts/railway-start.sh` (override only if you need to):
+Defaults on Railway (set a variable only to override it):
 - `AGENTOPIA_MODE=saas`
 - `AGENTOPIA_DATA_DIR=/data`
 - `AGENTOPIA_TRUST_PROXY=true`, so client IPs for rate limiting come from Railway's `X-Forwarded-For`
+- `AGENTOPIA_PUBLIC_ORIGIN=https://<RAILWAY_PUBLIC_DOMAIN>`. Set it yourself when you use a custom
+  domain. It is used for CSRF origin checks, secure cookies and Stripe redirects.
 
 Recommended:
 

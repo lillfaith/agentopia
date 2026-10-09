@@ -21,7 +21,7 @@ try {
 } catch {
   console.error(
     `✗ Can't write to ${dataDir}. Make sure a volume is mounted there. The container entrypoint and ` +
-      "scripts/railway-start.sh make it writable when the container starts as root; otherwise make it writable by the 'node' user.",
+      "scripts/start.sh make it writable when the container starts as root; otherwise make it writable by the 'node' user.",
   );
   process.exit(1);
 }
