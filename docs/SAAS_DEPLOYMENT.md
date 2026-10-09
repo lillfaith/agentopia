@@ -18,12 +18,13 @@ instance you would first need the Postgres path described in `docs/SAAS_PLAN.md`
 1. In Railway, choose **New project → Deploy from GitHub repo** and pick this repository.
    Railway reads `railway.json`, which does three things:
    - builds with the `Dockerfile`;
-   - runs `npm run migrate` and then starts the server;
+   - starts `scripts/railway-start.sh`, which defaults to SaaS mode with data in `/data`, runs the
+     migrations, and then starts the server;
    - health-checks `/api/ready`.
-2. **Add a volume** to the service with mount path `/data`.
-3. Set the variable `RAILWAY_RUN_UID=0`. Railway volumes are owned by root, and without this the
-   container's `node` user cannot write to them.
-4. Add a domain under **Settings → Networking**, or attach your own custom domain. Railway
+2. **Add a volume** to the service with mount path `/data`. Railway volumes are owned by root. The
+   start script makes the volume writable and then runs the app as the unprivileged `node` user, so
+   no extra variable is needed.
+3. Add a domain under **Settings → Networking**, or attach your own custom domain. Railway
    terminates TLS.
 
 ## 2. Environment variables
@@ -32,12 +33,13 @@ Required:
 
 | Variable | Value |
 |---|---|
-| `AGENTOPIA_MODE` | `saas` |
-| `AGENTOPIA_DATA_DIR` | `/data` |
-| `AGENTOPIA_PUBLIC_ORIGIN` | `https://your-domain`, with no trailing slash. Used for CSRF origin checks, secure cookies and Stripe redirects |
-| `AGENTOPIA_TRUST_PROXY` | `true`, so client IPs for rate limiting come from Railway's `X-Forwarded-For` |
 | `ANTHROPIC_API_KEY` | Your key. Mark it as a secret. It never reaches the browser |
-| `RAILWAY_RUN_UID` | `0` (see step 3 above) |
+| `AGENTOPIA_PUBLIC_ORIGIN` | `https://your-domain`, with no trailing slash. Used for CSRF origin checks, secure cookies and Stripe redirects |
+
+Already set by `scripts/railway-start.sh` (override only if you need to):
+- `AGENTOPIA_MODE=saas`
+- `AGENTOPIA_DATA_DIR=/data`
+- `AGENTOPIA_TRUST_PROXY=true`, so client IPs for rate limiting come from Railway's `X-Forwarded-For`
 
 Recommended:
 

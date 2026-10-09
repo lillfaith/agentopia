@@ -35,9 +35,6 @@ docker compose ps                # both services should become "healthy"
 - The container **refuses to start** on a public interface without an admin token.
 - Hard budget ceilings are set in `docker-compose.yml`. The owner can only lower them in the UI.
 
-Building behind a TLS-inspecting corporate proxy? Pass its CA as an optional build secret:
-`docker build --secret id=build_ca,src=/path/to/ca.crt .`
-
 ## Recovery behaviour (tested)
 
 These scenarios were exercised against the real containers during development:

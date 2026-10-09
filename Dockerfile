@@ -4,10 +4,7 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-# Optional: behind a TLS-inspecting proxy, pass its CA with
-#   docker build --secret id=build_ca,src=/path/to/ca.crt ...
-RUN --mount=type=secret,id=build_ca,required=false \
-    if [ -f /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; npm ci
+RUN npm ci
 COPY . .
 RUN npm run build
 
@@ -20,17 +17,17 @@ ENV NODE_ENV=production \
     NODE_NO_WARNINGS=1
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN --mount=type=secret,id=build_ca,required=false \
-    if [ -f /run/secrets/build_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/build_ca; fi; \
-    npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY server ./server
 COPY shared ./shared
 COPY scripts ./scripts
 COPY tsconfig.json ./
+# State lives in /data. Mount a volume there (docker compose: a named volume;
+# Railway: a service volume; the platform attaches it, so no VOLUME line here).
+# The entrypoint fixes the volume's ownership, then runs everything as the 'node' user.
 RUN mkdir -p /data && chown -R node:node /data
-USER node
-VOLUME ["/data"]
+ENTRYPOINT ["sh", "/app/scripts/docker-entrypoint.sh"]
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["node_modules/.bin/tsx", "server/healthcheck.ts"]

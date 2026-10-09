@@ -12,6 +12,20 @@ import { MIGRATIONS, openDatabase } from "../server/db/database.js";
 import { ACCOUNT_MIGRATIONS } from "../server/saas/accounts.js";
 
 const config = loadConfig();
+
+// Fail early with a clear message if the data volume isn't writable (Railway volumes are owned by root).
+const dataDir = config.mode === "saas" ? config.dataDir : path.dirname(config.dbPath);
+try {
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.accessSync(dataDir, fs.constants.W_OK);
+} catch {
+  console.error(
+    `✗ Can't write to ${dataDir}. Make sure a volume is mounted there. The container entrypoint and ` +
+      "scripts/railway-start.sh make it writable when the container starts as root; otherwise make it writable by the 'node' user.",
+  );
+  process.exit(1);
+}
+
 const targets: { file: string; migrations: typeof MIGRATIONS }[] = [];
 if (config.mode === "saas") {
   targets.push({ file: path.join(config.dataDir, "accounts.sqlite"), migrations: ACCOUNT_MIGRATIONS });
