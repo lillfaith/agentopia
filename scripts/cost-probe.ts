@@ -171,6 +171,26 @@ for (const m of convo?.messages ?? []) {
 }
 const dupes = (xs: string[]) => xs.filter((x, i) => xs.indexOf(x) !== i);
 
+/** One line per hosted-tool step: who called it, what it asked, and what came back. */
+const toolSteps: string[] = [];
+for (const m of convo?.messages ?? []) {
+  if (typeof m.content === "string") continue;
+  for (const b of m.content as any[]) {
+    const caller = b.caller?.type ? ` via ${b.caller.type}` : "";
+    if (b.type === "server_tool_use") toolSteps.push(`call ${b.name}${caller}: ${JSON.stringify(b.input).slice(0, 160)}`);
+    else if (b.type?.endsWith("_tool_result")) {
+      const c = b.content;
+      const err = c?.error_code ?? (Array.isArray(c) ? null : c?.content?.error_code);
+      const detail = err
+        ? `ERROR ${err}`
+        : Array.isArray(c)
+          ? `${c.length} items, ${JSON.stringify(c).length} chars`
+          : `${c?.type ?? "?"}, ${JSON.stringify(c ?? "").length} chars${c?.url ? ` ${c.url}` : ""}`;
+      toolSteps.push(`  → ${b.type}${caller}: ${detail}`);
+    }
+  }
+}
+
 const db = (store as unknown as { db: { prepare(s: string): { all(...a: unknown[]): unknown[] } } }).db;
 const usageRows = db.prepare("SELECT * FROM usage WHERE task_id = ? ORDER BY id").all(task.id) as Record<string, number | string>[];
 const sum = (k: string) => usageRows.reduce((s, r) => s + Number(r[k] ?? 0), 0);
@@ -204,6 +224,7 @@ const report = {
   duplicateQueries: dupes(queries),
   duplicateUrls: dupes(urls),
   transcriptCharsByBlock: blockChars,
+  toolSteps,
   outputChars: output.length,
   outputLinks: (output.match(/\]\(https?:\/\//g) ?? []).length,
   calls,
@@ -211,12 +232,13 @@ const report = {
   output,
 };
 
-console.log(`\n=== ${LABEL} (${MODEL}${DEPTH ? `, ${DEPTH}` : ""}) — ${outcome.kind} in ${seconds.toFixed(0)}s ===`);
-console.log(JSON.stringify({ ...report, output: undefined, calls: undefined, usageRows: undefined }, null, 2));
-console.log("\n--- per API call ---");
-for (const c of calls) console.log(JSON.stringify(c));
+console.log("\n--- output ---\n" + output);
 console.log("\n--- usage rows (as stored for the treasury) ---");
 for (const r of usageRows) console.log(JSON.stringify(r));
-console.log("\n--- output ---\n" + output);
+console.log("\n--- per API call ---");
+for (const c of calls) console.log(JSON.stringify(c));
+console.log("\n--- hosted tool steps ---\n" + toolSteps.join("\n"));
+console.log(`\n=== ${LABEL} (${MODEL}${DEPTH ? `, ${DEPTH}` : ""}) — ${outcome.kind} in ${seconds.toFixed(0)}s ===`);
+console.log(JSON.stringify({ ...report, output: undefined, calls: undefined, usageRows: undefined, toolSteps: undefined }, null, 2));
 if (OUT) fs.writeFileSync(OUT, JSON.stringify(report, null, 2));
 process.exit(outcome.kind === "completed" ? 0 : 1);

@@ -1,4 +1,3 @@
 [
-  { "name": "before-sonnet", "ref": "ba2809e", "model": "claude-sonnet-5-5", "depth": "" },
-  { "name": "before-haiku", "ref": "ba2809e", "model": "claude-haiku-5-5", "depth": "" }
+  { "name": "before-sonnet-2", "ref": "ba2809e", "model": "claude-sonnet-5-5", "depth": "" }
 ]
