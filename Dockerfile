@@ -1,14 +1,15 @@
-# syntax=docker/dockerfile:1
 # Agentopia — one image, three roles (AGENTOPIA_ROLE=all | api | worker).
+# The official Node image, pulled from its AWS mirror: Docker Hub rate-limits the shared
+# builders that Railway and CI use (429 Too Many Requests).
 
-FROM node:22-bookworm-slim AS build
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-bookworm-slim AS runtime
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8787 \
