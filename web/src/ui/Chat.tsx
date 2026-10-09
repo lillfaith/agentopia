@@ -88,7 +88,7 @@ function Thread({ task, agent }: { task: Task; agent: Agent }) {
           <Bubble key={`${m.id}-${i}`} m={m} task={task} agent={agent} version={m.role === "agent" && agentReplies > 1 ? messages.slice(0, i + 1).filter((x) => x.role === "agent").length : null} />
         ))}
         {working && (
-          <div className="bubble agent typing">
+          <div className="chat-msg agent typing">
             <span className="who">{agent.name}</span>
             {task.status === "waiting_approval" ? (
               <button className="btn warn" onClick={() => useTown.getState().openPanel("approvals")}>
@@ -136,7 +136,7 @@ function Bubble({ m, task, agent, version }: { m: TaskMessage; task: Task; agent
   const push = useTown((s) => s.pushToast);
   if (m.role === "agent") {
     return (
-      <div className="bubble agent">
+      <div className="chat-msg agent">
         <span className="who">
           {agent.name}
           {version ? <em> · version {version}</em> : null}
@@ -153,7 +153,7 @@ function Bubble({ m, task, agent, version }: { m: TaskMessage; task: Task; agent
   }
   const label = m.role === "brief" ? (task.kind === "chat" ? "You" : task.createdBy === "user" ? "Task you assigned" : "Task brief") : "You";
   return (
-    <div className="bubble owner">
+    <div className="chat-msg owner">
       <span className="who">
         {label}
         <small className="muted"> {timeAgo(m.createdAt)}</small>
