@@ -93,6 +93,7 @@ Try it locally with `AGENTOPIA_SIMULATION=true npm run dev:saas`. To host it on 
 | Hire / archive / restore villagers; custom departments and buildings | **Verified** (tests + browser) |
 | Human approval gate for sensitive actions | **Verified** |
 | Chat with villagers: reply to any finished task to refine it in the same conversation, or start a free-form chat | **Verified** (tests + live e2e) |
+| Your own API keys: villagers can think with your Claude, OpenAI or Gemini key (billed to you, outside the plan), and a GitHub skill reads repos and, with your approval, opens issues, comments and PRs | **Implemented.** Own Claude key **verified live** (e2e); OpenAI, Gemini and GitHub tested against recorded API shapes only |
 | Research depth (Quick / Standard / Deep) and a per-task usage & cost breakdown | **Verified** (tests + live cost probe, [docs/COSTS.md](docs/COSTS.md)) |
 | Publishing, email | **Placeholder.** Approved actions are recorded, nothing is sent |
 | Image generation, 3D modeling | **Planned** skill slots: attachable, clearly inactive |

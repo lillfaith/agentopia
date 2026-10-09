@@ -8,6 +8,7 @@ mounted at `/data`:
 /data/accounts.sqlite        users, sessions, billing state, audit log, per-user spend ledger
 /data/towns/<uuid>.sqlite    one private database per user town
 /data/backups/<timestamp>/   automatic snapshots of all of the above
+/data/secrets.key            master key for owners' saved API keys (only when AGENTOPIA_SECRETS_KEY is unset)
 ```
 
 **Run exactly one replica.** The towns are SQLite files on a single volume. To run more than one
@@ -51,6 +52,7 @@ Recommended:
 | `AGENTOPIA_BACKUP_INTERVAL_HOURS` | `24` in production | How often snapshots are taken. `0` turns them off |
 | `AGENTOPIA_BACKUP_KEEP` | `7` | Number of snapshots kept on the volume |
 | `AGENTOPIA_SESSION_DAYS` | `30` | Sliding session lifetime |
+| `AGENTOPIA_SECRETS_KEY` | key file on the volume | Master key that encrypts owners' own API keys (32 bytes: 64 hex characters or base64, e.g. `openssl rand -hex 32`). Mark it as a secret. See "Owners' own API keys" below |
 
 Billing: set all four of these, or none of them.
 
@@ -76,6 +78,22 @@ In SaaS mode the following are ignored, because each user's plan decides them (s
 - `AGENTOPIA_DEFAULT_MODEL`
 
 `AGENTOPIA_SIMULATION` is refused in production.
+
+### Owners' own API keys
+
+Owners can save their own Claude, OpenAI, Gemini or GitHub key in Settings → API keys and pick it per
+villager. Keys are checked with the provider when added, encrypted with AES-256-GCM and never sent back
+to the browser.
+
+- Without `AGENTOPIA_SECRETS_KEY`, the server creates `/data/secrets.key` (mode 0600) on first start.
+  Backups deliberately leave it out, so a stolen backup can't decrypt keys. Setting
+  `AGENTOPIA_SECRETS_KEY` keeps the master key off the volume entirely, which is better for production.
+- If the master key is lost or changed, saved keys can't be decrypted. Owners see "This server can't
+  read stored keys" and have to add them again. Nothing else is affected.
+- Work on an owner's key is billed to that owner by the provider. It doesn't count toward their plan
+  allowance, the per-user spend ledger, or `AGENTOPIA_GLOBAL_DAILY_BUDGET_USD`, and a town-wide budget
+  hold doesn't stop those villagers. The villager's own daily cap, approvals, Stop and depth limits still
+  apply, using estimated prices.
 
 ## 3. Stripe
 

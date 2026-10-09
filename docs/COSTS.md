@@ -56,6 +56,19 @@ With the default 16,000 `max_tokens`, one Opus 5.5 call reserves about $0.32 of 
 per-task limit therefore allows roughly 2–3 heavy calls before the reservation blocks further turns.
 Lower `AGENTOPIA_MAX_OUTPUT_TOKENS` or pick a cheaper model if you want more, smaller calls per task.
 
+### Villagers on your own API key
+
+A villager set to think with your own Claude, OpenAI or Gemini key is billed by that provider, not by
+Agentopia. Its calls are recorded with `billing = own` and shown with "· your key" in the town log and
+"Billed to your own API key" in the task's cost breakdown. They don't count toward the daily, monthly or
+plan limits above, and a town-wide budget hold doesn't stop them.
+
+These limits still apply: the villager's own daily cap, the per-task limit, the research depth's cap,
+approvals and Stop. The Treasury still shows an estimate. For Claude models it uses the list prices
+above. For OpenAI and Gemini models Agentopia uses the prices you enter on the villager. Without them it
+assumes $10 / $50 per million input / output tokens, which is deliberately high so caps stop work early
+rather than late. Your provider's own bill is the authority.
+
 ## Illustrative costs (assumptions, not measurements)
 
 These examples show the arithmetic. They use **assumed** token counts, not data from a real run. Your

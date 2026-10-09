@@ -200,6 +200,8 @@ export interface TaskUsageCall {
   requestedModel: string | null;
   requestId: string | null;
   simulated: boolean;
+  /** "own": billed to the owner's own API key, outside the plan. */
+  billing: "platform" | "own";
   freshInputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
@@ -651,4 +653,6 @@ export interface TownSnapshot {
   events: TownEvent[];
   status: SystemStatus;
   templates: AgentTemplate[];
+  /** The owner's stored API keys (never the secrets themselves). */
+  credentials: CredentialInfo[];
 }

@@ -284,6 +284,7 @@ export function createApi(deps: ApiDeps): Hono {
       events: store.listEvents({ limit: 300 }),
       status: systemStatus(deps),
       templates: AGENT_TEMPLATES,
+      credentials: store.listCredentials(),
     };
     return c.json(snapshot);
   });

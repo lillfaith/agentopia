@@ -8,6 +8,7 @@ import { Badge, Drawer, Empty, EventBadge, ExecutionBadge, ExecutionProof, Markd
 import { SkillPicker } from "./Town";
 import { TaskRunOptions, TaskUsage } from "./Usage";
 import { Chat } from "./Chat";
+import { AiSetup, aiSetupFrom, aiSetupPayload } from "./AiSetup";
 
 type Tab = "overview" | "chat" | "work" | "config";
 
@@ -414,12 +415,9 @@ function Config({ agent }: { agent: Agent }) {
     buildingId: agent.buildingId,
     dailyBudget: agent.dailyBudgetUsd === null ? "" : String(agent.dailyBudgetUsd),
     enabled: agent.enabled,
+    ai: aiSetupFrom(agent),
   }));
   const [busy, setBusy] = useState(false);
-  const models = useMemo(() => {
-    const list = status.models.map((m) => m.id);
-    return list.includes(agent.model) ? status.models : [...status.models, { id: agent.model, label: agent.model, inputPerMTok: 0, outputPerMTok: 0 }];
-  }, [status.models, agent.model]);
   useEffect(() => setBusy(false), [agent.updatedAt]);
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -432,7 +430,7 @@ function Config({ agent }: { agent: Agent }) {
         personality: form.personality,
         systemPrompt: form.systemPrompt,
         responsibilities: form.responsibilities.split("\n").map((s) => s.trim()).filter(Boolean),
-        model: form.model,
+        ...aiSetupPayload(form.ai),
         effort: form.effort,
         skills: form.skills,
         buildingId: form.buildingId,
@@ -471,18 +469,8 @@ function Config({ agent }: { agent: Agent }) {
         Responsibilities <small className="muted">(one per line)</small>
         <textarea rows={3} value={form.responsibilities} onChange={(e) => set("responsibilities", e.target.value)} />
       </label>
+      <AiSetup value={form.ai} onChange={(v) => set("ai", v)} skills={form.skills} />
       <div className="grid2">
-        <label>
-          Model
-          <select value={form.model} onChange={(e) => set("model", e.target.value)}>
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-                {m.inputPerMTok ? ` — $${m.inputPerMTok}/$${m.outputPerMTok} per MTok` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
         <label>
           Effort
           <select value={form.effort} onChange={(e) => set("effort", e.target.value as Effort)}>
