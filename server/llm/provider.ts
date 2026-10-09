@@ -28,11 +28,8 @@ export interface GenerateRequest {
   maxTokens: number;
   /** Per-call limits for hosted web tools (research depth). Keep them constant within a task: tools are part of the cached prefix. */
   hostedLimits?: HostedLimits;
-  /**
-   * Final write-up call: the model may not use tools and is asked to answer from what it
-   * has. The note is sent with this request only; it is not added to the stored transcript.
-   */
-  wrapUp?: string;
+  /** Final write-up call: the model may not use any tool (the write-up note is already in `messages`). */
+  noTools?: boolean;
   signal?: AbortSignal;
   /**
    * Live progress while the call runs (streaming providers): "note" is the agent's
@@ -96,6 +93,11 @@ export interface LLMProvider {
   generate(req: GenerateRequest): Promise<GenerateResult>;
   userMessage(text: string): ProviderMessage;
   toolResultsMessage(results: ToolResult[]): ProviderMessage;
+  /**
+   * Add a note after the last turn without changing any earlier message (append-only, so cached
+   * prefixes and the model's earlier reasoning stay valid). Providers without it get a new user turn.
+   */
+  appendNote?(messages: ProviderMessage[], note: string): ProviderMessage[];
 }
 
 /** Errors that should not be retried (bad request, auth, permission). */

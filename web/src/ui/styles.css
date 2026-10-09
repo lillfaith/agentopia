@@ -403,7 +403,8 @@ h4 { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 .run-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
 .run-options label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .run-options .run-hint { grid-column: 1 / -1; }
-.depth-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.depth-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.depth-choice { min-width: 0; }
 .depth-choice { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--panel-border); border-radius: 12px; cursor: pointer; }
 .depth-choice.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .depth-choice input { align-self: flex-start; }

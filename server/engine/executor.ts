@@ -19,7 +19,11 @@ interface TaskState {
   lastContextTokens?: number;
 }
 
-/** Sent with the final call when a depth limit is reached; never stored in the transcript. */
+/**
+ * Added to the transcript before the final call when a depth limit is reached. It is stored, not
+ * just sent: Claude's reasoning blocks are bound to the exact conversation they were written in,
+ * so a transcript that differs from what the model saw could not be replayed later.
+ */
 export const WRAP_UP_NOTE =
   "(Agentopia: the research budget for this task is used up. Do not search or read more pages. " +
   "Write your final answer now from what you have found, say what you could not verify, and link the sources you used.)";
@@ -139,6 +143,10 @@ export class AgentExecutor {
           }
         }
         if (wrapUp) {
+          state.messages = this.provider.appendNote
+            ? this.provider.appendNote(state.messages, WRAP_UP_NOTE)
+            : [...state.messages, this.provider.userMessage(WRAP_UP_NOTE)];
+          this.store.saveConversation(task.id, state);
           this.store.addEvent({
             type: "task.step",
             agentId: agent.id,
@@ -168,7 +176,7 @@ export class AgentExecutor {
           hostedTools: hosted,
           hostedLimits,
           maxTokens,
-          ...(wrapUp ? { wrapUp: WRAP_UP_NOTE } : {}),
+          ...(wrapUp ? { noTools: true } : {}),
           signal,
           onProgress: (p) => {
             if (!signal.aborted) progress(p.kind, p.text);

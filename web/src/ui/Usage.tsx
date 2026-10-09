@@ -186,7 +186,7 @@ export function TaskRunOptions({
       <label>
         Model
         <select value={model} onChange={(e) => onChange({ depth, model: e.target.value })}>
-          <option value="">{researches && (depth || defaultDepth) === "quick" ? "Automatic (lower-cost for Quick)" : `${agent.name}'s model (${modelLabel(agent.model)})`}</option>
+          <option value="">{researches && (depth || defaultDepth) === "quick" ? "Auto: lowest cost" : `${agent.name}'s model (${modelLabel(agent.model)})`}</option>
           {allowed.map((m) => (
             <option key={m.id} value={m.id}>
               {m.label} · ${m.inputPerMTok}/${m.outputPerMTok} per M tokens

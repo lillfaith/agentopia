@@ -59,6 +59,7 @@ interface CallRecord {
     cacheMarkers: number;
   };
   usage: Record<string, unknown> | null;
+  stopReason: string | null;
   requestId: string | null;
   ms: number;
 }
@@ -96,6 +97,7 @@ const recordingFetch: typeof fetch = async (input, init) => {
       cacheMarkers: countMarkers(body),
     },
     usage: null,
+    stopReason: null,
     requestId: res.headers.get("request-id"),
     ms: 0,
   };
@@ -110,6 +112,7 @@ const recordingFetch: typeof fetch = async (input, init) => {
         try {
           const ev = JSON.parse(line.slice(6));
           if (ev.type === "message_start") usage = { ...usage, ...ev.message.usage };
+          if (ev.type === "message_delta" && ev.delta?.stop_reason) rec.stopReason = ev.delta.stop_reason;
           if (ev.type === "message_delta" && ev.usage) {
             for (const [k, v] of Object.entries(ev.usage)) if (v !== null && v !== undefined) usage[k] = v;
           }
@@ -205,13 +208,18 @@ const output = outcome.kind === "completed" ? outcome.output : "";
  */
 let cacheCheck: Record<string, unknown> | null = null;
 if (lastBody && convo?.messages?.length) {
-  const { stream: _s, fallbacks: _f, ...rest } = lastBody;
+  const { stream: _s, fallbacks: _f, tool_choice: _t, ...rest } = lastBody;
   const client = new Anthropic({ apiKey, maxRetries: 2 });
-  const msg = await client.beta.messages.create({
-    ...rest,
-    max_tokens: 2048,
-    messages: [...convo.messages, { role: "user", content: "Thanks. Reply with just OK." }],
-  } as never);
+  const msg = await client.beta.messages
+    .create({
+      ...rest,
+      max_tokens: 2048,
+      messages: [...convo.messages, { role: "user", content: "Thanks. Reply with just OK." }],
+    } as never)
+    .catch((e: unknown) => ({ error: e instanceof Error ? e.message : String(e) }));
+  if ("error" in (msg as object)) {
+    cacheCheck = { error: (msg as { error: string }).error, roles: convo.messages.map((m) => m.role).join(",") };
+  } else {
   const u = (msg as any).usage;
   cacheCheck = {
     freshInput: u.input_tokens,
@@ -220,7 +228,12 @@ if (lastBody && convo?.messages?.length) {
     output: u.output_tokens,
     costUsd: estimateCostUsd(MODEL_SERVED(), { inputTokens: u.input_tokens, outputTokens: u.output_tokens, cacheReadTokens: u.cache_read_input_tokens ?? 0, cacheWriteTokens: u.cache_creation_input_tokens ?? 0, webSearchRequests: 0 }),
   };
+  }
 }
+const engineSteps = store
+  .listEvents({ taskId: task.id, limit: 200 })
+  .filter((e) => e.type === "task.step" && !(e.data as { hosted?: boolean })?.hosted)
+  .map((e) => e.message);
 
 const report = {
   label: LABEL,
@@ -250,6 +263,8 @@ const report = {
   transcriptCharsByBlock: blockChars,
   toolSteps,
   cacheCheck,
+  stopReasons: calls.map((c) => c.stopReason),
+  engineSteps,
   outputChars: output.length,
   outputLinks: (output.match(/\]\(https?:\/\//g) ?? []).length,
   calls,

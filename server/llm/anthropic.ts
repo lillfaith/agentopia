@@ -31,6 +31,10 @@ export class AnthropicProvider implements LLMProvider {
     return { role: "user", content: text };
   }
 
+  appendNote(messages: unknown[], note: string): BetaMessageParam[] {
+    return withWrapUpNote(messages as BetaMessageParam[], note);
+  }
+
   toolResultsMessage(results: ToolResult[]): BetaMessageParam {
     // All results for one assistant turn go back in a single user message.
     return {
@@ -63,11 +67,11 @@ export class AnthropicProvider implements LLMProvider {
       // Automatic caching of the conversation so far: the next call in this task (after a
       // tool result, a pause or an approval) re-reads it at the cache price instead of in full.
       cache_control: { type: "ephemeral" },
-      messages: req.wrapUp ? withWrapUpNote(req.messages as BetaMessageParam[], req.wrapUp) : (req.messages as BetaMessageParam[]),
+      messages: req.messages as BetaMessageParam[],
       output_config: { effort: req.effort },
       stream: true,
       ...(tools.length ? { tools } : {}),
-      ...(tools.length && req.wrapUp ? { tool_choice: { type: "none" as const } } : {}),
+      ...(tools.length && req.noTools ? { tool_choice: { type: "none" as const } } : {}),
       ...(useFallback ? { betas: [FALLBACK_BETA], fallbacks: "default" as const } : {}),
     };
 

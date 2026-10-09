@@ -123,11 +123,15 @@ describe("research depth", () => {
     const task = h.store.createTask({ agentId: "researcher", title: "Scan", instructions: "x", createdBy: "user", depth: "standard" });
     await h.runner.drain();
     expect(h.store.getTask(task.id)).toMatchObject({ status: "completed", output: "Final brief with [sources](https://example.com)." });
-    expect(provider.calls[0].wrapUp).toBeUndefined();
+    expect(provider.calls[0].noTools).toBeUndefined();
     expect(provider.calls[0].hostedLimits).toEqual({ webSearchMaxUses: 6, webFetchMaxUses: 4, webFetchMaxContentTokens: 8000 });
     expect(provider.calls[0].effort).toBe("medium"); // Pip's "high", capped by Standard
-    expect(provider.calls[1].wrapUp).toBe(WRAP_UP_NOTE);
+    expect(provider.calls[1].noTools).toBe(true);
     expect(provider.calls[1].maxTokens).toBeLessThanOrEqual(8000);
+    // The note is part of the stored transcript, exactly as the model saw it.
+    const sent = provider.calls[1].messages as { content: unknown }[];
+    expect(JSON.stringify(sent[sent.length - 1])).toContain("research budget for this task is used up");
+    expect(h.store.getConversation<{ messages: unknown[] }>(task.id)!.messages.slice(0, sent.length)).toEqual(sent);
     const steps = h.store.listEvents({ taskId: task.id }).map((e) => e.message);
     expect(steps.some((m) => /Standard research on/.test(m))).toBe(true);
     expect(steps.some((m) => /limit reached \(web searches\)/.test(m))).toBe(true);
@@ -144,7 +148,7 @@ describe("research depth", () => {
     const task = h.store.createTask({ agentId: "researcher", title: "Scan", instructions: "x", createdBy: "user", modelOverride: "claude-sonnet-5-5" });
     await h.runner.drain();
     expect(h.store.getTask(task.id)).toMatchObject({ status: "completed", output: "Brief." });
-    expect(provider.calls[1].wrapUp).toBe(WRAP_UP_NOTE);
+    expect(provider.calls[1].noTools).toBe(true);
   });
 });
 
@@ -194,7 +198,7 @@ describe("prompt caching and the write-up call", () => {
     expect(r).toMatchObject({ thinkingTokens: 40, serverIterations: 2, contextTokens: 7472 });
     expect(r.usage).toMatchObject({ inputTokens: 4, cacheReadTokens: 7331, cacheWriteTokens: 7470, outputTokens: 436 });
 
-    await p.generate({ ...base, messages: [p.userMessage("Research")], wrapUp: WRAP_UP_NOTE });
+    await p.generate({ ...base, messages: p.appendNote([p.userMessage("Research")], WRAP_UP_NOTE), noTools: true });
     expect(seen[1].tool_choice).toEqual({ type: "none" });
     // The note rides on the last user turn; earlier messages are untouched.
     expect(seen[1].messages).toEqual([{ role: "user", content: [{ type: "text", text: "Research" }, { type: "text", text: WRAP_UP_NOTE }] }]);
