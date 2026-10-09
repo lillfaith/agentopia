@@ -5,14 +5,9 @@
 # Each row costs roughly $0.01–$0.40; the compare job grades every answer blind with Claude Opus 5.5 (~$0.03 each).
 name: cost-probe
 
+# Runs only when started by hand (Actions → cost-probe → Run workflow): a full comparison spends about $2.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/happy-fermi-ypjunl]
-    paths:
-      - ".github/workflows/cost-probe.yml"
-      - "scripts/cost-probe*.json"
-      - "scripts/cost-compare.ts"
 
 permissions:
   contents: read
