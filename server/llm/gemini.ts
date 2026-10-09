@@ -31,6 +31,8 @@ export class GeminiProvider implements LLMProvider {
   readonly simulated = false;
   private readonly ai: GoogleGenAI;
   private counter = 0;
+  /** Models that rejected the built-in tools (Google Search, code execution) here; they run without them. */
+  private readonly noBuiltInTools = new Set<string>();
 
   constructor(apiKey: string, httpOptions?: GeminiOptions) {
     this.ai = new GoogleGenAI({ apiKey, ...(httpOptions ? { httpOptions } : {}) });
@@ -57,16 +59,15 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
-    const tools: Tool[] = [];
-    if (req.tools.length) {
-      tools.push({ functionDeclarations: req.tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.inputSchema })) });
-    }
-    const builtIn = req.hostedTools.includes("web_search") || req.hostedTools.includes("web_fetch");
-    if (builtIn) tools.push({ googleSearch: {} });
-    if (req.hostedTools.includes("code_execution")) tools.push({ codeExecution: {} });
+    const functions: Tool[] = req.tools.length
+      ? [{ functionDeclarations: req.tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.inputSchema })) }]
+      : [];
+    const builtIn: Tool[] = [];
+    if (req.hostedTools.includes("web_search") || req.hostedTools.includes("web_fetch")) builtIn.push({ googleSearch: {} });
+    if (req.hostedTools.includes("code_execution")) builtIn.push({ codeExecution: {} });
     const level = thinkingLevel(req.model, req.effort);
-    const config: GenerateContentConfig = {
-      systemInstruction: req.system,
+    const configFor = (tools: Tool[], systemInstruction: string): GenerateContentConfig => ({
+      systemInstruction,
       maxOutputTokens: req.maxTokens,
       abortSignal: req.signal,
       ...(tools.length ? { tools } : {}),
@@ -76,11 +77,25 @@ export class GeminiProvider implements LLMProvider {
           ? { toolConfig: { includeServerSideToolInvocations: true } } // Google Search alongside our own tools
           : {}),
       ...(level ? { thinkingConfig: { thinkingLevel: level } } : {}),
-    };
+    });
+    const send = (config: GenerateContentConfig) => this.ai.models.generateContent({ model: req.model, contents: req.messages as Content[], config });
 
+    // Some models reject Google Search or code execution, or combining them with our own tools
+    // (Gemini before 3). Run without them and say so, rather than failing; remember the model.
+    const withoutBuiltIn = builtIn.length > 0 && this.noBuiltInTools.has(req.model);
+    const missing = `${builtIn.map((t) => (t.googleSearch ? "Google Search" : "code execution")).join(" and ")} isn't available with ${req.model}${req.tools.length ? " alongside this villager's other tools" : ""}`;
+    const plainSystem = `${req.system}\n\nNote: ${missing}, so work from what you already know and say plainly where current information would need checking.`;
+    let skippedBuiltIn = withoutBuiltIn;
     let res: Awaited<ReturnType<GoogleGenAI["models"]["generateContent"]>>;
     try {
-      res = await this.ai.models.generateContent({ model: req.model, contents: req.messages as Content[], config });
+      try {
+        res = withoutBuiltIn ? await send(configFor(functions, plainSystem)) : await send(configFor([...functions, ...builtIn], req.system));
+      } catch (err) {
+        if (!builtIn.length || withoutBuiltIn || !rejectsBuiltInTools(err)) throw err;
+        this.noBuiltInTools.add(req.model);
+        skippedBuiltIn = true;
+        res = await send(configFor(functions, plainSystem));
+      }
     } catch (err) {
       throw mapError(err);
     }
@@ -120,7 +135,7 @@ export class GeminiProvider implements LLMProvider {
       : { role: "model", parts: [{ text: text || "(no reply)" }] };
 
     const queries = grounding?.webSearchQueries ?? [];
-    const hostedActivity = queries.map((q) => `Web search: “${q}”`);
+    const hostedActivity = [...(skippedBuiltIn ? [`${missing}, so this answer comes without it`] : []), ...queries.map((q) => `Web search: “${q}”`)];
     const codeRuns = parts.filter((p) => p.executableCode).length;
     if (codeRuns) hostedActivity.push(...Array(codeRuns).fill("Ran code in sandbox"));
 
@@ -166,6 +181,13 @@ export class GeminiProvider implements LLMProvider {
       contextTokens: prompt || null,
     };
   }
+}
+
+/** A 400 saying the model can't use a built-in tool here (e.g. "Tool use with function calling is unsupported"). */
+function rejectsBuiltInTools(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  const message = err instanceof Error ? err.message : String(err);
+  return status === 400 && /search|code.?execution|tool/i.test(message) && /not supported|unsupported|not enabled|please use/i.test(message);
 }
 
 function mapError(err: unknown): Error {

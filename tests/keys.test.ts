@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { Vault } from "../server/vault/vault.js";
 import { OpenAIProvider } from "../server/llm/openai.js";
 import { GeminiProvider } from "../server/llm/gemini.js";
+import { rankModels } from "../shared/modelRank.js";
 import { githubApi } from "../server/agents/github.js";
 import type { KeyCheckers } from "../server/llm/keys.js";
 import type { LLMProvider } from "../server/llm/provider.js";
@@ -58,7 +59,7 @@ describe("owners' own API keys", () => {
     const text = await res.text();
     expect(text).not.toContain(OPENAI_KEY);
     const cred = JSON.parse(text);
-    expect(cred).toMatchObject({ service: "openai", label: "Work", status: "ok", hint: "sk-tes…XYZ1", models: ["gpt-5", "gpt-5-mini"] });
+    expect(cred).toMatchObject({ service: "openai", label: "Work", status: "ok", hint: "sk-tes…XYZ1", models: ["gpt-5-mini", "gpt-5"] });
     expect(await (await h.request("/api/credentials")).text()).not.toContain(OPENAI_KEY);
     const row = h.store.db.prepare("SELECT secret FROM credentials").get() as { secret: string };
     expect(row.secret.startsWith("v1:")).toBe(true);
@@ -209,6 +210,36 @@ describe("OpenAI provider", () => {
     expect(seen[0].tool_choice).toBe("none");
     expect(seen[0].reasoning).toBeUndefined(); // not a reasoning model
   });
+
+  it("runs without web search when the model rejects it (e.g. gpt-3.5-turbo), and remembers that", async () => {
+    const seen: Record<string, any>[] = [];
+    const ok = { id: "r", object: "response", created_at: 1, model: "gpt-3.5-turbo", status: "completed", output: [{ type: "message", id: "m", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Ready!", annotations: [] }] }], usage: { input_tokens: 10, input_tokens_details: { cached_tokens: 0 }, output_tokens: 3, output_tokens_details: { reasoning_tokens: 0 } } };
+    const rejected = { error: { message: "Tool 'web_search_preview' is not supported with gpt-3.5-turbo.", type: "invalid_request_error", param: "tools", code: null } };
+    const fakeFetch = async (_u: unknown, i?: RequestInit) => {
+      const body = JSON.parse(String(i?.body));
+      seen.push(body);
+      const searching = (body.tools ?? []).some((t: { type: string }) => t.type === "web_search");
+      return new Response(JSON.stringify(searching ? rejected : ok), { status: searching ? 400 : 200, headers: { "content-type": "application/json" } });
+    };
+    const p = new OpenAIProvider("sk-x", { fetch: fakeFetch as typeof fetch, maxRetries: 0 });
+    const ask = () => p.generate({ model: "gpt-3.5-turbo", effort: "low", system: "You are Pip.", messages: [p.userMessage("ready?")], tools: [{ name: "remember", description: "d", inputSchema: {} }], hostedTools: ["web_search", "web_fetch"], maxTokens: 100 });
+    const r = await ask();
+    expect(r.text).toBe("Ready!");
+    expect(r.hostedActivity[0]).toMatch(/web search isn't available with gpt-3.5-turbo/i);
+    expect(seen).toHaveLength(2);
+    expect(seen[1].tools.map((t: { type: string }) => t.type)).toEqual(["function"]); // our own tools stay
+    expect(seen[1].instructions).toContain("You are Pip.");
+    expect(seen[1].instructions).toMatch(/web search isn't available/i);
+    await ask(); // next call goes straight to the version without web search
+    expect(seen).toHaveLength(3);
+    expect(seen[2].tools.map((t: { type: string }) => t.type)).toEqual(["function"]);
+  });
+
+  it("still fails clearly on other bad requests", async () => {
+    const bad = { error: { message: "max_output_tokens is too large", type: "invalid_request_error", param: null, code: null } };
+    const p = new OpenAIProvider("sk-x", { fetch: (async () => new Response(JSON.stringify(bad), { status: 400, headers: { "content-type": "application/json" } })) as typeof fetch, maxRetries: 0 });
+    await expect(p.generate({ model: "gpt-5-mini", effort: "low", system: "s", messages: [p.userMessage("x")], tools: [], hostedTools: ["web_search"], maxTokens: 100 })).rejects.toThrow(/OpenAI rejected the request \(400\): .*max_output_tokens/);
+  });
 });
 
 describe("Gemini provider", () => {
@@ -265,6 +296,25 @@ describe("Gemini provider", () => {
     const results = p.toolResultsMessage([{ toolCallId: r.toolCalls[0].id, content: "Saved." }]) as { parts: any[] };
     expect(results.parts[0].functionResponse).toEqual({ id: parts[1].functionCall.id, name: "remember", response: { output: "Saved." } });
   });
+
+  it("runs without Google Search when the model can't combine it with function tools", async () => {
+    const seen: Record<string, any>[] = [];
+    const reply = { candidates: [{ content: { role: "model", parts: [{ text: "Ready!" }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2 }, responseId: "g2" };
+    const rejected = { error: { code: 400, message: "Tool use with function calling is unsupported", status: "INVALID_ARGUMENT" } };
+    const fakeFetch = async (_u: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      seen.push(body);
+      const searching = (body.tools ?? []).some((t: Record<string, unknown>) => "googleSearch" in t);
+      return new Response(JSON.stringify(searching ? rejected : reply), { status: searching ? 400 : 200, headers: { "content-type": "application/json" } });
+    };
+    const p = new GeminiProvider("AIza-test", { fetch: fakeFetch as typeof fetch });
+    const r = await p.generate({ model: "gemini-2.5-flash", effort: "low", system: "You are Pip.", messages: [p.userMessage("ready?")], tools: [{ name: "remember", description: "d", inputSchema: {} }], hostedTools: ["web_search"], maxTokens: 100 });
+    expect(r.text).toBe("Ready!");
+    expect(r.hostedActivity[0]).toMatch(/Google Search isn't available with gemini-2.5-flash/);
+    expect(seen).toHaveLength(2);
+    expect(seen[1].tools).toEqual([{ functionDeclarations: [{ name: "remember", description: "d", parametersJsonSchema: {} }] }]);
+    expect(JSON.stringify(seen[1].systemInstruction)).toMatch(/isn't available/);
+  });
 });
 
 describe("GitHub skill", () => {
@@ -310,3 +360,13 @@ describe("GitHub skill", () => {
 function harnessWith(provider: LLMProvider, overrides: Parameters<typeof harness>[1] = {}, appOpts: Record<string, unknown> = {}) {
   return harness(provider, overrides, { keyCheckers: checkers, ...appOpts } as never);
 }
+
+describe("model suggestions", () => {
+  it("suggests a current, affordable model first instead of the alphabetically first one", () => {
+    expect(rankModels("openai", ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-mini", "gpt-5", "gpt-5-mini", "gpt-5.2", "gpt-5.2-mini", "o4-mini"])[0]).toBe("gpt-5.2-mini");
+    expect(rankModels("openai", ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini"])[0]).toBe("gpt-4o-mini");
+    expect(rankModels("openai", ["gpt-3.5-turbo", "gpt-4o"]).at(-1)).toBe("gpt-3.5-turbo");
+    expect(rankModels("gemini", ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-pro-preview"])[0]).toBe("gemini-2.5-flash");
+    expect(rankModels("anthropic", ["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5-5"])[0]).toBe("claude-sonnet-5-5");
+  });
+});

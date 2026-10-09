@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { AIProvider, Agent, CredentialInfo, CredentialService } from "../../../shared/types";
+import { rankModels } from "../../../shared/modelRank";
 import { api } from "../api/client";
 import { useTown } from "../state/store";
 
@@ -59,9 +60,10 @@ export function AiSetup({ value, onChange, skills }: { value: AiSetupValue; onCh
   const pickSource = (id: string) => {
     if (!id) return onChange({ ...value, provider: "anthropic", credentialId: null, model: platformModels[0]?.id ?? value.model });
     const c = aiKeys.find((k) => k.id === id)!;
+    const models = rankModels(c.service, c.models);
     const keep = c.service === value.provider && (c.models.includes(value.model) || c.models.length === 0);
     setCustomModel(c.models.length === 0);
-    onChange({ ...value, provider: c.service as AIProvider, credentialId: c.id, model: keep ? value.model : (c.models[0] ?? "") });
+    onChange({ ...value, provider: c.service as AIProvider, credentialId: c.id, model: keep ? value.model : (models[0] ?? "") });
   };
 
   return (
@@ -110,9 +112,10 @@ export function AiSetup({ value, onChange, skills }: { value: AiSetupValue; onCh
             value={value.model}
             onChange={(e) => (e.target.value === "__other" ? setCustomModel(true) : onChange({ ...value, model: e.target.value }))}
           >
-            {cred.models.map((m) => (
+            {rankModels(cred.service, cred.models).map((m, i) => (
               <option key={m} value={m}>
                 {m}
+                {i === 0 ? " (suggested)" : ""}
               </option>
             ))}
             <option value="__other">Other model…</option>

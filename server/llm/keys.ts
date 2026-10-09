@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { rankModels } from "../../shared/modelRank.js";
 import type { Agent, CredentialService } from "../../shared/types.js";
 import type { Config } from "../config.js";
 import type { Store } from "../db/store.js";
@@ -57,7 +58,7 @@ export async function checkKey(service: CredentialService, secret: string, check
       const login = await checkers.github(secret);
       return { ok: true, detail: `Signed in as ${login}`, models: [] };
     }
-    const models = await checkers[service](secret);
+    const models = rankModels(service, await checkers[service](secret));
     return { ok: true, detail: models.length ? `${models.length} models available` : "Key works", models };
   } catch (err) {
     const status = (err as { status?: number }).status;

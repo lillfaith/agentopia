@@ -34,6 +34,8 @@ export class OpenAIProvider implements LLMProvider {
   readonly id = "openai";
   readonly simulated = false;
   private readonly client: OpenAI;
+  /** Models that rejected OpenAI's built-in tools (web search, code interpreter); they run without them. */
+  private readonly noBuiltInTools = new Set<string>();
 
   constructor(apiKey: string, clientOptions: Omit<ConstructorParameters<typeof OpenAI>[0] & object, "apiKey"> = {}) {
     this.client = new OpenAI({ apiKey, maxRetries: 2, ...clientOptions });
@@ -55,24 +57,24 @@ export class OpenAIProvider implements LLMProvider {
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
     const input = (req.messages as OpenAIEntry[]).flatMap((m) => ("bundle" in m ? m.bundle : [m]));
-    const tools: OpenAI.Responses.Tool[] = req.tools.map((t) => ({
+    const functions: OpenAI.Responses.Tool[] = req.tools.map((t) => ({
       type: "function" as const,
       name: t.name,
       description: t.description,
       parameters: t.inputSchema,
       strict: false,
     }));
+    const builtIn: OpenAI.Responses.Tool[] = [];
     // OpenAI's web search also opens pages, so it covers both search and page reads.
-    if (req.hostedTools.includes("web_search") || req.hostedTools.includes("web_fetch")) tools.push({ type: "web_search" });
-    if (req.hostedTools.includes("code_execution")) tools.push({ type: "code_interpreter", container: { type: "auto" } });
+    if (req.hostedTools.includes("web_search") || req.hostedTools.includes("web_fetch")) builtIn.push({ type: "web_search" });
+    if (req.hostedTools.includes("code_execution")) builtIn.push({ type: "code_interpreter", container: { type: "auto" } });
     const reasoning = isOpenAIReasoningModel(req.model);
 
-    let res: OpenAI.Responses.Response;
-    try {
-      res = await this.client.responses.create(
+    const send = (tools: OpenAI.Responses.Tool[], instructions: string) =>
+      this.client.responses.create(
         {
           model: req.model,
-          instructions: req.system,
+          instructions,
           input,
           max_output_tokens: req.maxTokens,
           store: false,
@@ -82,6 +84,23 @@ export class OpenAIProvider implements LLMProvider {
         },
         { signal: req.signal },
       );
+
+    // Older models (e.g. gpt-3.5-turbo, gpt-4) reject the built-in tools. Run without them and say so,
+    // rather than failing the task; remember the model so later calls skip straight to that.
+    const withoutBuiltIn = builtIn.length > 0 && this.noBuiltInTools.has(req.model);
+    const missing = `${builtIn.map((t) => (t.type === "web_search" ? "web search" : "code execution")).join(" and ")} isn't available with ${req.model}`;
+    const plainInstructions = `${req.system}\n\nNote: ${missing}, so work from what you already know and say plainly where current information would need checking.`;
+    let skippedBuiltIn = withoutBuiltIn;
+    let res: OpenAI.Responses.Response;
+    try {
+      try {
+        res = withoutBuiltIn ? await send(functions, plainInstructions) : await send([...functions, ...builtIn], req.system);
+      } catch (err) {
+        if (!builtIn.length || withoutBuiltIn || !rejectsBuiltInTools(err)) throw err;
+        this.noBuiltInTools.add(req.model);
+        skippedBuiltIn = true;
+        res = await send(functions, plainInstructions);
+      }
     } catch (err) {
       throw mapError(err);
     }
@@ -109,7 +128,7 @@ export class OpenAIProvider implements LLMProvider {
       .filter((item): item is OpenAI.Responses.ResponseFunctionToolCall => item.type === "function_call")
       .map((c) => ({ id: c.call_id, name: c.name, input: parseArgs(c.arguments) }));
 
-    const hostedActivity: string[] = [];
+    const hostedActivity: string[] = skippedBuiltIn ? [`${missing[0].toUpperCase()}${missing.slice(1)}, so this answer comes without it`] : [];
     let searches = 0;
     let pageReads = 0;
     let codeRuns = 0;
@@ -177,6 +196,11 @@ function parseArgs(raw: string): unknown {
   } catch {
     return { _unparseable_arguments: raw };
   }
+}
+
+/** A 400 saying the model doesn't support a built-in tool, e.g. "Tool 'web_search_preview' is not supported with gpt-3.5-turbo." */
+function rejectsBuiltInTools(err: unknown): boolean {
+  return err instanceof OpenAI.BadRequestError && /web_search|code_interpreter|\btool\b/i.test(err.message) && /not supported|unsupported|does not support/i.test(err.message);
 }
 
 function mapError(err: unknown): Error {
