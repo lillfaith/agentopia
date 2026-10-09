@@ -56,8 +56,36 @@ export interface Agent {
   archived: boolean;
   /** Optional per-agent daily spend cap (USD). null = only global caps apply. */
   dailyBudgetUsd: number | null;
+  /** Which AI service the villager thinks with. */
+  provider: AIProvider;
+  /** The owner's own API key for that service; null = Agentopia's Claude (included in the plan). */
+  credentialId: string | null;
+  /** GitHub token the villager's GitHub skill uses. */
+  githubCredentialId: string | null;
+  /** Owner-supplied prices (USD per million tokens) for models Agentopia has no price for. */
+  customPrices: { inputPerMTok: number; outputPerMTok: number } | null;
   createdAt: ISODate;
   updatedAt: ISODate;
+}
+
+/** AI services a villager can think with. */
+export type AIProvider = "anthropic" | "openai" | "gemini";
+/** Services an owner can store a key or token for. */
+export type CredentialService = AIProvider | "github";
+
+/** A stored key, as the browser sees it: never the secret itself. */
+export interface CredentialInfo {
+  id: string;
+  service: CredentialService;
+  label: string;
+  /** Recognisable but harmless, e.g. "sk-…a1B2". */
+  hint: string;
+  status: "ok" | "error" | "unchecked";
+  statusDetail: string | null;
+  /** Models this key can use, from the provider's own list when the key was checked. */
+  models: string[];
+  createdAt: ISODate;
+  lastUsedAt: ISODate | null;
 }
 
 export interface AgentStats {
@@ -381,6 +409,8 @@ export interface UsageRecord {
   serverIterations?: number | null;
   /** Largest single prompt read in this call, in tokens. */
   contextTokens?: number | null;
+  /** "own" = paid with the owner's own API key (outside plan limits). */
+  billing?: "platform" | "own";
 }
 
 export interface TownTaxSettings {

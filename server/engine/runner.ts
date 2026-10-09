@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import type { Task } from "../../shared/types.js";
+import type { ProviderResolver } from "../llm/keys.js";
 import type { Config } from "../config.js";
 import type { Store } from "../db/store.js";
 import type { LLMProvider } from "../llm/provider.js";
@@ -27,6 +28,8 @@ export interface RunnerOptions {
   gate?: ConcurrencyGate;
   /** When this returns a reason, nothing new starts (e.g. a lapsed plan). */
   hold?: () => string | null;
+  /** Picks each villager's provider (owners' own keys). Without it every villager uses `provider`. */
+  resolver?: ProviderResolver;
 }
 
 /**
@@ -58,7 +61,7 @@ export class TaskRunner {
     private readonly config: Config,
     opts: RunnerOptions = {},
   ) {
-    this.executor = new AgentExecutor(store, provider, config);
+    this.executor = new AgentExecutor(store, provider, config, opts.resolver);
     this.scheduler = new Scheduler(store, config, provider.simulated);
     this.retryBaseMs = opts.retryBaseMs ?? RETRY_BASE_MS;
     this.statusDecayMs = opts.statusDecayMs ?? STATUS_DECAY_MS;
@@ -152,19 +155,20 @@ export class TaskRunner {
       } catch (err) {
         console.error("[scheduler]", err);
       }
-      // Strict budgets: when a global cap is reached nothing new starts; capped agents are skipped.
+      // Strict budgets: when a town cap is reached, villagers on Agentopia's key wait (villagers on
+      // the owner's own key keep working: that spend is theirs); capped villagers are skipped.
       const budget = budgetStatus(this.store, this.config, this.provider.simulated);
+      const held = this.heldAgents(budget);
       if (budget.globalHold) {
         const key = budget.resetsAt.day.slice(0, 10);
-        if (this.lastHoldNotice !== key && this.store.claimNextTaskPreview()) {
+        if (this.lastHoldNotice !== key && this.store.claimNextTaskPreview(this.ownKeyAgents())) {
           this.lastHoldNotice = key;
           this.store.addEvent({ type: "budget.hold", message: "Budget limit reached — queued work is paused until the limit resets or is raised.", data: { budget } });
         }
-        return;
       }
       while (this.active.size < this.config.workerConcurrency) {
         if (this.gate && !this.gate.tryAcquire()) break;
-        const task = this.store.claimNextTask(this.workerId, LEASE_MS, budget.agentHolds);
+        const task = this.store.claimNextTask(this.workerId, LEASE_MS, held);
         if (!task) {
           this.gate?.release();
           break;
@@ -191,9 +195,18 @@ export class TaskRunner {
   hasClaimableWork(): boolean {
     if (this.hold?.() || this.store.getSettings().paused) return false;
     const budget = budgetStatus(this.store, this.config, this.provider.simulated);
-    if (budget.globalHold) return false;
-    if (!budget.agentHolds.length) return this.store.claimNextTaskPreview();
-    return this.store.claimNextTaskPreview(budget.agentHolds);
+    return this.store.claimNextTaskPreview(this.heldAgents(budget));
+  }
+
+  /** Villagers that can't start work now: over their own cap, or on Agentopia's key while the town is held. */
+  private heldAgents(budget: ReturnType<typeof budgetStatus>): string[] {
+    if (!budget.globalHold) return budget.agentHolds;
+    const platformAgents = this.store.listAgents().filter((a) => !a.credentialId).map((a) => a.id);
+    return [...new Set([...budget.agentHolds, ...platformAgents])];
+  }
+
+  private ownKeyAgents(): string[] {
+    return this.store.listAgents().filter((a) => a.credentialId).map((a) => a.id);
   }
 
   private async run(task: Task): Promise<void> {

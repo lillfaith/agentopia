@@ -1,7 +1,7 @@
 import type { Agent, BudgetLimits, BudgetStatus } from "../../shared/types.js";
 import type { Config } from "../config.js";
 import type { Store } from "../db/store.js";
-import { WEB_SEARCH_USD_PER_REQUEST, modelSpec } from "../llm/models.js";
+import { WEB_SEARCH_USD_PER_REQUEST, priceSpec, type CustomPrices } from "../llm/models.js";
 import type { HostedTool } from "../llm/provider.js";
 
 /**
@@ -75,8 +75,15 @@ export function budgetStatus(store: Store, config: Config, simulated = false): B
 }
 
 /** Conservative upper bound for one model call. */
-export function worstCaseCallCost(input: { model: string; promptChars: number; maxTokens: number; hostedTools: HostedTool[]; maxSearches?: number }): number {
-  const p = modelSpec(input.model);
+export function worstCaseCallCost(input: {
+  model: string;
+  promptChars: number;
+  maxTokens: number;
+  hostedTools: HostedTool[];
+  maxSearches?: number;
+  customPrices?: CustomPrices;
+}): number {
+  const p = priceSpec(input.model, input.customPrices);
   // ~3 chars/token is pessimistic for English+JSON; input priced at the cache-write premium.
   const inputTokens = Math.ceil(input.promptChars / 3);
   const inputRate = Math.max(p.inputPerMTok, p.cacheWritePerMTok);
@@ -92,11 +99,14 @@ export type PreflightResult =
 export function preflight(
   store: Store,
   config: Config,
-  args: { agent: Agent; taskId: string; reserveUsd: number; capUsd?: number; sinceUsageId?: number },
+  args: { agent: Agent; taskId: string; reserveUsd: number; capUsd?: number; sinceUsageId?: number; ownKey?: boolean },
 ): PreflightResult {
   const { effective: limits } = effectiveLimits(store, config);
-  // A task's research depth can only lower its spend ceiling.
-  const effective = { ...limits, perTaskUsd: tighter(limits.perTaskUsd, args.capUsd ?? null) };
+  // A task's research depth can only lower its spend ceiling. Calls on the owner's own key are
+  // theirs to pay: plan and town limits don't apply, only the depth ceiling and the villager's cap.
+  const effective = args.ownKey
+    ? { dailyUsd: 0, monthlyUsd: 0, perTaskUsd: args.capUsd ?? 0 }
+    : { ...limits, perTaskUsd: tighter(limits.perTaskUsd, args.capUsd ?? null) };
   const r = args.reserveUsd;
   const fmt = (n: number) => `$${n.toFixed(2)}`;
 

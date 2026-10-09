@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type {
+  AIProvider,
   Agent,
   AgentMemory,
+  CredentialInfo,
+  CredentialService,
   AgentStats,
   AgentStatus,
   Approval,
@@ -26,6 +29,7 @@ import type {
   Workflow,
 } from "../../shared/types.js";
 import { transaction, type Database } from "./database.js";
+import type { Vault } from "../secrets/vault.js";
 import { normalizeAppearance, normalizeVoice, type Appearance, type VoiceConfig } from "../../shared/cosmetics.js";
 
 type Row = Record<string, unknown>;
@@ -87,6 +91,10 @@ function toAgent(r: Row): Agent {
     enabled: r.enabled === 1,
     archived: r.archived === 1,
     dailyBudgetUsd: r.daily_budget_usd === null || r.daily_budget_usd === undefined ? null : Number(r.daily_budget_usd),
+    provider: (["openai", "gemini"].includes(r.provider as string) ? r.provider : "anthropic") as AIProvider,
+    credentialId: (r.credential_id as string) ?? null,
+    githubCredentialId: (r.github_credential_id as string) ?? null,
+    customPrices: parse(r.custom_prices, null),
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -330,8 +338,15 @@ export class Store {
   }
 
   insertAgent(
-    a: Omit<Agent, "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "archived" | "dailyBudgetUsd" | "avatar" | "appearance" | "voice"> & {
+    a: Omit<
+      Agent,
+      "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "archived" | "dailyBudgetUsd" | "avatar" | "appearance" | "voice" | "provider" | "credentialId" | "githubCredentialId" | "customPrices"
+    > & {
       dailyBudgetUsd?: number | null;
+      provider?: AIProvider;
+      credentialId?: string | null;
+      githubCredentialId?: string | null;
+      customPrices?: Agent["customPrices"];
       appearance: Appearance;
       voice: VoiceConfig;
     },
@@ -341,12 +356,13 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO agents (id, name, role, personality, system_prompt, responsibilities, model, effort, skills, avatar, appearance, voice,
-           building_id, status, enabled, daily_budget_usd, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?)`,
+           building_id, status, enabled, daily_budget_usd, provider, credential_id, github_credential_id, custom_prices, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         a.id, a.name, a.role, a.personality, a.systemPrompt, json(a.responsibilities), a.model, a.effort,
-        json(a.skills), json(avatarFor(appearance)), json(appearance), json(normalizeVoice(a.voice)), a.buildingId, a.enabled ? 1 : 0, a.dailyBudgetUsd ?? null, ts, ts,
+        json(a.skills), json(avatarFor(appearance)), json(appearance), json(normalizeVoice(a.voice)), a.buildingId, a.enabled ? 1 : 0, a.dailyBudgetUsd ?? null,
+        a.provider ?? "anthropic", a.credentialId ?? null, a.githubCredentialId ?? null, a.customPrices ? json(a.customPrices) : null, ts, ts,
       );
     return this.getAgent(a.id)!;
   }
@@ -354,7 +370,11 @@ export class Store {
   updateAgent(
     id: string,
     patch: Partial<
-      Pick<Agent, "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "model" | "effort" | "skills" | "appearance" | "voice" | "enabled" | "buildingId" | "dailyBudgetUsd" | "archived">
+      Pick<
+        Agent,
+        | "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "model" | "effort" | "skills" | "appearance" | "voice" | "enabled"
+        | "buildingId" | "dailyBudgetUsd" | "archived" | "provider" | "credentialId" | "githubCredentialId" | "customPrices"
+      >
     >,
   ): Agent | null {
     const cols: string[] = [];
@@ -373,6 +393,10 @@ export class Store {
       archived: ["archived", (v: boolean) => (v ? 1 : 0)],
       buildingId: ["building_id", (v: string) => v],
       dailyBudgetUsd: ["daily_budget_usd", (v: number | null) => v],
+      provider: ["provider", (v: string) => v],
+      credentialId: ["credential_id", (v: string | null) => v],
+      githubCredentialId: ["github_credential_id", (v: string | null) => v],
+      customPrices: ["custom_prices", (v: Agent["customPrices"]) => (v ? json(v) : null)],
     };
     if (patch.appearance) {
       const appearance = normalizeAppearance(patch.appearance);
@@ -735,6 +759,76 @@ export class Store {
     return Number(r.id);
   }
 
+  // ── owners' own API keys (encrypted; the secret never leaves the server) ──
+  /** Set by the app at startup. Without it, keys can be listed but not added or used. */
+  vault: Vault | null = null;
+
+  private toCredential(r: Row): CredentialInfo {
+    return {
+      id: r.id as string,
+      service: r.service as CredentialService,
+      label: r.label as string,
+      hint: r.hint as string,
+      status: r.status as CredentialInfo["status"],
+      statusDetail: (r.status_detail as string) ?? null,
+      models: parse(r.models, []),
+      createdAt: r.created_at as string,
+      lastUsedAt: (r.last_used_at as string) ?? null,
+    };
+  }
+
+  listCredentials(): CredentialInfo[] {
+    return (this.db.prepare("SELECT * FROM credentials ORDER BY created_at").all() as Row[]).map((r) => this.toCredential(r));
+  }
+
+  getCredential(id: string): CredentialInfo | null {
+    const r = this.db.prepare("SELECT * FROM credentials WHERE id = ?").get(id) as Row | undefined;
+    return r ? this.toCredential(r) : null;
+  }
+
+  addCredential(c: { service: CredentialService; label: string; secret: string }): CredentialInfo {
+    if (!this.vault) throw new Error("Key storage is not configured on this server");
+    const id = randomUUID();
+    const ts = now();
+    const secret = c.secret.trim();
+    // Enough to recognise the key (its prefix and last 4 characters), never enough to use it.
+    const hint = secret.length >= 20 ? `${secret.slice(0, 6)}…${secret.slice(-4)}` : `…${secret.slice(-2)}`;
+    this.db
+      .prepare("INSERT INTO credentials (id, service, label, secret, hint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(id, c.service, c.label, this.vault.encrypt(secret, id), hint, ts, ts);
+    return this.getCredential(id)!;
+  }
+
+  /** Decrypt a key for one call. Never log or return the result. */
+  credentialSecret(id: string): string | null {
+    const r = this.db.prepare("SELECT secret FROM credentials WHERE id = ?").get(id) as Row | undefined;
+    if (!r || !this.vault) return null;
+    const secret = this.vault.decrypt(r.secret as string, id);
+    this.db.prepare("UPDATE credentials SET last_used_at = ? WHERE id = ?").run(now(), id);
+    return secret;
+  }
+
+  setCredentialStatus(id: string, status: CredentialInfo["status"], detail: string | null, models?: string[]): void {
+    this.db
+      .prepare(`UPDATE credentials SET status = ?, status_detail = ?, ${models ? "models = ?, " : ""}updated_at = ? WHERE id = ?`)
+      .run(...([status, detail, ...(models ? [json(models)] : []), now(), id] as (string | null)[]));
+  }
+
+  renameCredential(id: string, label: string): void {
+    this.db.prepare("UPDATE credentials SET label = ?, updated_at = ? WHERE id = ?").run(label, now(), id);
+  }
+
+  /** Delete a key; villagers that used it go back to Agentopia's Claude (or lose their GitHub access). */
+  deleteCredential(id: string, fallbackModel: string): string[] {
+    const affected = (this.db.prepare("SELECT id FROM agents WHERE credential_id = ? OR github_credential_id = ?").all(id, id) as Row[]).map((r) => r.id as string);
+    transaction(this.db, () => {
+      this.db.prepare("UPDATE agents SET provider = 'anthropic', credential_id = NULL, model = ?, updated_at = ? WHERE credential_id = ?").run(fallbackModel, now(), id);
+      this.db.prepare("UPDATE agents SET github_credential_id = NULL, updated_at = ? WHERE github_credential_id = ?").run(now(), id);
+      this.db.prepare("DELETE FROM credentials WHERE id = ?").run(id);
+    });
+    return affected;
+  }
+
   /** Provider transcript + executor bookkeeping for a task (opaque to the store). */
   getConversation<T>(taskId: string): T | null {
     const r = this.db.prepare("SELECT conversation FROM tasks WHERE id = ?").get(taskId) as Row | undefined;
@@ -843,13 +937,13 @@ export class Store {
       .prepare(
         `INSERT INTO usage (ts, agent_id, task_id, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
            web_search_requests, web_fetch_requests, code_executions, cost_usd, simulated, request_id, requested_model,
-           thinking_tokens, server_iterations, context_tokens)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           thinking_tokens, server_iterations, context_tokens, billing)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         ts, u.agentId, u.taskId, u.model, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens,
         u.webSearchRequests, u.webFetchRequests, u.codeExecutions, u.costUsd, u.simulated ? 1 : 0, u.requestId, u.requestedModel,
-        u.thinkingTokens ?? null, u.serverIterations ?? null, u.contextTokens ?? null,
+        u.thinkingTokens ?? null, u.serverIterations ?? null, u.contextTokens ?? null, u.billing ?? "platform",
       );
     return { ...u, id: Number(res.lastInsertRowid), ts };
   }
@@ -882,6 +976,7 @@ export class Store {
       thinkingTokens: r.thinking_tokens === null ? null : Number(r.thinking_tokens),
       serverIterations: r.server_iterations === null ? null : Number(r.server_iterations),
       contextTokens: r.context_tokens === null ? null : Number(r.context_tokens),
+      billing: r.billing === "own" ? "own" : "platform",
     }));
   }
 
@@ -893,13 +988,22 @@ export class Store {
     return { webSearches: Number(r.s), webFetches: Number(r.f) };
   }
 
-  /** Estimated spend since `sinceIso` (real API usage only), optionally for one agent. */
+  /**
+   * Estimated spend since `sinceIso` (real API usage only). For one agent it includes every call;
+   * town-wide it counts only usage on Agentopia's key (calls on owners' own keys are theirs to pay).
+   */
   spendSince(sinceIso: string, agentId?: string): number {
     const r = (
       agentId
         ? this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM usage WHERE ts >= ? AND simulated = 0 AND agent_id = ?").get(sinceIso, agentId)
-        : this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM usage WHERE ts >= ? AND simulated = 0").get(sinceIso)
+        : this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM usage WHERE ts >= ? AND simulated = 0 AND billing = 'platform'").get(sinceIso)
     ) as Row;
+    return Number(r.c);
+  }
+
+  /** Spend on owners' own keys since `sinceIso` (shown separately; never counted against plan limits). */
+  ownKeySpendSince(sinceIso: string): number {
+    const r = this.db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM usage WHERE ts >= ? AND simulated = 0 AND billing = 'own'").get(sinceIso) as Row;
     return Number(r.c);
   }
 

@@ -16,6 +16,8 @@ export interface Config {
    * model supports them, "basic" = the plain versions everywhere (results go straight into context).
    */
   webToolMode: "auto" | "basic";
+  /** Master key for owners' stored API keys (AGENTOPIA_SECRETS_KEY); null = key file in the data dir. */
+  secretsKey: string | null;
   adminToken: string | null;
   dailyBudgetUsd: number;
   monthlyBudgetUsd: number;
@@ -103,6 +105,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     defaultModel: env.AGENTOPIA_DEFAULT_MODEL?.trim() || "claude-opus-5-5",
     refusalFallback: env.AGENTOPIA_REFUSAL_FALLBACK?.trim() === "off" ? "off" : "default",
     webToolMode: env.AGENTOPIA_WEB_TOOLS?.trim() === "basic" ? "basic" : "auto",
+    secretsKey: readSecret(env, "AGENTOPIA_SECRETS_KEY"),
     adminToken,
     dailyBudgetUsd: num(env.AGENTOPIA_DAILY_BUDGET_USD, 5),
     monthlyBudgetUsd: num(env.AGENTOPIA_MONTHLY_BUDGET_USD, 50),

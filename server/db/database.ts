@@ -327,6 +327,27 @@ export const MIGRATIONS: Migration[] = [
   );
   CREATE INDEX idx_task_messages_task ON task_messages(task_id, id);
   `,
+
+  /* 10 — owners' own API keys (encrypted) and per-villager AI provider */ `
+  CREATE TABLE credentials (
+    id             TEXT PRIMARY KEY,
+    service        TEXT NOT NULL,
+    label          TEXT NOT NULL,
+    secret         TEXT NOT NULL,
+    hint           TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'unchecked',
+    status_detail  TEXT,
+    models         TEXT NOT NULL DEFAULT '[]',
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    last_used_at   TEXT
+  );
+  ALTER TABLE agents ADD COLUMN provider TEXT NOT NULL DEFAULT 'anthropic';
+  ALTER TABLE agents ADD COLUMN credential_id TEXT;
+  ALTER TABLE agents ADD COLUMN github_credential_id TEXT;
+  ALTER TABLE agents ADD COLUMN custom_prices TEXT;
+  ALTER TABLE usage ADD COLUMN billing TEXT NOT NULL DEFAULT 'platform';
+  `,
 ];
 
 export type Database = DatabaseSync;

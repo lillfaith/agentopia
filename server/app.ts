@@ -1,7 +1,10 @@
 import type { Config } from "./config.js";
 import { openDatabase } from "./db/database.js";
 import { Store } from "./db/store.js";
+import path from "node:path";
 import { seedTown } from "./agents/seed.js";
+import { Vault } from "./secrets/vault.js";
+import { ProviderResolver, type KeyCheckers } from "./llm/keys.js";
 import { AnthropicProvider } from "./llm/anthropic.js";
 import type { LLMProvider } from "./llm/provider.js";
 import { SimulatedProvider } from "./llm/simulated.js";
@@ -38,15 +41,22 @@ export interface AppOptions {
   runner?: Pick<RunnerOptions, "gate" | "hold">;
   /** Mounted behind the SaaS account layer, which handles authentication and CSRF. */
   embedded?: boolean;
+  /** Tests: build providers for owners' keys without the network. */
+  providerFactory?: ConstructorParameters<typeof ProviderResolver>[3];
+  /** Tests: check owners' keys without the network. */
+  keyCheckers?: KeyCheckers;
 }
 
 export function createApp(config: Config, opts: AppOptions = {}) {
   const db = openDatabase(config.dbPath);
   const store = new Store(db);
+  // Owners' own API keys are encrypted with a server-wide master key (see server/secrets/vault.ts).
+  store.vault = Vault.open({ secretsKey: config.secretsKey, keyFile: config.dbPath === ":memory:" ? null : path.join(config.dataDir, "secrets.key") });
   seedTown(store, config.defaultModel);
   const provider = opts.provider ?? createProvider(config) ?? new UnconfiguredProvider();
-  const runner = new TaskRunner(store, provider, config, { ...opts.timings, ...opts.runner });
-  const api = createApi({ config, store, runner, embedded: opts.embedded });
+  const resolver = new ProviderResolver(provider, store, config, opts.providerFactory);
+  const runner = new TaskRunner(store, provider, config, { ...opts.timings, ...opts.runner, resolver });
+  const api = createApi({ config, store, runner, resolver, keyCheckers: opts.keyCheckers, embedded: opts.embedded });
   // API-only processes never run tasks or schedules; a separate worker process does.
   const startWorker = opts.startWorker ?? config.role !== "api";
   if (startWorker) runner.start();

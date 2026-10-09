@@ -1,6 +1,6 @@
-import type { Agent, Effort, ResearchDepth, Task } from "../../shared/types.js";
+import type { AIProvider, Agent, Effort, ResearchDepth, Task } from "../../shared/types.js";
 import type { HostedTool } from "../llm/provider.js";
-import { modelSpec } from "../llm/models.js";
+import { modelSpec, priceSpec, type CustomPrices } from "../llm/models.js";
 
 /**
  * Research depth: how much web research one task may do, and what it may spend.
@@ -88,8 +88,8 @@ const REFERENCE_MODEL = "claude-sonnet-5-5";
  * proportionally higher one (a single Opus call can reserve twice what a Sonnet call does),
  * cheaper models keep the Sonnet ceiling. Plan and owner limits still apply on top.
  */
-export function depthSpendCap(depth: DepthProfile, model: string): number {
-  const ratio = modelSpec(model).outputPerMTok / modelSpec(REFERENCE_MODEL).outputPerMTok;
+export function depthSpendCap(depth: DepthProfile, model: string, custom?: CustomPrices): number {
+  const ratio = priceSpec(model, custom).outputPerMTok / modelSpec(REFERENCE_MODEL).outputPerMTok;
   return Math.round(depth.maxTaskUsd * Math.max(1, ratio) * 100) / 100;
 }
 
@@ -125,9 +125,13 @@ export interface TaskRunPlan {
 export function planTaskRun(
   task: Pick<Task, "depth" | "modelOverride">,
   agent: Pick<Agent, "model" | "effort">,
-  opts: { defaultDepth: ResearchDepth; allowedModels: string[] | null; research: boolean },
+  opts: { defaultDepth: ResearchDepth; allowedModels: string[] | null; research: boolean; provider?: AIProvider },
 ): TaskRunPlan {
   const depth = DEPTHS[task.depth ?? opts.defaultDepth] ?? DEPTHS.standard;
+  // Model choices below are Claude models: other providers keep the villager's own model.
+  if (opts.provider && opts.provider !== "anthropic") {
+    return { depth, model: agent.model, effort: opts.research ? capEffort(agent.effort, depth.effortCap) : agent.effort, modelReason: null };
+  }
   const allowed = (m: string) => !opts.allowedModels || opts.allowedModels.includes(m);
   if (!opts.research) return { depth, model: task.modelOverride && allowed(task.modelOverride) ? task.modelOverride : agent.model, effort: agent.effort, modelReason: null };
   if (task.modelOverride && allowed(task.modelOverride)) {
