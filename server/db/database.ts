@@ -305,6 +305,14 @@ export const MIGRATIONS: Migration[] = [
       if (!skills.includes("memory")) db.prepare("UPDATE agents SET skills = ? WHERE id = ?").run(JSON.stringify([...skills, "memory"]), r.id);
     }
   },
+
+  /* 8 — cost controls: per-task research depth and model choice, richer usage records */ `
+  ALTER TABLE tasks ADD COLUMN depth TEXT;
+  ALTER TABLE tasks ADD COLUMN model_override TEXT;
+  ALTER TABLE usage ADD COLUMN thinking_tokens INTEGER;
+  ALTER TABLE usage ADD COLUMN server_iterations INTEGER;
+  ALTER TABLE usage ADD COLUMN context_tokens INTEGER;
+  `,
 ];
 
 export type Database = DatabaseSync;

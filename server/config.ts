@@ -11,6 +11,11 @@ export interface Config {
   anthropicApiKey: string | null;
   defaultModel: string;
   refusalFallback: "default" | "off";
+  /**
+   * Which hosted web tools to use: "auto" = the code-filtering (_20260209) versions where the
+   * model supports them, "basic" = the plain versions everywhere (results go straight into context).
+   */
+  webToolMode: "auto" | "basic";
   adminToken: string | null;
   dailyBudgetUsd: number;
   monthlyBudgetUsd: number;
@@ -97,6 +102,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     anthropicApiKey: readSecret(env, "ANTHROPIC_API_KEY"),
     defaultModel: env.AGENTOPIA_DEFAULT_MODEL?.trim() || "claude-opus-5-5",
     refusalFallback: env.AGENTOPIA_REFUSAL_FALLBACK?.trim() === "off" ? "off" : "default",
+    webToolMode: env.AGENTOPIA_WEB_TOOLS?.trim() === "basic" ? "basic" : "auto",
     adminToken,
     dailyBudgetUsd: num(env.AGENTOPIA_DAILY_BUDGET_USD, 5),
     monthlyBudgetUsd: num(env.AGENTOPIA_MONTHLY_BUDGET_USD, 50),

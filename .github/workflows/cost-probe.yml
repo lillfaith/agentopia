@@ -2,7 +2,7 @@
 # and reports every usage record (tokens by category, API calls, web searches/fetches, cost).
 # Rows in scripts/cost-probe-matrix.json with a "ref" run the engine as it was at that commit
 # (server/ and shared/ checked out from it), so before/after comparisons use one probe script.
-# Each row costs roughly $0.01–$0.40.
+# Each row costs roughly $0.01–$0.40; the compare job grades every answer blind with Claude Opus 5.5 (~$0.03 each).
 name: cost-probe
 
 on:
@@ -12,6 +12,7 @@ on:
     paths:
       - ".github/workflows/cost-probe.yml"
       - "scripts/cost-probe*.json"
+      - "scripts/cost-compare.ts"
 
 permissions:
   contents: read
@@ -55,6 +56,7 @@ jobs:
       - name: Run the probe
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          AGENTOPIA_WEB_TOOLS: ${{ matrix.run.webTools }}
           NODE_NO_WARNINGS: "1"
         run: |
           depth=""
@@ -66,3 +68,26 @@ jobs:
           name: probe-${{ matrix.run.name }}
           path: probe-${{ matrix.run.name }}.json
           if-no-files-found: ignore
+
+  compare:
+    needs: probe
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: probe-*
+          merge-multiple: true
+          path: reports
+      - name: Compare runs and grade answer quality (blind)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          NODE_NO_WARNINGS: "1"
+        run: npx tsx scripts/cost-compare.ts reports/*.json

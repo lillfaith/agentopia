@@ -26,6 +26,13 @@ export interface GenerateRequest {
   tools: ToolSpec[];
   hostedTools: HostedTool[];
   maxTokens: number;
+  /** Per-call limits for hosted web tools (research depth). Keep them constant within a task: tools are part of the cached prefix. */
+  hostedLimits?: HostedLimits;
+  /**
+   * Final write-up call: the model may not use tools and is asked to answer from what it
+   * has. The note is sent with this request only; it is not added to the stored transcript.
+   */
+  wrapUp?: string;
   signal?: AbortSignal;
   /**
    * Live progress while the call runs (streaming providers): "note" is the agent's
@@ -33,6 +40,12 @@ export interface GenerateRequest {
    * tool step (a web search, a page read). Called in order, as each block completes.
    */
   onProgress?: (p: { kind: "note" | "activity"; text: string }) => void;
+}
+
+export interface HostedLimits {
+  webSearchMaxUses: number;
+  webFetchMaxUses: number;
+  webFetchMaxContentTokens: number;
 }
 
 export interface ToolCall {
@@ -62,6 +75,12 @@ export interface GenerateResult {
   progressStreamed?: boolean;
   /** Provider request id (Anthropic `request-id` header). null for the simulator. */
   requestId: string | null;
+  /** Reasoning tokens included in usage.outputTokens, when the provider reports them. */
+  thinkingTokens?: number | null;
+  /** Sampling iterations inside the call (a server-side tool loop runs several). */
+  serverIterations?: number | null;
+  /** Largest single prompt the model read in this call, in tokens. */
+  contextTokens?: number | null;
 }
 
 export interface ToolResult {

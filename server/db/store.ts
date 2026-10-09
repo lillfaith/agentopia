@@ -10,6 +10,7 @@ import type {
   Building,
   EventType,
   Project,
+  ResearchDepth,
   Schedule,
   Task,
   TaskExecution,
@@ -52,6 +53,7 @@ export const DEFAULT_SETTINGS: TownSettings = {
   timezone: "UTC",
   timezoneMode: "auto",
   paused: false,
+  defaultDepth: "standard",
 };
 
 const NO_EXECUTION: TaskExecution = { mode: "none", calls: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, models: [], lastRequestId: null };
@@ -149,6 +151,8 @@ function toTask(r: Row): Task {
     simulated: r.simulated === 1,
     scheduleId: (r.schedule_id as string) ?? null,
     projectId: (r.project_id as string) ?? null,
+    depth: (r.depth as ResearchDepth) ?? null,
+    modelOverride: (r.model_override as string) ?? null,
     execution: NO_EXECUTION,
   };
 }
@@ -223,6 +227,8 @@ export interface NewTask {
   maxAttempts?: number;
   scheduleId?: string | null;
   projectId?: string | null;
+  depth?: ResearchDepth | null;
+  modelOverride?: string | null;
 }
 
 export interface NewEvent {
@@ -503,12 +509,13 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO tasks (id, title, instructions, agent_id, status, priority, depends_on, parent_task_id, workflow_id,
-           created_by, delegation_depth, max_attempts, schedule_id, project_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           created_by, delegation_depth, max_attempts, schedule_id, project_id, depth, model_override, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id, t.title, t.instructions, t.agentId, status, t.priority ?? 1, json(deps), t.parentTaskId ?? null,
-        t.workflowId ?? null, t.createdBy, t.delegationDepth ?? 0, t.maxAttempts ?? 3, t.scheduleId ?? null, t.projectId ?? null, ts, ts,
+        t.workflowId ?? null, t.createdBy, t.delegationDepth ?? 0, t.maxAttempts ?? 3, t.scheduleId ?? null, t.projectId ?? null,
+        t.depth ?? null, t.modelOverride ?? null, ts, ts,
       );
     return this.getTask(id)!;
   }
@@ -783,14 +790,55 @@ export class Store {
     const res = this.db
       .prepare(
         `INSERT INTO usage (ts, agent_id, task_id, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-           web_search_requests, web_fetch_requests, code_executions, cost_usd, simulated, request_id, requested_model)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           web_search_requests, web_fetch_requests, code_executions, cost_usd, simulated, request_id, requested_model,
+           thinking_tokens, server_iterations, context_tokens)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         ts, u.agentId, u.taskId, u.model, u.inputTokens, u.outputTokens, u.cacheReadTokens, u.cacheWriteTokens,
         u.webSearchRequests, u.webFetchRequests, u.codeExecutions, u.costUsd, u.simulated ? 1 : 0, u.requestId, u.requestedModel,
+        u.thinkingTokens ?? null, u.serverIterations ?? null, u.contextTokens ?? null,
       );
     return { ...u, id: Number(res.lastInsertRowid), ts };
+  }
+
+  /** Record the research depth a task actually ran at (when it didn't choose one). */
+  setTaskDepth(taskId: string, depth: ResearchDepth): void {
+    this.db.prepare("UPDATE tasks SET depth = ? WHERE id = ? AND depth IS NULL").run(depth, taskId);
+  }
+
+  /** Every usage row recorded for one task, oldest first. */
+  taskUsage(taskId: string): UsageRecord[] {
+    const rows = this.db.prepare("SELECT * FROM usage WHERE task_id = ? ORDER BY id").all(taskId) as Row[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      ts: r.ts as string,
+      agentId: r.agent_id as string,
+      taskId: (r.task_id as string) ?? null,
+      model: r.model as string,
+      inputTokens: Number(r.input_tokens),
+      outputTokens: Number(r.output_tokens),
+      cacheReadTokens: Number(r.cache_read_tokens),
+      cacheWriteTokens: Number(r.cache_write_tokens),
+      webSearchRequests: Number(r.web_search_requests),
+      webFetchRequests: Number(r.web_fetch_requests),
+      codeExecutions: Number(r.code_executions),
+      costUsd: Number(r.cost_usd),
+      simulated: r.simulated === 1,
+      requestId: (r.request_id as string) ?? null,
+      requestedModel: (r.requested_model as string) ?? null,
+      thinkingTokens: r.thinking_tokens === null ? null : Number(r.thinking_tokens),
+      serverIterations: r.server_iterations === null ? null : Number(r.server_iterations),
+      contextTokens: r.context_tokens === null ? null : Number(r.context_tokens),
+    }));
+  }
+
+  /** Web searches and page reads this task has used so far. */
+  taskToolUse(taskId: string): { webSearches: number; webFetches: number } {
+    const r = this.db
+      .prepare("SELECT COALESCE(SUM(web_search_requests), 0) AS s, COALESCE(SUM(web_fetch_requests), 0) AS f FROM usage WHERE task_id = ?")
+      .get(taskId) as Row;
+    return { webSearches: Number(r.s), webFetches: Number(r.f) };
   }
 
   /** Estimated spend since `sinceIso` (real API usage only), optionally for one agent. */

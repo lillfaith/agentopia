@@ -13,6 +13,7 @@
  *   --depth <d>       research depth, when this build supports it (quick|standard|deep)
  *   --out <file>      also write the JSON report here
  *   --max-usd <n>     per-task cap for the run (default 1)
+ *   (env AGENTOPIA_WEB_TOOLS=basic uses the plain web tools, on builds that support it)
  *
  * Never prints the API key.
  */
@@ -23,6 +24,7 @@ import { Store } from "../server/db/store.js";
 import { seedTown } from "../server/agents/seed.js";
 import { AgentExecutor } from "../server/engine/executor.js";
 import { AnthropicProvider } from "../server/llm/anthropic.js";
+import { PROBE_TASK } from "./cost-probe-task.js";
 
 const args = process.argv.slice(2);
 const opt = (name: string) => {
@@ -34,15 +36,6 @@ const LABEL = opt("label") ?? "probe";
 const DEPTH = opt("depth");
 const OUT = opt("out");
 
-export const PROBE_TASK = {
-  title: "Plant-based protein bar market scan",
-  instructions: [
-    "Research the current US market for plant-based protein bars.",
-    "I need: the 5 leading brands with typical retail prices per bar, who buys them (main audiences),",
-    "notable trends from the last 12 months, and 3 marketing angles a new brand could use.",
-    "Cite your sources.",
-  ].join(" "),
-};
 
 const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
 if (!apiKey) {
@@ -141,7 +134,9 @@ const config = loadConfig({
 const store = new Store(openDatabase(":memory:"));
 seedTown(store, MODEL);
 const agent = store.getAgent("researcher")!;
-const provider = new AnthropicProvider(apiKey, config.refusalFallback, { fetch: recordingFetch } as never);
+// Older builds ignore the 4th argument (web tool mode).
+const ProviderCtor = AnthropicProvider as unknown as new (...a: unknown[]) => AnthropicProvider;
+const provider = new ProviderCtor(apiKey, config.refusalFallback, { fetch: recordingFetch }, { webToolMode: process.env.AGENTOPIA_WEB_TOOLS === "basic" ? "basic" : "auto" });
 const executor = new AgentExecutor(store, provider, config);
 
 const task = store.createTask({
