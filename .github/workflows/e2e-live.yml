@@ -1,0 +1,38 @@
+# End-to-end SaaS vertical slice against the REAL Claude API (npm run e2e:live):
+# sign up → project → task → background run → real output → persists across a restart.
+# Uses claude-haiku-5-5 and a one-paragraph task: a few cents at most per run.
+# Runs when triggered manually, or when the SaaS layer or this check changes on the dev branch.
+name: e2e-live
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/happy-fermi-ypjunl]
+    paths:
+      - ".github/workflows/e2e-live.yml"
+      - "scripts/e2e-live.ts"
+      - "server/saas/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-live
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: npm run e2e:live
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          NODE_NO_WARNINGS: "1"
+        run: npm run e2e:live

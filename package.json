@@ -1,0 +1,57 @@
+{
+  "name": "agentopia",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Agentopia — an isometric AI-agent town where every villager is a real, configurable AI employee.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c magenta,cyan \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "tsx watch --clear-screen=false server/index.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "build:demo": "vite build --mode demo",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "worker": "AGENTOPIA_ROLE=worker tsx server/index.ts",
+    "start:api": "NODE_ENV=production AGENTOPIA_ROLE=api tsx server/index.ts",
+    "start:worker": "NODE_ENV=production AGENTOPIA_ROLE=worker tsx server/index.ts",
+    "verify:live": "tsx scripts/verify-live.ts",
+    "backup": "tsx scripts/backup.ts",
+    "start:saas": "NODE_ENV=production AGENTOPIA_MODE=saas tsx server/index.ts",
+    "dev:saas": "AGENTOPIA_MODE=saas concurrently -k -n server,web -c magenta,cyan \"npm:dev:server\" \"npm:dev:web\"",
+    "e2e:live": "tsx scripts/e2e-live.ts",
+    "migrate": "tsx scripts/migrate.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.0",
+    "@hono/node-server": "^2.1.3",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.1",
+    "dotenv": "^18.0.6",
+    "hono": "^4.13.13",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "three": "^0.186.1",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3"
+  }
+}

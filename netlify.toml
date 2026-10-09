@@ -1,0 +1,14 @@
+# Netlify deploys the STATIC DEMO of Agentopia: the full 3D town and UI, replaying a
+# recorded simulation in the browser. No server, no API key, no AI calls.
+# The full app (Claude, workers, database) needs a Node host: see docs/DEPLOYMENT.md.
+[build]
+  command = "npm run build:demo"
+  publish = "dist/demo"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
