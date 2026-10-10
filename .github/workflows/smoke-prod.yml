@@ -1,4 +1,4 @@
-# TEMPORARY: free production smoke test. No secrets, no AI calls.
+# TEMPORARY: build the production image like Railway does and health-check it. No secrets, no AI calls.
 name: smoke-prod
 on:
   push:
@@ -7,21 +7,18 @@ on:
 permissions:
   contents: read
 jobs:
-  smoke:
+  image:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - run: git log --oneline -1
+      - run: docker build -t agentopia-test .
       - run: |
-          set -u
-          BASE=https://agentopia-production.up.railway.app
-          JS=$(curl -fsS "$BASE/" | grep -o '/assets/index-[A-Za-z0-9_-]*\.js' | head -1)
-          echo "bundle: $JS"
-          curl -fsS "$BASE$JS" -o b.js
-          for m in "Model choice|PR14" "Where the money went|PR13" "Make a free suggestion|PR12" "Choose a job|PR11" "Hire an employee|PR11"; do
-            s=${m%|*}; p=${m#*|}; if grep -q "$s" b.js; then echo "present  $p: $s"; else echo "MISSING  $p: $s"; fi
-          done
-          echo "health: $(curl -sS $BASE/api/health)"
-          echo "ready:  $(curl -sS $BASE/api/ready)"
-          echo "home:   HTTP $(curl -s -o /dev/null -w '%{http_code}' $BASE/)"
-          echo "snapshot without login: HTTP $(curl -s -o /dev/null -w '%{http_code}' $BASE/api/snapshot)"
-          curl -sSI "$BASE/" | grep -i -E "^(date|last-modified|etag|x-railway)" || true
+          docker run -d --name app -p 8787:8787 -e RAILWAY_ENVIRONMENT=production -e RAILWAY_PROJECT_ID=x -e ANTHROPIC_API_KEY=sk-ant-fake agentopia-test
+          for i in $(seq 1 60); do curl -fsS localhost:8787/api/ready && break; sleep 2; done; echo
+          docker logs app 2>&1 | tail -30
+          curl -fsS localhost:8787/api/ready
+          curl -fsS localhost:8787/ | grep -o 'index-[A-Za-z0-9_-]*\.js'
