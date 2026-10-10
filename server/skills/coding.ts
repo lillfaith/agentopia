@@ -4,6 +4,8 @@ import type { SkillDefinition } from "./types.js";
 export const coding: SkillDefinition = {
   id: "coding",
   label: "Coding & data (sandbox)",
+  shortLabel: "Coding",
+  providerNote: "Claude runs code in Anthropic's sandbox, OpenAI in its code interpreter, Gemini in its code execution. Availability depends on the model.",
   icon: "💻",
   category: "coding",
   description:

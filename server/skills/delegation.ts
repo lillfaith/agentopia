@@ -4,6 +4,7 @@ import type { SkillDefinition } from "./types.js";
 export const delegation: SkillDefinition = {
   id: "delegation",
   label: "Delegation",
+  shortLabel: "Delegation",
   icon: "📨",
   category: "coordination",
   description: "Assign new tasks to other villagers. Depth-limited; agents cannot delegate to themselves.",

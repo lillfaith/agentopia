@@ -64,8 +64,40 @@ export interface Agent {
   githubCredentialId: string | null;
   /** Owner-supplied prices (USD per million tokens) for models Agentopia has no price for. */
   customPrices: { inputPerMTok: number; outputPerMTok: number } | null;
+  /** How the employee works: tone, formats, rules (part of the instruction profile). */
+  operatingInstructions: string;
+  /** Instructions for particular kinds of tasks ("When writing a blog post: …"). */
+  taskInstructions: string;
+  /** Owner-written facts the employee always keeps in mind (brand, products, people). */
+  referenceNotes: string;
+  /** Extra tools that must wait for approval for this employee (never fewer than the built-in rules). */
+  approvalTools: string[];
+  /** Template the employee was hired from, if any (informational; templates are copied, not linked). */
+  templateId: string | null;
+  /** Current version of the instruction profile; edits based on an older version are refused. */
+  profileVersion: number;
   createdAt: ISODate;
   updatedAt: ISODate;
+}
+
+/** The employee's instructions, as one versioned document (AGENTS.md style). */
+export interface InstructionProfile {
+  role: string;
+  personality: string;
+  /** Role definition / system prompt. */
+  systemPrompt: string;
+  responsibilities: string[];
+  operatingInstructions: string;
+  taskInstructions: string;
+  referenceNotes: string;
+}
+
+export interface ProfileVersion {
+  version: number;
+  source: "hire" | "edit" | "restore" | "draft" | "migration";
+  note: string | null;
+  profile: InstructionProfile;
+  createdAt: ISODate;
 }
 
 /** AI services a villager can think with. */
@@ -544,7 +576,13 @@ export type SkillCategory = "research" | "writing" | "coordination" | "coding" |
 export interface SkillInfo {
   id: string;
   label: string;
+  /** One or two words for the equipment grid. */
+  shortLabel: string;
   icon: string;
+  /** A connection this capability needs before it can work (e.g. "github"). */
+  connection: CredentialService | null;
+  /** How well it works on each AI provider, when that differs. */
+  providerNote: string | null;
   category: SkillCategory;
   description: string;
   /** "available" can be enabled; "planned" is a declared slot with no integration yet. */
@@ -555,20 +593,62 @@ export interface SkillInfo {
   verificationCheck: string | null;
 }
 
+/**
+ * A starting point for hiring: an editable, portable bundle of job title, instructions,
+ * capabilities and workplace hints. Templates are copied into the employee when hired, so
+ * editing or deleting a template never changes an existing employee.
+ */
 export interface AgentTemplate {
   id: string;
+  /** Job title, e.g. "Researcher" or "YouTube Manager". */
   role: string;
   icon: string;
   description: string;
   personality: string;
   systemPrompt: string;
   responsibilities: string[];
+  /** Capability (skill) ids. */
   skills: string[];
   effort: Effort;
   avatar: AgentAvatar;
   /** Suggested building style for a matching department. */
   buildingKind: string;
   department: string;
+  /** Short line for the template card. */
+  tagline?: string;
+  /** "featured" = the eight broad starting points; "library" = specialized; "custom" = saved by the owner. */
+  group?: TemplateGroup;
+  tags?: string[];
+  operatingInstructions?: string;
+  taskInstructions?: string;
+  referenceNotes?: string;
+  /** Bumped on every edit of a custom template. */
+  version?: number;
+  source?: "builtin" | "custom" | "imported";
+}
+
+export type TemplateGroup = "featured" | "library" | "custom";
+
+/** Portable template file (export / import). Never contains keys, ids of this town, or buildings. */
+export interface TemplateFile {
+  format: "agentopia.employee-template";
+  schemaVersion: 1;
+  exportedAt: ISODate;
+  template: Omit<AgentTemplate, "id" | "source" | "group">;
+}
+
+/** An AI-written (or template-based) first draft of an employee's instructions. Never applied without the owner. */
+export interface EmployeeDraft {
+  role: string;
+  personality: string;
+  systemPrompt: string;
+  responsibilities: string[];
+  operatingInstructions: string;
+  taskInstructions: string;
+  /** Suggested capability ids (only ones that exist). */
+  skills: string[];
+  source: "ai" | "template";
+  note: string | null;
 }
 
 export interface TownSettings {

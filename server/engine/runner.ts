@@ -69,6 +69,11 @@ export class TaskRunner {
     this.hold = opts.hold;
   }
 
+  /** Why new model calls can't start right now (lapsed plan, operator cap), or null. */
+  holdReason(): string | null {
+    return this.hold?.() ?? null;
+  }
+
   get running(): boolean {
     return this.timer !== null;
   }

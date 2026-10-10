@@ -1,14 +1,13 @@
 import { useShallow } from "zustand/react/shallow";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Agent, AgentMemory, Effort, ResearchDepth, Task } from "../../../shared/types";
+import { useEffect, useRef, useState } from "react";
+import type { Agent, AgentMemory, ResearchDepth, Task } from "../../../shared/types";
 import { PRIORITY_LABELS } from "../../../shared/types";
 import { DEMO, api } from "../api/client";
 import { STATUS_LABEL, levelFor, statsFor, useTown } from "../state/store";
 import { Badge, Drawer, Empty, EventBadge, ExecutionBadge, ExecutionProof, Markdown, StatusDot, TASK_LABEL, TASK_TONE, clock, fmtTokens, fmtUsd, timeAgo } from "./common";
-import { SkillPicker } from "./Town";
+import { EmployeeConfig } from "./EmployeeConfig";
 import { TaskRunOptions, TaskUsage } from "./Usage";
 import { Chat } from "./Chat";
-import { AiSetup, aiSetupFrom, aiSetupPayload } from "./AiSetup";
 
 type Tab = "overview" | "chat" | "work" | "config";
 
@@ -85,14 +84,14 @@ export function AgentPanel({ agentId }: { agentId: string }) {
       <div className="tabs">
         {(["overview", "chat", "work", "config"] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-            {t === "overview" ? "Now" : t === "chat" ? "Chat" : t === "work" ? "Work" : "Configure"}
+            {t === "overview" ? "Now" : t === "chat" ? "Chat" : t === "work" ? "Work" : "Profile"}
           </button>
         ))}
       </div>
       {tab === "overview" && <Overview agent={agent} />}
       {tab === "chat" && <Chat agent={agent} />}
       {tab === "work" && <WorkHistory agent={agent} />}
-      {tab === "config" && <Config agent={agent} key={agent.updatedAt} />}
+      {tab === "config" && <EmployeeConfig agent={agent} key={agent.id} />}
     </Drawer>
   );
 }
@@ -396,114 +395,5 @@ export function TaskOutputCard({ task, open, onToggle }: { task: Task; open: boo
         </>
       )}
     </section>
-  );
-}
-
-function Config({ agent }: { agent: Agent }) {
-  const status = useTown((s) => s.snapshot!.status);
-  const buildings = useTown((s) => s.snapshot!.buildings);
-  const push = useTown((s) => s.pushToast);
-  const [form, setForm] = useState(() => ({
-    name: agent.name,
-    role: agent.role,
-    personality: agent.personality,
-    systemPrompt: agent.systemPrompt,
-    responsibilities: agent.responsibilities.join("\n"),
-    model: agent.model,
-    effort: agent.effort,
-    skills: agent.skills,
-    buildingId: agent.buildingId,
-    dailyBudget: agent.dailyBudgetUsd === null ? "" : String(agent.dailyBudgetUsd),
-    enabled: agent.enabled,
-    ai: aiSetupFrom(agent),
-  }));
-  const [busy, setBusy] = useState(false);
-  useEffect(() => setBusy(false), [agent.updatedAt]);
-  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await api.updateAgent(agent.id, {
-        name: form.name,
-        role: form.role,
-        personality: form.personality,
-        systemPrompt: form.systemPrompt,
-        responsibilities: form.responsibilities.split("\n").map((s) => s.trim()).filter(Boolean),
-        ...aiSetupPayload(form.ai),
-        effort: form.effort,
-        skills: form.skills,
-        buildingId: form.buildingId,
-        dailyBudgetUsd: form.dailyBudget.trim() ? Number(form.dailyBudget) : null,
-        enabled: form.enabled,
-      });
-      push({ tone: "good", text: `${form.name} updated` });
-    } catch (err) {
-      push({ tone: "bad", text: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="stack form">
-      <div className="grid2">
-        <label>
-          Name
-          <input value={form.name} maxLength={40} onChange={(e) => set("name", e.target.value)} />
-        </label>
-        <label>
-          Role
-          <input value={form.role} maxLength={60} onChange={(e) => set("role", e.target.value)} />
-        </label>
-      </div>
-      <label>
-        Personality
-        <textarea rows={2} value={form.personality} onChange={(e) => set("personality", e.target.value)} />
-      </label>
-      <label>
-        System prompt
-        <textarea rows={8} value={form.systemPrompt} onChange={(e) => set("systemPrompt", e.target.value)} />
-      </label>
-      <label>
-        Responsibilities <small className="muted">(one per line)</small>
-        <textarea rows={3} value={form.responsibilities} onChange={(e) => set("responsibilities", e.target.value)} />
-      </label>
-      <AiSetup value={form.ai} onChange={(v) => set("ai", v)} skills={form.skills} />
-      <div className="grid2">
-        <label>
-          Effort
-          <select value={form.effort} onChange={(e) => set("effort", e.target.value as Effort)}>
-            {["low", "medium", "high", "xhigh", "max"].map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <SkillPicker value={form.skills} onChange={(v) => set("skills", v)} />
-      <div className="grid2">
-        <label>
-          Works at
-          <select value={form.buildingId} onChange={(e) => set("buildingId", e.target.value)}>
-            {buildings.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name} — {b.department}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Personal daily cap (USD)
-          <input type="number" min={0} step={0.5} placeholder="none — global limits apply" value={form.dailyBudget} onChange={(e) => set("dailyBudget", e.target.value)} />
-        </label>
-      </div>
-      <label className="check">
-        <input type="checkbox" checked={form.enabled} onChange={(e) => set("enabled", e.target.checked)} />
-        <span>Enabled (disabled villagers take no new tasks)</span>
-      </label>
-      <button className="btn primary full" disabled={busy} onClick={save}>
-        Save changes
-      </button>
-    </div>
   );
 }

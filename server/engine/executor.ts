@@ -343,7 +343,7 @@ export class AgentExecutor {
     const pending: string[] = [];
     for (const call of calls) {
       const tool = byId.get(call.name);
-      if (!tool || !requiresApproval(tool)) continue;
+      if (!tool || !requiresApproval(tool, agent)) continue;
       const parsed = tool.schema.safeParse(call.input);
       if (!parsed.success) continue; // reported as an error in pass 2
       const approval = existing.find((a) => a.toolUseId === call.id);
@@ -384,7 +384,7 @@ export class AgentExecutor {
         results.push({ toolCallId: call.id, content: `Invalid input for ${tool.id}: ${parsed.error.message}`, isError: true });
         continue;
       }
-      if (requiresApproval(tool)) {
+      if (requiresApproval(tool, agent)) {
         const approval = existing.find((a) => a.toolUseId === call.id) ?? this.store.listApprovals({ taskId: task.id }).find((a) => a.toolUseId === call.id);
         if (approval?.status !== "approved") {
           results.push({

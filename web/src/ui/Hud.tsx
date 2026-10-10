@@ -36,7 +36,7 @@ export function TopBar() {
           <div>
             <b>{snap.settings.townName}</b>
             <small>
-              {agents.length} villagers · {snap.buildings.length} buildings
+              {agents.length} {agents.length === 1 ? "employee" : "employees"} · {snap.buildings.length} workplaces
             </small>
           </div>
         </div>

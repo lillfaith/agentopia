@@ -4,6 +4,8 @@ import type { SkillDefinition } from "./types.js";
 export const github: SkillDefinition = {
   id: "github",
   label: "GitHub",
+  shortLabel: "GitHub",
+  connection: "github",
   icon: "🐙",
   category: "coding",
   description:

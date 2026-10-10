@@ -1,4 +1,4 @@
-import type { SkillCategory } from "../../shared/types.js";
+import type { CredentialService, SkillCategory } from "../../shared/types.js";
 import type { ToolDefinition } from "../agents/tools.js";
 
 /**
@@ -10,7 +10,13 @@ import type { ToolDefinition } from "../agents/tools.js";
 export interface SkillDefinition {
   id: string;
   label: string;
+  /** One or two words for the equipment grid. */
+  shortLabel: string;
   icon: string;
+  /** A connection this capability needs before it can work. */
+  connection?: CredentialService;
+  /** How well it works on each AI provider, when that differs. */
+  providerNote?: string;
   category: SkillCategory;
   description: string;
   /** "planned" skills are visible but cannot be enabled until an integration exists. */

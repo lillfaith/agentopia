@@ -31,7 +31,7 @@ export const DEFAULT_BUILDINGS: Building[] = [
 
 type SeedAgent = Omit<
   Agent,
-  "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "model" | "archived" | "dailyBudgetUsd" | "appearance" | "voice" | "avatar" | "provider" | "credentialId" | "githubCredentialId" | "customPrices"
+  "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "model" | "archived" | "dailyBudgetUsd" | "appearance" | "voice" | "avatar" | "provider" | "credentialId" | "githubCredentialId" | "customPrices" | "operatingInstructions" | "taskInstructions" | "referenceNotes" | "approvalTools" | "templateId" | "profileVersion"
 >;
 
 export const DEFAULT_AGENTS: SeedAgent[] = [

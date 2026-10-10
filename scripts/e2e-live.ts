@@ -128,6 +128,36 @@ try {
   const chatDone: any = chat.status === 201 ? await waitDone(chat.body.id) : null;
   check("start a free-form chat", chatDone?.status === "completed" && chatDone.kind === "chat" && (chatDone.output ?? "").trim().length > 10, JSON.stringify((chatDone?.output ?? chatDone?.lastError ?? "").slice(0, 120)));
 
+  // Hire from a plain-language description: AI drafts the instructions, the owner hires, the employee works.
+  const draft = await alice("/api/employee-drafts", "POST", { description: "Write short, friendly product descriptions for a small candle shop.", role: "Product Writer", templateId: "job-writer" });
+  check(
+    "draft an employee's instructions from a description",
+    draft.status === 200 && draft.body.systemPrompt?.length > 20 && Array.isArray(draft.body.skills) && (simulate || draft.body.source === "ai"),
+    `${draft.body.source ?? draft.body.error}${draft.body.note ? ` (${draft.body.note})` : ""}: ${JSON.stringify((draft.body.systemPrompt ?? "").slice(0, 100))}`,
+  );
+  const snapNow = (await alice("/api/snapshot")).body;
+  const hired = await alice("/api/agents", "POST", {
+    name: "Wick",
+    role: draft.body.role ?? "Product Writer",
+    personality: draft.body.personality ?? "",
+    systemPrompt: draft.body.systemPrompt ?? "You write product descriptions.",
+    responsibilities: draft.body.responsibilities ?? [],
+    operatingInstructions: draft.body.operatingInstructions ?? "",
+    taskInstructions: draft.body.taskInstructions ?? "",
+    skills: (draft.body.skills ?? ["writing"]).filter((s: string) => s !== "research"),
+    templateId: "job-writer",
+    buildingId: snapNow.buildings[0].id,
+    model: MODEL,
+    effort: "low",
+  });
+  const wickTask = hired.status === 201 ? await alice("/api/tasks", "POST", { agentId: hired.body.id, title: "One description", instructions: "Write a two-sentence description for a lavender soy candle." }) : null;
+  const wickDone: any = wickTask?.status === 201 ? await waitDone(wickTask.body.id) : null;
+  check(
+    "hire that employee and finish a job",
+    hired.status === 201 && hired.body.profileVersion === 1 && wickDone?.status === "completed" && (wickDone.output ?? "").trim().length > 20,
+    hired.status !== 201 ? JSON.stringify(hired.body).slice(0, 160) : JSON.stringify((wickDone?.output ?? wickDone?.lastError ?? "").slice(0, 120)),
+  );
+
   // Own key: the owner adds their own Claude key; work on it is billed to them, not the plan.
   if (!simulate) {
     const key = await alice("/api/credentials", "POST", { service: "anthropic", label: "e2e own key", secret: process.env.ANTHROPIC_API_KEY });
