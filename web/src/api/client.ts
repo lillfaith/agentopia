@@ -1,4 +1,4 @@
-import type { Achievement, Agent, AgentMemory, Building, CoinEntry, CredentialInfo, CredentialService, Project, ResearchDepth, Schedule, Task, TaskMessage, TaskUsageBreakdown, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
+import type { Achievement, Agent, AgentMemory, AgentTemplate, EmployeeDraft, ProfileVersion, TemplateFile, Building, CoinEntry, CredentialInfo, CredentialService, Project, ResearchDepth, Schedule, Task, TaskMessage, TaskUsageBreakdown, TownEvent, TownSettings, TownSnapshot, TreasurySummary, Verification, Workflow } from "../../../shared/types";
 
 import { DemoError, demoCall, demoSubscribe } from "../demo/demoServer";
 
@@ -84,14 +84,24 @@ export interface AccountInfo {
 }
 
 export type NewAgent = Pick<Agent, "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "skills" | "avatar" | "buildingId" | "model" | "effort" | "dailyBudgetUsd"> &
-  Partial<Pick<Agent, "provider" | "credentialId" | "githubCredentialId" | "customPrices">>;
+  Partial<Pick<Agent, "provider" | "credentialId" | "githubCredentialId" | "customPrices" | "operatingInstructions" | "taskInstructions" | "referenceNotes" | "approvalTools" | "templateId" | "appearance">>;
+export type TemplateBody = Omit<AgentTemplate, "id" | "group" | "source" | "version">;
 export type NewSchedule = Pick<Schedule, "name" | "cadence" | "timezone" | "target" | "overlap" | "enabled">;
 
 export const api = {
   snapshot: () => call<TownSnapshot>("/api/snapshot"),
   treasury: () => call<TreasurySummary>("/api/treasury"),
   agentDetail: (id: string) => call<{ agent: Agent; tasks: Task[]; events: TownEvent[] }>(`/api/agents/${id}`),
-  updateAgent: (id: string, body: Partial<Agent>) => patch<Agent>(`/api/agents/${id}`, body),
+  updateAgent: (id: string, body: Partial<Agent> & { baseProfileVersion?: number }) => patch<Agent>(`/api/agents/${id}`, body),
+  profileVersions: (id: string) => call<{ current: number; versions: ProfileVersion[] }>(`/api/agents/${id}/profile/versions`),
+  restoreProfile: (id: string, version: number, baseProfileVersion: number) => post<Agent>(`/api/agents/${id}/profile/restore`, { version, baseProfileVersion }),
+  saveAsTemplate: (id: string, body: { role?: string; icon?: string; description?: string }) => post<AgentTemplate>(`/api/agents/${id}/template`, body),
+  draftEmployee: (body: { description: string; role?: string; name?: string; templateId?: string }) => post<EmployeeDraft>("/api/employee-drafts", body),
+  searchTemplates: (q: string) => call<AgentTemplate[]>(`/api/templates?q=${encodeURIComponent(q)}`),
+  saveTemplate: (body: TemplateBody) => post<AgentTemplate>("/api/templates", body),
+  deleteTemplate: (id: string) => del<{ ok: true }>(`/api/templates/${id}`),
+  exportTemplate: (id: string) => call<TemplateFile>(`/api/templates/${id}/export`),
+  importTemplate: (file: unknown) => post<{ template: AgentTemplate; dropped: string[] }>("/api/templates/import", file),
   taskDetail: (id: string) => call<{ task: Task; events: TownEvent[] }>(`/api/tasks/${id}`),
   me: () => call<AccountInfo>("/api/auth/me"),
   signup: (body: { email: string; password: string }) => post<AccountInfo>("/api/auth/signup", body),

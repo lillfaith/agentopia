@@ -442,3 +442,90 @@ h4 { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
 .key-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: var(--chip); }
 .key-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* ── Hiring: three-step wizard ─────────────────────────────────────────── */
+.hire-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; background: var(--accent-soft); border-radius: 999px; padding: 3px; }
+.hire-steps li { flex: 1; }
+.hire-steps button { width: 100%; border: 0; background: transparent; border-radius: 999px; padding: 6px 8px; font-weight: 800; font-size: 12px; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.hire-steps button:disabled { cursor: default; opacity: 0.6; }
+.hire-steps li.on button { background: var(--panel-solid); color: var(--accent-strong); box-shadow: 0 2px 6px color-mix(in srgb, var(--accent) 25%, transparent); }
+.hire-step-num { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--panel-solid); font-size: 11px; box-shadow: inset 0 0 0 1.5px var(--panel-border); }
+.hire-steps li.on .hire-step-num, .hire-steps li.done .hire-step-num { background: var(--accent); color: var(--on-accent); box-shadow: none; }
+.hire-title { text-transform: none; letter-spacing: 0; font-size: 17px; color: var(--text); margin: 4px 0 0; }
+.job-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.job-card { border: 1.5px solid var(--panel-border); background: var(--panel-solid); border-radius: 16px; padding: 12px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; cursor: pointer; transition: transform 0.12s, box-shadow 0.12s; min-width: 0; }
+.job-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 22%, transparent); }
+.job-card b { font-size: 13px; }
+.job-card small { color: var(--muted); font-size: 11px; line-height: 1.3; }
+.job-card.custom { border-style: dashed; background: color-mix(in srgb, var(--accent-soft) 45%, var(--panel-solid)); }
+.job-icon { width: 44px; height: 44px; display: grid; place-items: center; font-size: 24px; border-radius: 14px; background: var(--accent-soft); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.06); }
+.job-icon.small { width: 32px; height: 32px; font-size: 18px; border-radius: 10px; flex: none; }
+.job-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.job-row { display: flex; gap: 10px; align-items: center; text-align: left; border: 1px solid transparent; background: transparent; border-radius: 12px; padding: 6px; cursor: pointer; }
+.job-row:hover { background: var(--chip-hover); border-color: var(--panel-border); }
+.job-row span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.hire-hero { display: flex; gap: 12px; align-items: center; }
+.hire-hero > div { display: flex; flex-direction: column; min-width: 0; }
+.hire-hero-icon, .employee-avatar { width: 54px; height: 54px; flex: none; display: grid; place-items: center; font-size: 28px; border-radius: 18px; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.08), 0 4px 12px color-mix(in srgb, var(--accent) 25%, transparent); }
+.employee-card { display: flex; gap: 14px; align-items: center; padding: 14px; border-radius: 18px; background: linear-gradient(135deg, var(--panel-solid), color-mix(in srgb, var(--accent-soft) 60%, var(--panel-solid))); border: 1.5px solid var(--panel-border); }
+.employee-avatar { width: 64px; height: 64px; font-size: 34px; border-radius: 22px; }
+.employee-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.employee-name { font-size: 18px; }
+.employee-role { font-weight: 800; color: var(--accent-strong); font-size: 13px; }
+.note-box { background: var(--warn-soft); border: 1px solid var(--warn-edge); border-radius: 10px; padding: 8px 10px; gap: 8px; }
+.resp-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+.clamp3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.hire-summary { display: flex; flex-direction: column; gap: 4px; padding: 0 2px; }
+details.option { border: 1.5px solid var(--panel-border); border-radius: 12px; padding: 8px 10px; background: var(--panel-solid); display: flex; flex-direction: column; gap: 8px; }
+details.option[open] { gap: 10px; }
+details.option > summary, details.mini > summary { cursor: pointer; font-weight: 800; font-size: 13px; list-style: none; }
+details.option > summary::-webkit-details-marker, details.mini > summary::-webkit-details-marker { display: none; }
+details.option > summary::after, details.mini > summary::after { content: "▸"; float: right; color: var(--muted); transition: transform 0.15s; }
+details.option[open] > summary::after, details.mini[open] > summary::after { transform: rotate(90deg); }
+details.option[open] > summary { margin-bottom: 8px; }
+details.mini { display: flex; flex-direction: column; gap: 8px; }
+details.mini[open] > summary { margin-bottom: 8px; }
+.btn.welcome { padding: 10px 18px; font-size: 14px; }
+.label-text { font-weight: 800; font-size: 12px; color: var(--muted); }
+
+/* ── Equipment grid ─────────────────────────────────────────────────────── */
+.equipment { display: flex; flex-direction: column; gap: 8px; }
+.equip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; }
+.equip-tile { position: relative; border: 1.5px solid var(--panel-border); background: var(--panel-solid); border-radius: 14px; padding: 9px 4px 7px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; transition: transform 0.12s; min-width: 0; }
+.equip-tile:hover { transform: translateY(-1px); border-color: var(--accent); }
+.equip-tile.on { background: color-mix(in srgb, var(--accent-soft) 70%, var(--panel-solid)); border-color: var(--accent); }
+.equip-tile.open { box-shadow: 0 0 0 3px var(--accent-soft); }
+.equip-tile.ready-coming-soon:not(.on) { opacity: 0.6; }
+.equip-icon { font-size: 22px; line-height: 1; }
+.equip-name { font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.equip-check { position: absolute; top: 3px; left: 6px; font-size: 11px; font-weight: 900; color: var(--accent-strong); }
+.equip-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.equip-legend .equip-dot { position: static; margin-right: 3px; vertical-align: middle; }
+.equip-dot.working { background: var(--good); }
+.equip-dot.needs-connection { background: var(--warn); }
+.equip-dot.coming-soon { background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.equip-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.equip-detail { gap: 6px; }
+.equip-facts { display: flex; flex-direction: column; gap: 3px; }
+
+/* ── Permissions & connections ──────────────────────────────────────────── */
+.perm-list { display: flex; flex-direction: column; gap: 6px; }
+.perm-row { flex-direction: row !important; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--chip); color: var(--text) !important; font-weight: 400 !important; }
+.perm-row > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.perm-row.locked { background: color-mix(in srgb, var(--warn-soft) 70%, var(--chip)); }
+.perm-switch { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: none; }
+.perm-switch small { font-size: 10px; color: var(--muted); font-weight: 800; }
+.connections { display: flex; flex-direction: column; gap: 6px; }
+.conn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.conn-chip { display: inline-flex; gap: 5px; align-items: center; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; border: 1px solid var(--panel-border); background: var(--chip); }
+.conn-chip small { font-size: 10px; font-weight: 900; color: var(--muted); }
+.conn-chip.ok { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+.conn-chip.ok small { color: var(--good); }
+.conn-chip.soon { opacity: 0.6; }
+
+/* ── Instructions editor ────────────────────────────────────────────────── */
+.instructions { display: flex; flex-direction: column; gap: 10px; }
+.instructions .seg button { font-size: 12px; font-weight: 800; padding: 4px 12px; }
+.md-editor { font-size: 12.5px; line-height: 1.5; resize: vertical; }
+.list-editor { display: flex; flex-direction: column; gap: 4px; }
+.list-item input { flex: 1; min-width: 0; }

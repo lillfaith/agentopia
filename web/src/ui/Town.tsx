@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import type { AgentTemplate, Building, Effort } from "../../../shared/types";
+import type { Building } from "../../../shared/types";
 import { api } from "../api/client";
 import { STATUS_LABEL, useTown } from "../state/store";
-import { AiSetup, aiSetupFrom, aiSetupPayload } from "./AiSetup";
+import { HireWizard } from "./HireWizard";
 import { useTheme } from "../theme-engine/ThemeContext";
 import { Badge, Drawer, Empty, SkillChip, StatusDot, fmtUsd } from "./common";
 
@@ -17,17 +17,17 @@ export function TownPanel() {
     <Drawer side="left" title="Town hall records" icon={theme.ui.icons.town} onClose={() => close(null)} wide>
       <div className="tabs">
         <button className={tab === "villagers" ? "on" : ""} onClick={() => setTab("villagers")}>
-          Villagers
+          Employees
         </button>
         <button className={tab === "hire" ? "on" : ""} onClick={() => setTab("hire")}>
           ✨ Hire
         </button>
         <button className={tab === "departments" ? "on" : ""} onClick={() => setTab("departments")}>
-          Departments
+          Workplaces
         </button>
       </div>
       {tab === "villagers" && <Villagers onHire={() => setTab("hire")} />}
-      {tab === "hire" && <Hire onDone={() => setTab("villagers")} />}
+      {tab === "hire" && <HireWizard onDone={() => setTab("villagers")} />}
       {tab === "departments" && <Departments />}
     </Drawer>
   );
@@ -53,9 +53,9 @@ function Villagers({ onHire }: { onHire: () => void }) {
   return (
     <div className="stack">
       <div className="row between">
-        <small className="muted">{active.length} villagers working in {snap.buildings.length} buildings</small>
+        <small className="muted">{active.length} employees working in {snap.buildings.length} workplaces</small>
         <button className="btn primary" onClick={onHire}>
-          ✨ Hire a villager
+          ✨ Hire an employee
         </button>
       </div>
       {active.map((a) => (
@@ -93,7 +93,7 @@ function Villagers({ onHire }: { onHire: () => void }) {
       ))}
       {archived.length > 0 && (
         <details open={showArchived} onToggle={(e) => setShowArchived((e.target as HTMLDetailsElement).open)}>
-          <summary>Archived villagers ({archived.length})</summary>
+          <summary>Former employees ({archived.length})</summary>
           <ul className="task-mini">
             {archived.map((a) => (
               <li key={a.id}>
@@ -108,179 +108,6 @@ function Villagers({ onHire }: { onHire: () => void }) {
           </ul>
         </details>
       )}
-    </div>
-  );
-}
-
-const ACCESSORIES = ["crown", "goggles", "beret", "sprout", "none"];
-
-function Hire({ onDone }: { onDone: () => void }) {
-  const theme = useTheme();
-  const snap = useTown((s) => s.snapshot)!;
-  const push = useTown((s) => s.pushToast);
-  const [template, setTemplate] = useState<AgentTemplate | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    role: "",
-    personality: "",
-    systemPrompt: "",
-    responsibilities: "",
-    skills: ["writing"] as string[],
-    color: "#ffc9d9",
-    accessory: "sprout",
-    ai: aiSetupFrom({
-      provider: "anthropic",
-      credentialId: null,
-      model: snap.status.models.find((m) => !snap.status.allowedModels || snap.status.allowedModels.includes(m.id))?.id ?? snap.status.models[0]?.id ?? "claude-opus-5-5",
-      githubCredentialId: null,
-      customPrices: null,
-    }),
-    effort: "medium" as Effort,
-    buildingId: snap.buildings[0]?.id ?? "",
-    dailyBudget: "",
-    newDepartment: false,
-  });
-  const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
-
-  const freeSlots = Object.keys(theme.world.slots).filter((slot) => !snap.buildings.some((b) => b.slot === slot));
-
-  const pick = (t: AgentTemplate) => {
-    setTemplate(t);
-    const matching = snap.buildings.find((b) => b.kind === t.buildingKind);
-    setForm((f) => ({
-      ...f,
-      role: t.role,
-      personality: t.personality,
-      systemPrompt: t.systemPrompt,
-      responsibilities: t.responsibilities.join("\n"),
-      skills: t.skills,
-      color: t.avatar.color,
-      accessory: t.avatar.accessory,
-      effort: t.effort,
-      buildingId: matching?.id ?? f.buildingId,
-      newDepartment: !matching && freeSlots.length > 0,
-    }));
-  };
-
-  const submit = async () => {
-    setBusy(true);
-    try {
-      let buildingId = form.buildingId;
-      if (form.newDepartment) {
-        if (!freeSlots.length) throw new Error("No free plots left — reuse an existing building");
-        const style = theme.world.buildingStyles.find((s) => s.kind === template?.buildingKind) ?? theme.world.buildingStyles[0];
-        const department = template?.department ?? `${form.role} Dept.`;
-        const b = await api.createBuilding({ name: `${department} ${style.label}`.slice(0, 40), department, kind: style.kind, slot: freeSlots[0], description: `Home of the ${department} department.` });
-        buildingId = b.id;
-      }
-      const agent = await api.hireAgent({
-        name: form.name.trim(),
-        role: form.role.trim(),
-        personality: form.personality,
-        systemPrompt: form.systemPrompt.trim(),
-        responsibilities: form.responsibilities.split("\n").map((s) => s.trim()).filter(Boolean),
-        skills: form.skills,
-        avatar: { color: form.color, accessory: form.accessory },
-        buildingId,
-        ...aiSetupPayload(form.ai),
-        effort: form.effort,
-        dailyBudgetUsd: form.dailyBudget.trim() ? Number(form.dailyBudget) : null,
-      });
-      push({ tone: "good", text: `${agent.name} the ${agent.role} moved into town 🏡` });
-      useTown.getState().selectAgent(agent.id);
-      onDone();
-    } catch (e) {
-      push({ tone: "bad", text: errText(e) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="stack form">
-      <h3>1 · Pick a starting point</h3>
-      <div className="template-grid">
-        {snap.templates.map((t) => (
-          <button key={t.id} className={`template ${template?.id === t.id ? "on" : ""}`} onClick={() => pick(t)} title={t.description}>
-            <span className="template-icon">{t.icon}</span>
-            <b>{t.role}</b>
-            <small>{t.description}</small>
-          </button>
-        ))}
-      </div>
-      <h3>2 · Make them yours</h3>
-      <div className="grid2">
-        <label>
-          Name *
-          <input value={form.name} maxLength={40} placeholder="e.g. Bolt" onChange={(e) => set("name", e.target.value)} />
-        </label>
-        <label>
-          Role *
-          <input value={form.role} maxLength={60} placeholder="e.g. Engineer" onChange={(e) => set("role", e.target.value)} />
-        </label>
-      </div>
-      <label>
-        System prompt *
-        <textarea rows={5} value={form.systemPrompt} onChange={(e) => set("systemPrompt", e.target.value)} placeholder="Who they are and how they work…" />
-      </label>
-      <label>
-        Personality
-        <input value={form.personality} onChange={(e) => set("personality", e.target.value)} />
-      </label>
-      <label>
-        Responsibilities <small className="muted">(one per line)</small>
-        <textarea rows={2} value={form.responsibilities} onChange={(e) => set("responsibilities", e.target.value)} />
-      </label>
-      <SkillPicker value={form.skills} onChange={(v) => set("skills", v)} />
-      <AiSetup value={form.ai} onChange={(v) => set("ai", v)} skills={form.skills} />
-      <div className="grid2">
-        <label>
-          Effort
-          <select value={form.effort} onChange={(e) => set("effort", e.target.value as Effort)}>
-            {["low", "medium", "high", "xhigh", "max"].map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Daily spend cap (USD, optional)
-          <input type="number" min={0} step={0.5} value={form.dailyBudget} placeholder="no personal cap" onChange={(e) => set("dailyBudget", e.target.value)} />
-        </label>
-        <label>
-          Look
-          <span className="row gap-s">
-            <input type="color" value={form.color} onChange={(e) => set("color", e.target.value)} style={{ width: 56 }} />
-            <select value={form.accessory} onChange={(e) => set("accessory", e.target.value)}>
-              {ACCESSORIES.map((a) => (
-                <option key={a}>{a}</option>
-              ))}
-            </select>
-          </span>
-        </label>
-      </div>
-      <h3>3 · Where do they work?</h3>
-      <label className="check">
-        <input type="checkbox" checked={form.newDepartment} disabled={!freeSlots.length} onChange={(e) => set("newDepartment", e.target.checked)} />
-        <span>
-          Build a new {template?.department ?? "department"} building {freeSlots.length ? `on the ${theme.world.slotLabels[freeSlots[0]] ?? freeSlots[0]}` : "(no free plots)"}
-        </span>
-      </label>
-      {!form.newDepartment && (
-        <label>
-          Building
-          <select value={form.buildingId} onChange={(e) => set("buildingId", e.target.value)}>
-            {snap.buildings.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name} — {b.department}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <button className="btn primary full" disabled={busy || !form.name.trim() || !form.role.trim() || !form.systemPrompt.trim()} onClick={submit}>
-        🏡 Welcome to town
-      </button>
     </div>
   );
 }
