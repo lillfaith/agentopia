@@ -64,6 +64,7 @@ export const DEFAULT_SETTINGS: TownSettings = {
   timezoneMode: "auto",
   paused: false,
   defaultDepth: "standard",
+  modelPreference: "balanced",
 };
 
 const NO_EXECUTION: TaskExecution = { mode: "none", calls: 0, costUsd: 0, inputTokens: 0, outputTokens: 0, models: [], lastRequestId: null };

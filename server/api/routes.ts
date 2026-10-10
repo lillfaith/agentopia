@@ -240,6 +240,7 @@ const settingsPatch = z
       .strict(),
     budget: z.object({ dailyUsd: money.nullable(), monthlyUsd: money.nullable(), perTaskUsd: money.nullable() }).partial().strict(),
     defaultDepth: z.enum(["quick", "standard", "deep"]),
+    modelPreference: z.enum(["economy", "balanced", "quality"]),
   })
   .partial()
   .strict();
@@ -745,6 +746,12 @@ export function createApi(deps: ApiDeps): Hono {
     if (b.data.modelOverride && !isKnownModel(b.data.modelOverride)) return c.json(err(`Unknown model ${b.data.modelOverride}`), 400);
     const blocked = modelNotAllowed(b.data.modelOverride ?? undefined);
     if (blocked) return c.json(err(blocked), 403);
+    // The same job, still waiting or in progress, isn't started twice (a double click, a re-submitted form).
+    const norm = (x: string) => x.trim().replace(/\s+/g, " ").toLowerCase();
+    const twin = store
+      .listTasks({ agentId: agent.id, limit: 100 })
+      .find((t) => ["queued", "running", "blocked", "retry_wait", "waiting_approval"].includes(t.status) && norm(t.title) === norm(b.data.title) && norm(t.instructions) === norm(b.data.instructions));
+    if (twin) return c.json({ error: `${agent.name} is already on this exact task (“${twin.title}”). It won't be run twice.`, duplicateOf: twin.id }, 409);
     const task = store.createTask({ ...b.data, createdBy: "user" });
     store.addEvent({ type: "task.created", agentId: agent.id, taskId: task.id, message: `You assigned “${task.title}” to ${agent.name}`, data: { createdBy: "user" } });
     runner.poke();

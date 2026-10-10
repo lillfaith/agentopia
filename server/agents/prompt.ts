@@ -34,6 +34,32 @@ export function buildSystemPrompt(agent: Agent, skillPrompts: string[] = []): st
   return lines.join("\n");
 }
 
+/** How many recent notes are considered, and how many go into a brief. */
+const MEMORY_POOL = 40;
+export const MEMORY_IN_BRIEF = 10;
+const STOP = new Set(["about", "after", "again", "their", "there", "these", "those", "which", "would", "could", "should", "with", "from", "that", "this", "what", "when", "where", "your", "have", "will", "into", "than", "then", "them", "they", "make", "write", "please"]);
+const words = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9][a-z0-9-]{3,}/g)?.filter((w) => !STOP.has(w)) ?? []);
+
+/**
+ * The notes worth putting in this brief: the three most recent (they're usually the context of
+ * ongoing work), plus the ones sharing the most words with the task, up to MEMORY_IN_BRIEF.
+ * Returned oldest first. `notes` arrives newest first.
+ */
+export function relevantMemories<T extends { content: string }>(notes: T[], taskText: string): T[] {
+  if (notes.length <= MEMORY_IN_BRIEF) return [...notes].reverse();
+  const want = words(taskText);
+  const keep = new Set<number>([0, 1, 2]);
+  const scored = notes
+    .map((n, i) => ({ i, score: [...words(n.content)].filter((w) => want.has(w)).length }))
+    .filter((x) => !keep.has(x.i) && x.score > 0)
+    .sort((a, b) => b.score - a.score || a.i - b.i);
+  for (const x of scored) {
+    if (keep.size >= MEMORY_IN_BRIEF) break;
+    keep.add(x.i);
+  }
+  return [...keep].sort((a, b) => b - a).map((i) => notes[i]);
+}
+
 /** Stop quoted content from closing (or opening) our framing tags early. */
 export function neutralizeTags(text: string): string {
   return text.replace(/<(\/?)(colleague_output|delegated_brief|memory)/gi, "<\u200b$1$2");
@@ -76,9 +102,9 @@ export function buildBrief(store: Store, task: Task, research?: { searches: numb
       );
     }
   }
-  const notes = store.listMemories(task.agentId, 20);
+  const notes = relevantMemories(store.listMemories(task.agentId, MEMORY_POOL), `${task.title} ${task.instructions}`);
   if (notes.length) {
-    parts.push("", "## Your notes from earlier tasks", "<memory>", ...notes.reverse().map((m) => `- ${neutralizeTags(m.content)}`), "</memory>");
+    parts.push("", "## Your notes from earlier tasks", "<memory>", ...notes.map((m) => `- ${neutralizeTags(m.content)}`), "</memory>");
   }
   if (research) {
     parts.push(

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ResearchDepth, TownTaxSettings, TreasurySummary } from "../../../shared/types";
+import type { ModelPreference, ResearchDepth, TownTaxSettings, TreasurySummary } from "../../../shared/types";
 import { api, getToken, setToken } from "../api/client";
 import { useTown } from "../state/store";
 import { listThemes } from "../theme-engine/registry";
@@ -621,15 +621,22 @@ function ResearchDefaults() {
   const depths = useTown((s) => s.snapshot!.status.depths);
   const push = useTown((s) => s.pushToast);
   const load = useTown((s) => s.load);
-  const choose = async (defaultDepth: ResearchDepth) => {
+  const save = async (patch: Partial<Pick<typeof settings, "defaultDepth" | "modelPreference">>, text: string) => {
     try {
-      await api.updateSettings({ defaultDepth });
+      await api.updateSettings(patch);
       await load();
-      push({ tone: "info", text: "Default research depth saved" });
+      push({ tone: "info", text });
     } catch (e) {
       push({ tone: "bad", text: e instanceof Error ? e.message : String(e) });
     }
   };
+  const choose = (defaultDepth: ResearchDepth) => save({ defaultDepth }, "Default research depth saved");
+  const preference = settings.modelPreference ?? "balanced";
+  const PREFS: { id: ModelPreference; label: string; text: string }[] = [
+    { id: "economy", label: "Economy", text: "Every task uses the lowest-cost model your plan allows, except Deep research. Best for affordable experimenting." },
+    { id: "balanced", label: "Balanced", text: "Quick research uses the lowest-cost model; everything else uses each employee's own model." },
+    { id: "quality", label: "Quality", text: "Always each employee's own model." },
+  ];
   return (
     <section className="card form">
       <h3>Research depth</h3>
@@ -645,6 +652,17 @@ function ResearchDefaults() {
             <small className="muted">
               ≤ {d.maxSearches} searches · ≤ {d.maxFetches} page reads · ≈ {fmtUsd(d.maxTaskUsd)} max on Sonnet
             </small>
+          </label>
+        ))}
+      </div>
+      <h3>Model choice</h3>
+      <p className="muted small">Which model a task runs on when it doesn&apos;t pick one. Employees&apos; own model settings never change; a model picked on a task always wins.</p>
+      <div className="depth-choices">
+        {PREFS.map((p) => (
+          <label key={p.id} className={`depth-choice ${preference === p.id ? "on" : ""}`}>
+            <input type="radio" name="model-preference" checked={preference === p.id} onChange={() => save({ modelPreference: p.id }, `Model choice: ${p.label}`)} />
+            <b>{p.label}</b>
+            <small>{p.text}</small>
           </label>
         ))}
       </div>

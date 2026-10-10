@@ -89,7 +89,8 @@ export class AgentExecutor {
     // Research depth decides the model, effort and limits for this task. Fixed for the whole
     // task: model, effort and tools are part of the cached prompt prefix.
     const research = usesWebResearch(hosted);
-    const plan = planTaskRun(task, own, { defaultDepth: this.store.getSettings().defaultDepth, allowedModels: allowed ?? null, research, provider: stored.provider });
+    const townSettings = this.store.getSettings();
+    const plan = planTaskRun(task, own, { defaultDepth: townSettings.defaultDepth, allowedModels: allowed ?? null, research, provider: stored.provider, preference: townSettings.modelPreference });
     const agent = { ...own, model: plan.model, effort: plan.effort };
     const depth = research ? plan.depth : null;
     const maxTurns = depth ? Math.min(depth.maxTurns, this.config.maxTurnsPerTask) : this.config.maxTurnsPerTask;
