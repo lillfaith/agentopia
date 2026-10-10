@@ -1,0 +1,26 @@
+# TEMPORARY: prints the outputs of benchmark run 38089371210 for review. No secrets, no AI calls.
+name: bench-dump
+on:
+  push:
+    branches: [claude/happy-fermi-ypjunl]
+    paths: [.github/workflows/bench-dump.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: benchmark
+          run-id: 38089371210
+          github-token: ${{ github.token }}
+      - run: |
+          python3 - <<'PY'
+          import json
+          d = json.load(open("benchmark.json"))
+          for r in d["runs"]:
+              print("=" * 30, r["case"] if "case" in r else "", r["variant"], r.get("rep"), r["model"])
+              print(r["output"])
+          PY
