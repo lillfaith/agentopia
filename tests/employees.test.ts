@@ -187,6 +187,18 @@ describe("drafting instructions from a description", () => {
     expect(h.store.listAgents().some((a) => a.role === "YouTube Manager")).toBe(false);
   });
 
+  it("accepts a messy but usable AI reply instead of throwing it away", async () => {
+    const messy = '```json\n{"role": "Writer", "systemPrompt": "You write.", "responsibilities": "- One\\n- ' + "x".repeat(300) + '", "operatingInstructions": ["Be brief.", "No jargon."], "skills": ["writing"]}\n```';
+    const h = harness(new ScriptedProvider([say(messy)]));
+    const d = await (await ask(h)).json();
+    expect(d.source).toBe("ai");
+    expect(d.responsibilities[0]).toBe("One");
+    expect(d.responsibilities[1]).toHaveLength(200);
+    expect(d.operatingInstructions).toBe("Be brief.\nNo jargon.");
+    const bad = harness(new ScriptedProvider([say('{"role": "Writer"}')]));
+    expect((await (await ask(bad)).json()).note).toMatch(/systemPrompt/);
+  });
+
   it("falls back to the template when AI isn't available or the reply is unusable", async () => {
     const sim = harness(new SimulatedProvider(0));
     const fromTemplate = await (await ask(sim, { templateId: "youtube-manager" })).json();

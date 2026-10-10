@@ -133,7 +133,7 @@ try {
   check(
     "draft an employee's instructions from a description",
     draft.status === 200 && draft.body.systemPrompt?.length > 20 && Array.isArray(draft.body.skills) && (simulate || draft.body.source === "ai"),
-    `${draft.body.source ?? draft.body.error}: ${JSON.stringify((draft.body.systemPrompt ?? "").slice(0, 100))}`,
+    `${draft.body.source ?? draft.body.error}${draft.body.note ? ` (${draft.body.note})` : ""}: ${JSON.stringify((draft.body.systemPrompt ?? "").slice(0, 100))}`,
   );
   const snapNow = (await alice("/api/snapshot")).body;
   const hired = await alice("/api/agents", "POST", {

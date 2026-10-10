@@ -25,14 +25,21 @@ interface DraftDeps {
   holdReason: string | null;
 }
 
+/** Read the model's JSON leniently: trim what's too long instead of throwing the whole draft away. */
+const str = (max: number) => z.preprocess((v) => (v == null ? "" : typeof v === "string" ? v : Array.isArray(v) ? v.join("\n") : String(v)), z.string().transform((x) => x.trim().slice(0, max)));
+const list = (maxItems: number, maxLen: number) =>
+  z.preprocess(
+    (v) => (Array.isArray(v) ? v : typeof v === "string" ? v.split("\n") : []),
+    z.array(z.unknown()).transform((xs) => xs.map((x) => String(x ?? "").replace(/^[-*•\s]+/, "").trim().slice(0, maxLen)).filter(Boolean).slice(0, maxItems)),
+  );
 const aiDraft = z.object({
-  role: z.string().trim().min(1).max(PROFILE_LIMITS.role),
-  personality: z.string().max(PROFILE_LIMITS.personality).default(""),
-  systemPrompt: z.string().trim().min(1).max(PROFILE_LIMITS.systemPrompt),
-  responsibilities: z.array(z.string().trim().min(1).max(PROFILE_LIMITS.responsibility)).max(PROFILE_LIMITS.responsibilities).default([]),
-  operatingInstructions: z.string().max(PROFILE_LIMITS.operatingInstructions).default(""),
-  taskInstructions: z.string().max(PROFILE_LIMITS.taskInstructions).default(""),
-  skills: z.array(z.string()).max(20).default([]),
+  role: str(PROFILE_LIMITS.role),
+  personality: str(PROFILE_LIMITS.personality),
+  systemPrompt: str(PROFILE_LIMITS.systemPrompt).refine((x) => x.length > 0, "systemPrompt is empty"),
+  responsibilities: list(PROFILE_LIMITS.responsibilities, PROFILE_LIMITS.responsibility),
+  operatingInstructions: str(PROFILE_LIMITS.operatingInstructions),
+  taskInstructions: str(PROFILE_LIMITS.taskInstructions),
+  skills: list(20, 40),
 });
 
 /**
@@ -92,12 +99,21 @@ export async function draftEmployee(deps: DraftDeps, input: DraftInput): Promise
       data: { ...res.usage, costUsd: cost, model: res.servedModel, requestId: res.requestId, billing: "platform", purpose: "employee-draft" },
     });
     const json = res.text.match(/\{[\s\S]*\}/)?.[0];
-    const parsed = json ? aiDraft.safeParse(JSON.parse(json)) : null;
-    if (!parsed?.success) return { ...fallback, note: "The AI draft didn't come back in a usable shape, so this one is based on the template." };
+    let raw: unknown = null;
+    try {
+      raw = json ? JSON.parse(json) : null;
+    } catch {
+      raw = null;
+    }
+    const parsed = raw ? aiDraft.safeParse(raw) : null;
+    if (!parsed?.success) {
+      const why = parsed ? parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") : json ? "not valid JSON" : "no JSON in the reply";
+      return { ...fallback, note: `The AI draft couldn't be read (${why.slice(0, 160)}), so this one is based on the template.` };
+    }
     const d = parsed.data;
     const skills = sanitizeSkills(d.skills);
     return {
-      role: input.role?.trim() || d.role,
+      role: input.role?.trim() || d.role || fallback.role,
       personality: d.personality,
       systemPrompt: d.systemPrompt,
       responsibilities: d.responsibilities,
