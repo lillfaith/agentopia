@@ -792,7 +792,7 @@ export function createApi(deps: ApiDeps): Hono {
   api.get("/api/tasks/:id/usage", (c) => {
     const task = store.getTask(c.req.param("id"));
     if (!task) return c.json(err("Task not found"), 404);
-    return c.json(taskUsageBreakdown(task.id, task.depth, store.taskUsage(task.id)));
+    return c.json(taskUsageBreakdown(task.id, task.depth, store.taskUsage(task.id), task.attempts));
   });
   api.post("/api/tasks/:id/cancel", (c) => {
     const r = runner.cancelTask(c.req.param("id"));
@@ -981,7 +981,8 @@ export function createApi(deps: ApiDeps): Hono {
   );
 
   // ── treasury & settings ──
-  api.get("/api/treasury", (c) => c.json(treasurySummary(store, config, runner.provider.simulated)));
+  // Rate limits belong to the operator's API key, so only a self-hosted owner (not a SaaS customer) sees them.
+  api.get("/api/treasury", (c) => c.json(treasurySummary(store, config, runner.provider.simulated, deps.embedded ? null : (runner.provider.lastRateLimit ?? null))));
   api.get("/api/settings", (c) => c.json(store.getSettings()));
   api.patch("/api/settings", async (c) => {
     const b = await body(c, settingsPatch);

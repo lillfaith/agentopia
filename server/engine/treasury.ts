@@ -1,7 +1,8 @@
 import type { TownTaxSettings, TreasurySummary } from "../../shared/types.js";
 import type { Config } from "../config.js";
 import type { Store } from "../db/store.js";
-import { PRICING_NOTE } from "../llm/models.js";
+import { PRICING_NOTE, isKnownModel } from "../llm/models.js";
+import { costSplit } from "../llm/usage.js";
 import { budgetStatus } from "./budget.js";
 import { runsPerMonth } from "./scheduler.js";
 
@@ -27,7 +28,66 @@ export function computeTownTax(settings: TownTaxSettings, weekCostUsd: number, w
   return { amount: Math.round(amount * 100) / 100, capped: raw > cap };
 }
 
-export function treasurySummary(store: Store, config: Config, simulated = false): TreasurySummary {
+/** Spend by who paid, what it was for, billing category, and the most expensive tasks. */
+function breakdowns(store: Store): Pick<TreasurySummary, "funding" | "operations" | "categories" | "topTasks" | "retries"> {
+  const funding = store.usageQuery<{ billing: string; cost: number; n: number; tokens: number }>(
+    `SELECT billing, SUM(cost_usd) AS cost, COUNT(*) AS n, SUM(input_tokens + cache_read_tokens + cache_write_tokens + output_tokens) AS tokens
+     FROM usage WHERE simulated = 0 GROUP BY billing ORDER BY cost DESC`,
+  );
+  const operations = store.usageQuery<{ op: string; cost: number; n: number; tokens: number }>(
+    `SELECT CASE
+              WHEN u.agent_id = 'hiring-desk' THEN 'hiring-desk'
+              WHEN u.agent_id = 'system' THEN 'system'
+              WHEN t.schedule_id IS NOT NULL OR t.created_by LIKE 'schedule:%' THEN 'scheduled'
+              WHEN t.created_by IS NOT NULL AND t.created_by <> 'user' THEN 'delegated'
+              ELSE 'work' END AS op,
+            SUM(u.cost_usd) AS cost, COUNT(*) AS n, SUM(u.input_tokens + u.cache_read_tokens + u.cache_write_tokens + u.output_tokens) AS tokens
+     FROM usage u LEFT JOIN tasks t ON t.id = u.task_id
+     WHERE u.simulated = 0 GROUP BY op ORDER BY cost DESC`,
+  );
+  const perModel = store.usageQuery<{ model: string; fresh: number; cw: number; cr: number; out: number; think: number; s: number; f: number; cost: number }>(
+    `SELECT model, SUM(input_tokens) AS fresh, SUM(cache_write_tokens) AS cw, SUM(cache_read_tokens) AS cr, SUM(output_tokens) AS out,
+            COALESCE(SUM(thinking_tokens), 0) AS think, SUM(web_search_requests) AS s, SUM(web_fetch_requests) AS f, SUM(cost_usd) AS cost
+     FROM usage WHERE simulated = 0 GROUP BY model`,
+  );
+  const costs = { freshInputUsd: 0, cacheWriteUsd: 0, cacheReadUsd: 0, outputUsd: 0, webSearchUsd: 0, otherUsd: 0 };
+  const sums = { freshInput: 0, cacheWrite: 0, cacheRead: 0, output: 0, thinking: 0, webSearches: 0, webFetches: 0 };
+  for (const r of perModel) {
+    const u = { inputTokens: Number(r.fresh), cacheWriteTokens: Number(r.cw), cacheReadTokens: Number(r.cr), outputTokens: Number(r.out), webSearchRequests: Number(r.s) };
+    sums.freshInput += u.inputTokens;
+    sums.cacheWrite += u.cacheWriteTokens;
+    sums.cacheRead += u.cacheReadTokens;
+    sums.output += u.outputTokens;
+    sums.thinking += Number(r.think);
+    sums.webSearches += u.webSearchRequests;
+    sums.webFetches += Number(r.f);
+    if (isKnownModel(r.model)) {
+      const c = costSplit(r.model, u);
+      costs.freshInputUsd += c.freshInputUsd;
+      costs.cacheWriteUsd += c.cacheWriteUsd;
+      costs.cacheReadUsd += c.cacheReadUsd;
+      costs.outputUsd += c.outputUsd;
+      costs.webSearchUsd += c.webSearchUsd;
+    } else costs.otherUsd += Number(r.cost);
+  }
+  const topTasks = store.usageQuery<{ task_id: string; title: string; agent_id: string; cost: number; n: number; s: number; attempts: number }>(
+    `SELECT u.task_id, t.title, u.agent_id, SUM(u.cost_usd) AS cost, COUNT(*) AS n, SUM(u.web_search_requests) AS s, t.attempts
+     FROM usage u JOIN tasks t ON t.id = u.task_id
+     WHERE u.simulated = 0 GROUP BY u.task_id ORDER BY cost DESC LIMIT 8`,
+  );
+  const retries = store.usageQuery<{ n: number; extra: number }>(
+    `SELECT COUNT(*) AS n, COALESCE(SUM(attempts - 1), 0) AS extra FROM tasks WHERE attempts > 1`,
+  )[0];
+  return {
+    funding: funding.map((r) => ({ billing: r.billing === "own" ? "own" : "platform", costUsd: Number(r.cost), requests: Number(r.n), tokens: Number(r.tokens) })),
+    operations: operations.map((r) => ({ id: r.op as NonNullable<TreasurySummary["operations"]>[number]["id"], costUsd: Number(r.cost), requests: Number(r.n), tokens: Number(r.tokens) })),
+    categories: { ...sums, costs },
+    topTasks: topTasks.map((r) => ({ taskId: r.task_id, title: r.title, agentId: r.agent_id, costUsd: Number(r.cost), requests: Number(r.n), searches: Number(r.s), attempts: Number(r.attempts) })),
+    retries: { tasks: Number(retries?.n ?? 0), extraAttempts: Number(retries?.extra ?? 0) },
+  };
+}
+
+export function treasurySummary(store: Store, config: Config, simulated = false, rateLimit: TreasurySummary["rateLimit"] = null): TreasurySummary {
   // Simulated rows carry zero tokens and zero cost; exclude them so totals reflect real API usage only.
   const totals = store.usageQuery<Agg & { searches: number; fetches: number; code: number; live: number }>(
     `SELECT COALESCE(SUM(input_tokens + cache_read_tokens + cache_write_tokens),0) AS input_tokens,
@@ -100,5 +160,8 @@ export function treasurySummary(store: Store, config: Config, simulated = false)
       capped: tax.capped,
     },
     pricingNote: PRICING_NOTE,
+    ...breakdowns(store),
+    rateLimit,
+    costBasis: "estimated",
   };
 }

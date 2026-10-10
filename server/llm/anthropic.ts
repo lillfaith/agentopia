@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { GenerateRequest, GenerateResult, HostedLimits, LLMProvider, StopReason, ToolResult } from "./provider.js";
+import type { GenerateRequest, GenerateResult, HostedLimits, LLMProvider, RateLimitSnapshot, RateLimitWindow, StopReason, ToolResult } from "./provider.js";
+import { log } from "../log.js";
 import { NonRetryableError } from "./provider.js";
 import { modelSpec } from "./models.js";
 
@@ -17,6 +18,8 @@ export class AnthropicProvider implements LLMProvider {
   readonly id = "anthropic";
   readonly simulated = false;
   private readonly client: Anthropic;
+  /** Rate-limit headers from the latest response (limits and what's left; never credentials). */
+  lastRateLimit: RateLimitSnapshot | null = null;
 
   constructor(
     apiKey: string,
@@ -46,6 +49,17 @@ export class AnthropicProvider implements LLMProvider {
         ...(r.isError ? { is_error: true } : {}),
       })),
     };
+  }
+
+  private noteRateLimit(h: Headers | Record<string, string>): void {
+    const snap = rateLimitFrom(h);
+    if (!snap) return;
+    this.lastRateLimit = snap;
+    const low = (["requests", "inputTokens", "outputTokens", "tokens"] as const).filter((k) => {
+      const w = snap[k];
+      return w?.limit && w.remaining !== null && w.remaining / w.limit < 0.1;
+    });
+    if (low.length) log.warn("anthropic rate limit nearly used up", { limits: Object.fromEntries(low.map((k) => [k, snap[k]])) });
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
@@ -79,6 +93,8 @@ export class AnthropicProvider implements LLMProvider {
     let requestId: string | null = null;
     try {
       const stream = this.client.beta.messages.stream(params, { signal: req.signal });
+      // Response headers carry the account's rate limits and what's left of them.
+      const headers = stream.withResponse().then((r) => r.response.headers, () => null);
       if (req.onProgress) {
         // Text is only known to be a progress note once a tool step follows it; whatever
         // text ends the response is the answer, which is never sent as a note.
@@ -101,7 +117,11 @@ export class AnthropicProvider implements LLMProvider {
       }
       message = await stream.finalMessage();
       requestId = stream.request_id ?? null;
+      const h = await headers;
+      if (h) this.noteRateLimit(h);
     } catch (err) {
+      const h = (err as { headers?: Headers | Record<string, string> | null })?.headers;
+      if (h) this.noteRateLimit(h);
       throw mapError(err);
     }
 
@@ -253,13 +273,35 @@ function mapStop(reason: string | null): StopReason {
   }
 }
 
+/** Read anthropic-ratelimit-* headers into a snapshot; warn in the logs when one is nearly used up. */
+export function rateLimitFrom(h: Headers | Record<string, string>): RateLimitSnapshot | null {
+  const get = (k: string) => (typeof (h as Headers).get === "function" ? (h as Headers).get(k) : ((h as Record<string, string>)[k] ?? null));
+  const window = (name: string): RateLimitWindow | undefined => {
+    const limit = get(`anthropic-ratelimit-${name}-limit`);
+    const remaining = get(`anthropic-ratelimit-${name}-remaining`);
+    if (limit === null && remaining === null) return undefined;
+    return { limit: limit === null ? null : Number(limit), remaining: remaining === null ? null : Number(remaining), reset: get(`anthropic-ratelimit-${name}-reset`) };
+  };
+  const snap: RateLimitSnapshot = { at: new Date().toISOString(), requests: window("requests"), inputTokens: window("input-tokens"), outputTokens: window("output-tokens"), tokens: window("tokens") };
+  return snap.requests || snap.inputTokens || snap.outputTokens || snap.tokens ? snap : null;
+}
+
 function mapError(err: unknown): Error {
   // Most specific first. 4xx client errors will not succeed on retry.
   if (err instanceof Anthropic.AuthenticationError) return new NonRetryableError("Claude API rejected the API key (401). Check ANTHROPIC_API_KEY.");
   if (err instanceof Anthropic.PermissionDeniedError) return new NonRetryableError(`Claude API permission denied (403): ${err.message}`);
   if (err instanceof Anthropic.NotFoundError) return new NonRetryableError(`Model or resource not found (404): ${err.message}`);
+  if (err instanceof Anthropic.BadRequestError && /credit balance/i.test(err.message)) {
+    return new NonRetryableError("Anthropic says the API key's credit balance is too low. Add credits (or enable auto-reload) in the Anthropic Console → Billing.");
+  }
   if (err instanceof Anthropic.BadRequestError) return new NonRetryableError(`Claude API rejected the request (400): ${err.message}`);
-  if (err instanceof Anthropic.RateLimitError) return new Error(`Rate limited by Claude API (429) — will retry: ${err.message}`);
+  if (err instanceof Anthropic.RateLimitError) {
+    const snap = err.headers ? rateLimitFrom(err.headers as unknown as Headers) : null;
+    const hit = snap ? (["requests", "inputTokens", "outputTokens", "tokens"] as const).filter((k) => snap[k]?.remaining === 0) : [];
+    const label: Record<string, string> = { requests: "requests per minute", inputTokens: "input tokens per minute", outputTokens: "output tokens per minute", tokens: "tokens per minute" };
+    const retry = (err.headers as unknown as Headers | undefined)?.get?.("retry-after");
+    return new Error(`Rate limited by the Claude API (429)${hit.length ? `: ${hit.map((k) => label[k]).join(" and ")} used up` : ""}${retry ? `; retry after ${retry}s` : ""}. Will retry. Check your limits in the Anthropic Console → Limits.`);
+  }
   if (err instanceof Anthropic.APIError) return new Error(`Claude API error ${err.status ?? ""}: ${err.message}`);
   if (err instanceof Error) return err;
   return new Error(String(err));

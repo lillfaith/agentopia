@@ -86,10 +86,28 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+/** One provider rate limit as reported in response headers (no credentials). */
+export interface RateLimitWindow {
+  limit: number | null;
+  remaining: number | null;
+  reset: string | null;
+}
+
+/** The provider's rate-limit headers from the latest response, e.g. Anthropic's anthropic-ratelimit-*. */
+export interface RateLimitSnapshot {
+  at: string;
+  requests?: RateLimitWindow;
+  inputTokens?: RateLimitWindow;
+  outputTokens?: RateLimitWindow;
+  tokens?: RateLimitWindow;
+}
+
 export interface LLMProvider {
   readonly id: string;
   /** True for the offline simulator — its output must never be presented as real. */
   readonly simulated: boolean;
+  /** Rate-limit headers from the most recent response, when the provider reports them. */
+  lastRateLimit?: RateLimitSnapshot | null;
   generate(req: GenerateRequest): Promise<GenerateResult>;
   userMessage(text: string): ProviderMessage;
   toolResultsMessage(results: ToolResult[]): ProviderMessage;
