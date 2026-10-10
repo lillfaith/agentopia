@@ -8,6 +8,17 @@ name: cost-probe
 # Runs only when started by hand (Actions → cost-probe → Run workflow): a full comparison spends about $2.
 on:
   workflow_dispatch:
+    inputs:
+      suite:
+        description: "benchmark = five task types before/after (scripts/benchmark.ts); probe = the research probe matrix"
+        required: true
+        default: benchmark
+        type: choice
+        options: [benchmark, probe]
+      budget:
+        description: "benchmark only: total spend cap in USD (runs + grading)"
+        required: true
+        default: "1.50"
 
 permissions:
   contents: read
@@ -17,7 +28,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  benchmark:
+    if: inputs.suite == 'benchmark'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Run the benchmark (hard-capped)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_CI || secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          AGENTOPIA_CI_KEY_SOURCE: ${{ secrets.ANTHROPIC_API_KEY_CI != '' && 'dedicated CI key (ANTHROPIC_API_KEY_CI)' || 'shared key (set ANTHROPIC_API_KEY_CI to separate test spend)' }}
+          NODE_NO_WARNINGS: "1"
+        run: npx tsx scripts/benchmark.ts --budget "${{ inputs.budget }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark
+          path: benchmark.json
+          if-no-files-found: ignore
+
   plan:
+    if: inputs.suite == 'probe'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.m.outputs.matrix }}
@@ -68,7 +104,7 @@ jobs:
 
   compare:
     needs: probe
-    if: always()
+    if: always() && inputs.suite == 'probe'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
