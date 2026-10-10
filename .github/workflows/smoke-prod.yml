@@ -1,0 +1,28 @@
+# TEMPORARY: free production smoke test after deploy. No secrets, no AI calls.
+name: smoke-prod
+on:
+  push:
+    branches: [claude/happy-fermi-ypjunl]
+    paths: [.github/workflows/smoke-prod.yml]
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: |
+          set -u
+          BASE=https://agentopia-production.up.railway.app
+          JS=""
+          for i in $(seq 1 60); do
+            JS=$(curl -fsS "$BASE/" | grep -o '/assets/index-[A-Za-z0-9_-]*\.js' | head -1 || true)
+            if [ -n "$JS" ] && curl -fsS "$BASE$JS" | grep -q "Model choice"; then echo "New bundle live: $JS (after $i checks)"; break; fi
+            echo "check $i: bundle $JS not updated yet"; sleep 20
+          done
+          curl -fsS "$BASE$JS" | grep -q "Model choice" || { echo "::error::new version not live"; exit 1; }
+          curl -fsS "$BASE$JS" | grep -q "Hire an employee" && echo "Hiring UI present"
+          echo "health: $(curl -fsS $BASE/api/health)"
+          echo "ready:  $(curl -fsS $BASE/api/ready)"
+          echo "home:   HTTP $(curl -s -o /dev/null -w '%{http_code}' $BASE/)"
+          echo "snapshot without login: HTTP $(curl -s -o /dev/null -w '%{http_code}' $BASE/api/snapshot) (expect 401)"
