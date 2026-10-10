@@ -3,6 +3,9 @@ import { EventEmitter } from "node:events";
 import type {
   AIProvider,
   Agent,
+  AgentTemplate,
+  InstructionProfile,
+  ProfileVersion,
   AgentMemory,
   CredentialInfo,
   CredentialService,
@@ -31,6 +34,7 @@ import type {
 import { transaction, type Database } from "./database.js";
 import type { Vault } from "../vault/vault.js";
 import { normalizeAppearance, normalizeVoice, type Appearance, type VoiceConfig } from "../../shared/cosmetics.js";
+import { profileOf } from "../../shared/profile.js";
 
 type Row = Record<string, unknown>;
 
@@ -95,8 +99,37 @@ function toAgent(r: Row): Agent {
     credentialId: (r.credential_id as string) ?? null,
     githubCredentialId: (r.github_credential_id as string) ?? null,
     customPrices: parse(r.custom_prices, null),
+    operatingInstructions: (r.operating_instructions as string) ?? "",
+    taskInstructions: (r.task_instructions as string) ?? "",
+    referenceNotes: (r.reference_notes as string) ?? "",
+    approvalTools: parse(r.approval_tools, []),
+    templateId: (r.template_id as string) ?? null,
+    profileVersion: Number(r.profile_version ?? 1),
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
+  };
+}
+
+function toTemplate(r: Row): AgentTemplate {
+  const data = parse<Partial<AgentTemplate>>(r.data, {});
+  return {
+    role: "Employee",
+    icon: "✨",
+    description: "",
+    personality: "",
+    systemPrompt: "",
+    responsibilities: [],
+    skills: [],
+    effort: "medium",
+    avatar: { color: "#ffc9d9", accessory: "sprout" },
+    buildingKind: "studio",
+    department: "Team",
+    tags: [],
+    ...data,
+    id: r.id as string,
+    version: Number(r.version),
+    source: r.source === "imported" ? "imported" : "custom",
+    group: "custom",
   };
 }
 
@@ -340,8 +373,14 @@ export class Store {
   insertAgent(
     a: Omit<
       Agent,
-      "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "archived" | "dailyBudgetUsd" | "avatar" | "appearance" | "voice" | "provider" | "credentialId" | "githubCredentialId" | "customPrices"
+      | "createdAt" | "updatedAt" | "status" | "statusDetail" | "currentTaskId" | "archived" | "dailyBudgetUsd" | "avatar" | "appearance" | "voice" | "provider" | "credentialId" | "githubCredentialId" | "customPrices"
+      | "operatingInstructions" | "taskInstructions" | "referenceNotes" | "approvalTools" | "templateId" | "profileVersion"
     > & {
+      operatingInstructions?: string;
+      taskInstructions?: string;
+      referenceNotes?: string;
+      approvalTools?: string[];
+      templateId?: string | null;
       dailyBudgetUsd?: number | null;
       provider?: AIProvider;
       credentialId?: string | null;
@@ -356,15 +395,87 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO agents (id, name, role, personality, system_prompt, responsibilities, model, effort, skills, avatar, appearance, voice,
-           building_id, status, enabled, daily_budget_usd, provider, credential_id, github_credential_id, custom_prices, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?)`,
+           building_id, status, enabled, daily_budget_usd, provider, credential_id, github_credential_id, custom_prices,
+           operating_instructions, task_instructions, reference_notes, approval_tools, template_id, profile_version, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       )
       .run(
         a.id, a.name, a.role, a.personality, a.systemPrompt, json(a.responsibilities), a.model, a.effort,
         json(a.skills), json(avatarFor(appearance)), json(appearance), json(normalizeVoice(a.voice)), a.buildingId, a.enabled ? 1 : 0, a.dailyBudgetUsd ?? null,
-        a.provider ?? "anthropic", a.credentialId ?? null, a.githubCredentialId ?? null, a.customPrices ? json(a.customPrices) : null, ts, ts,
+        a.provider ?? "anthropic", a.credentialId ?? null, a.githubCredentialId ?? null, a.customPrices ? json(a.customPrices) : null,
+        a.operatingInstructions ?? "", a.taskInstructions ?? "", a.referenceNotes ?? "", json(a.approvalTools ?? []), a.templateId ?? null, ts, ts,
       );
-    return this.getAgent(a.id)!;
+    const agent = this.getAgent(a.id)!;
+    this.addProfileVersion(agent.id, 1, "hire", null, profileOf(agent));
+    return agent;
+  }
+
+  // ── instruction profiles (versioned) ──
+
+  private addProfileVersion(agentId: string, version: number, source: ProfileVersion["source"], note: string | null, profile: InstructionProfile): void {
+    this.db
+      .prepare("INSERT INTO agent_profile_versions (agent_id, version, source, note, profile, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(agentId, version, source, note, json(profile), now());
+  }
+
+  /**
+   * Replace an employee's instructions as a new version. Callers check `baseVersion` against
+   * `agent.profileVersion` first (inside a transaction) so edits never silently overwrite.
+   */
+  saveProfile(agentId: string, profile: InstructionProfile, source: ProfileVersion["source"], note: string | null = null): Agent {
+    const current = this.getAgent(agentId);
+    if (!current) throw new Error("Agent not found");
+    const version = current.profileVersion + 1;
+    this.db
+      .prepare(
+        `UPDATE agents SET role = ?, personality = ?, system_prompt = ?, responsibilities = ?, operating_instructions = ?, task_instructions = ?,
+           reference_notes = ?, profile_version = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(profile.role, profile.personality, profile.systemPrompt, json(profile.responsibilities), profile.operatingInstructions, profile.taskInstructions, profile.referenceNotes, version, now(), agentId);
+    this.addProfileVersion(agentId, version, source, note, profile);
+    return this.getAgent(agentId)!;
+  }
+
+  listProfileVersions(agentId: string, limit = 50): ProfileVersion[] {
+    return (this.db.prepare("SELECT * FROM agent_profile_versions WHERE agent_id = ? ORDER BY version DESC LIMIT ?").all(agentId, limit) as Row[]).map((r) => ({
+      version: Number(r.version),
+      source: r.source as ProfileVersion["source"],
+      note: (r.note as string) ?? null,
+      profile: parse(r.profile, profileOf({ role: "", personality: "", systemPrompt: "", responsibilities: [] })),
+      createdAt: r.created_at as string,
+    }));
+  }
+
+  getProfileVersion(agentId: string, version: number): ProfileVersion | null {
+    return this.listProfileVersions(agentId, 10_000).find((v) => v.version === version) ?? null;
+  }
+
+  // ── saved (custom / imported) templates ──
+
+  listCustomTemplates(): AgentTemplate[] {
+    return (this.db.prepare("SELECT * FROM templates ORDER BY created_at, rowid").all() as Row[]).map(toTemplate);
+  }
+
+  getCustomTemplate(id: string): AgentTemplate | null {
+    const r = this.db.prepare("SELECT * FROM templates WHERE id = ?").get(id) as Row | undefined;
+    return r ? toTemplate(r) : null;
+  }
+
+  saveCustomTemplate(t: Omit<AgentTemplate, "id" | "version" | "group" | "source">, source: "custom" | "imported", id?: string): AgentTemplate {
+    const ts = now();
+    const existing = id ? this.getCustomTemplate(id) : null;
+    const data = json({ ...t });
+    if (existing) {
+      this.db.prepare("UPDATE templates SET data = ?, version = version + 1, updated_at = ? WHERE id = ?").run(data, ts, existing.id);
+      return this.getCustomTemplate(existing.id)!;
+    }
+    const newId = `custom-${randomUUID().slice(0, 8)}`;
+    this.db.prepare("INSERT INTO templates (id, data, version, source, created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?)").run(newId, data, source, ts, ts);
+    return this.getCustomTemplate(newId)!;
+  }
+
+  deleteCustomTemplate(id: string): boolean {
+    return this.db.prepare("DELETE FROM templates WHERE id = ?").run(id).changes > 0;
   }
 
   updateAgent(
@@ -373,7 +484,7 @@ export class Store {
       Pick<
         Agent,
         | "name" | "role" | "personality" | "systemPrompt" | "responsibilities" | "model" | "effort" | "skills" | "appearance" | "voice" | "enabled"
-        | "buildingId" | "dailyBudgetUsd" | "archived" | "provider" | "credentialId" | "githubCredentialId" | "customPrices"
+        | "buildingId" | "dailyBudgetUsd" | "archived" | "provider" | "credentialId" | "githubCredentialId" | "customPrices" | "approvalTools"
       >
     >,
   ): Agent | null {
@@ -397,6 +508,7 @@ export class Store {
       credentialId: ["credential_id", (v: string | null) => v],
       githubCredentialId: ["github_credential_id", (v: string | null) => v],
       customPrices: ["custom_prices", (v: Agent["customPrices"]) => (v ? json(v) : null)],
+      approvalTools: ["approval_tools", (v: string[]) => json(v)],
     };
     if (patch.appearance) {
       const appearance = normalizeAppearance(patch.appearance);

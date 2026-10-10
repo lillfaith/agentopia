@@ -348,6 +348,40 @@ export const MIGRATIONS: Migration[] = [
   ALTER TABLE agents ADD COLUMN custom_prices TEXT;
   ALTER TABLE usage ADD COLUMN billing TEXT NOT NULL DEFAULT 'platform';
   `,
+  /* 11 — employee instruction profiles (versioned), extra approvals, saved templates */ (db) => {
+    db.exec(`
+      ALTER TABLE agents ADD COLUMN operating_instructions TEXT NOT NULL DEFAULT '';
+      ALTER TABLE agents ADD COLUMN task_instructions TEXT NOT NULL DEFAULT '';
+      ALTER TABLE agents ADD COLUMN reference_notes TEXT NOT NULL DEFAULT '';
+      ALTER TABLE agents ADD COLUMN approval_tools TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE agents ADD COLUMN template_id TEXT;
+      ALTER TABLE agents ADD COLUMN profile_version INTEGER NOT NULL DEFAULT 1;
+      CREATE TABLE agent_profile_versions (
+        agent_id    TEXT NOT NULL,
+        version     INTEGER NOT NULL,
+        source      TEXT NOT NULL,
+        note        TEXT,
+        profile     TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        PRIMARY KEY (agent_id, version)
+      );
+      CREATE TABLE templates (
+        id          TEXT PRIMARY KEY,
+        data        TEXT NOT NULL,
+        version     INTEGER NOT NULL DEFAULT 1,
+        source      TEXT NOT NULL DEFAULT 'custom',
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+      );
+    `);
+    // Version 1 of every existing employee's instructions is what they have today.
+    const ts = new Date().toISOString();
+    const insert = db.prepare("INSERT INTO agent_profile_versions (agent_id, version, source, note, profile, created_at) VALUES (?, 1, 'migration', NULL, ?, ?)");
+    for (const r of db.prepare("SELECT id, role, personality, system_prompt, responsibilities FROM agents").all() as Record<string, string>[]) {
+      const profile = { role: r.role, personality: r.personality, systemPrompt: r.system_prompt, responsibilities: JSON.parse(r.responsibilities || "[]"), operatingInstructions: "", taskInstructions: "", referenceNotes: "" };
+      insert.run(r.id, JSON.stringify(profile), ts);
+    }
+  },
 ];
 
 export type Database = DatabaseSync;

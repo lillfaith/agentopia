@@ -3,6 +3,7 @@ import type { SkillDefinition } from "./types.js";
 export const writing: SkillDefinition = {
   id: "writing",
   label: "Writing & editing",
+  shortLabel: "Writing",
   icon: "✍️",
   category: "writing",
   description: "Drafting, rewriting and editing text. Uses the model alone — no external tools.",

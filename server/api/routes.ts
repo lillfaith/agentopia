@@ -6,12 +6,14 @@ import type { AIProvider, Schedule, SystemStatus, TownEvent, TownSnapshot } from
 import type { Config } from "../config.js";
 import { transaction } from "../db/database.js";
 import type { Store } from "../db/store.js";
-import { AGENT_TEMPLATES } from "../agents/templates.js";
+import { AGENT_TEMPLATES, builtinTemplate, searchTemplates } from "../agents/templates.js";
+import { draftEmployee } from "../agents/drafts.js";
+import { PROFILE_LIMITS, profileOf, sameProfile } from "../../shared/profile.js";
 import { MODELS, isKnownModel } from "../llm/models.js";
 import { SERVICE_LABEL, checkKey, type KeyCheckers, type ProviderResolver } from "../llm/keys.js";
 import { taskUsageBreakdown } from "../llm/usage.js";
 import { DEPTHS, DEPTH_IDS } from "../engine/depth.js";
-import { getSkill, skillInfo } from "../skills/index.js";
+import { getSkill, localToolIds, skillInfo } from "../skills/index.js";
 import { budgetStatus } from "../engine/budget.js";
 import type { TaskRunner } from "../engine/runner.js";
 import { computeNextRun, isValidTimezone, validateCadence } from "../engine/scheduler.js";
@@ -89,12 +91,59 @@ const agentFields = {
     .strict(),
   buildingId: z.string().min(1),
   dailyBudgetUsd: money.nullable(),
+  // Instruction profile (AGENTS.md-style); role, personality, systemPrompt and responsibilities are above.
+  operatingInstructions: z.string().max(PROFILE_LIMITS.operatingInstructions),
+  taskInstructions: z.string().max(PROFILE_LIMITS.taskInstructions),
+  referenceNotes: z.string().max(PROFILE_LIMITS.referenceNotes),
+  /** Extra tools that wait for approval for this employee. Sensitive tools always do anyway. */
+  approvalTools: z.array(z.string().refine((id) => localToolIds().includes(id), "Unknown tool id")).max(50),
+  templateId: z.string().min(1).max(80).nullable(),
 };
 
-const agentPatch = z.object({ ...agentFields, enabled: z.boolean() }).partial().strict();
+const PROFILE_KEYS = ["role", "personality", "systemPrompt", "responsibilities", "operatingInstructions", "taskInstructions", "referenceNotes"] as const;
+
+/** A template as the owner saves or imports it. Imports drop unknown capabilities instead of failing. */
+const templateFields = {
+  role: z.string().trim().min(1).max(PROFILE_LIMITS.role),
+  icon: z.string().trim().min(1).max(16),
+  description: z.string().max(500).default(""),
+  tagline: z.string().max(80).optional(),
+  personality: z.string().max(PROFILE_LIMITS.personality).default(""),
+  systemPrompt: z.string().trim().min(1).max(PROFILE_LIMITS.systemPrompt),
+  responsibilities: z.array(z.string().trim().min(1).max(PROFILE_LIMITS.responsibility)).max(PROFILE_LIMITS.responsibilities).default([]),
+  operatingInstructions: z.string().max(PROFILE_LIMITS.operatingInstructions).default(""),
+  taskInstructions: z.string().max(PROFILE_LIMITS.taskInstructions).default(""),
+  referenceNotes: z.string().max(PROFILE_LIMITS.referenceNotes).default(""),
+  skills: z.array(z.string().max(40)).max(30).default([]),
+  effort: z.enum(["low", "medium", "high", "xhigh", "max"]).default("medium"),
+  avatar: z.object({ color: z.string().regex(/^#[0-9a-fA-F]{6}$/), accessory: z.string().regex(/^[a-z-]{1,30}$/) }).default({ color: "#ffc9d9", accessory: "sprout" }),
+  buildingKind: z.string().regex(/^[a-z0-9-]{1,40}$/).default("studio"),
+  department: z.string().trim().min(1).max(60).default("Team"),
+  tags: z.array(z.string().trim().min(1).max(30)).max(12).default([]),
+};
+const templateSave = z.object(templateFields).strict();
+const templateImport = z.object({
+  format: z.literal("agentopia.employee-template"),
+  schemaVersion: z.literal(1),
+  exportedAt: z.string().optional(),
+  template: z.object(templateFields), // unknown keys are dropped, never stored
+});
+const draftRequest = z
+  .object({
+    description: z.string().trim().min(3).max(4000),
+    role: z.string().trim().max(PROFILE_LIMITS.role).optional(),
+    name: z.string().trim().max(40).optional(),
+    templateId: z.string().max(80).optional(),
+  })
+  .strict();
+
+const agentPatch = z.object({ ...agentFields, enabled: z.boolean(), baseProfileVersion: z.number().int().min(1) }).partial().strict();
 const agentCreate = z
   .object({ ...agentFields, personality: agentFields.personality.default(""), responsibilities: agentFields.responsibilities.default([]), dailyBudgetUsd: money.nullable().default(null) })
-  .partial({ model: true, effort: true, avatar: true, appearance: true, voice: true, provider: true, credentialId: true, githubCredentialId: true, customPrices: true })
+  .partial({
+    model: true, effort: true, avatar: true, appearance: true, voice: true, provider: true, credentialId: true, githubCredentialId: true, customPrices: true,
+    operatingInstructions: true, taskInstructions: true, referenceNotes: true, approvalTools: true, templateId: true,
+  })
   .strict();
 
 const LEGACY_ACCESSORY: Record<string, string> = { crown: "crown", beret: "beret", goggles: "goggles", sprout: "sprout" };
@@ -283,14 +332,61 @@ export function createApi(deps: ApiDeps): Hono {
       schedules: store.listSchedules(),
       events: store.listEvents({ limit: 300 }),
       status: systemStatus(deps),
-      templates: AGENT_TEMPLATES,
+      templates: allTemplates(),
       credentials: store.listCredentials(),
     };
     return c.json(snapshot);
   });
 
   api.get("/api/status", (c) => c.json(systemStatus(deps)));
-  api.get("/api/templates", (c) => c.json(AGENT_TEMPLATES));
+  // ── employee templates: built-in (featured + library) and the owner's saved / imported ones ──
+  api.get("/api/templates", (c) => c.json(searchTemplates(allTemplates(), c.req.query("q") ?? "")));
+  api.post("/api/templates", async (c) => {
+    const b = await body(c, templateSave);
+    if (!b.ok) return b.res;
+    const unknown = b.data.skills.filter((id) => !getSkill(id));
+    if (unknown.length) return c.json(err(`Unknown capability: ${unknown.join(", ")}`), 400);
+    const t = store.saveCustomTemplate(b.data, "custom");
+    store.addEvent({ type: "system.notice", message: `Saved the “${t.role}” template`, data: { templateId: t.id } });
+    return c.json(t, 201);
+  });
+  api.patch("/api/templates/:id", async (c) => {
+    const current = store.getCustomTemplate(c.req.param("id"));
+    if (!current) return c.json(err(builtinTemplate(c.req.param("id")) ? "Built-in templates can't be changed; save a copy instead" : "Template not found"), builtinTemplate(c.req.param("id")) ? 409 : 404);
+    const b = await body(c, templateSave);
+    if (!b.ok) return b.res;
+    const unknown = b.data.skills.filter((id) => !getSkill(id));
+    if (unknown.length) return c.json(err(`Unknown capability: ${unknown.join(", ")}`), 400);
+    return c.json(store.saveCustomTemplate(b.data, current.source === "imported" ? "imported" : "custom", current.id));
+  });
+  api.delete("/api/templates/:id", (c) => {
+    const id = c.req.param("id");
+    if (builtinTemplate(id)) return c.json(err("Built-in templates can't be deleted"), 409);
+    return store.deleteCustomTemplate(id) ? c.json({ ok: true }) : c.json(err("Template not found"), 404);
+  });
+  api.get("/api/templates/:id/export", (c) => {
+    const t = allTemplates().find((x) => x.id === c.req.param("id"));
+    if (!t) return c.json(err("Template not found"), 404);
+    return c.json(templateFile(t));
+  });
+  api.post("/api/templates/import", async (c) => {
+    const b = await body(c, templateImport);
+    if (!b.ok) return b.res;
+    const skills = b.data.template.skills.filter((id) => !!getSkill(id));
+    const dropped = b.data.template.skills.filter((id) => !getSkill(id));
+    const t = store.saveCustomTemplate({ ...b.data.template, skills }, "imported");
+    store.addEvent({ type: "system.notice", message: `Imported the “${t.role}” template${dropped.length ? ` (skipped unknown capabilities: ${dropped.join(", ")})` : ""}`, data: { templateId: t.id } });
+    return c.json({ template: t, dropped }, 201);
+  });
+
+  /** A first draft of an employee's instructions from a plain-language description. Never applied by itself. */
+  api.post("/api/employee-drafts", async (c) => {
+    const b = await body(c, draftRequest);
+    if (!b.ok) return b.res;
+    const template = b.data.templateId ? allTemplates().find((t) => t.id === b.data.templateId) : undefined;
+    const hold = runner.holdReason() ?? (budgetStatus(store, config, runner.provider.simulated).globalHold ? "The town's spending limit is reached" : null);
+    return c.json(await draftEmployee({ store, config, provider: hold ? null : runner.provider, holdReason: hold }, { ...b.data, template }));
+  });
 
   // ── agents ──
   api.get("/api/agents", (c) => c.json(store.listAgents()));
@@ -299,6 +395,12 @@ export function createApi(deps: ApiDeps): Hono {
     if (!agent) return c.json(err("Agent not found"), 404);
     return c.json({ agent, tasks: store.listTasks({ agentId: agent.id, limit: 50 }), events: store.listEvents({ agentId: agent.id, limit: 100 }), memories: store.listMemories(agent.id) });
   });
+
+  const allTemplates = () => [...AGENT_TEMPLATES, ...store.listCustomTemplates()];
+  const templateFile = (t: (typeof AGENT_TEMPLATES)[number]) => {
+    const { id: _id, source: _source, group: _group, ...rest } = t;
+    return { format: "agentopia.employee-template" as const, schemaVersion: 1 as const, exportedAt: new Date().toISOString(), template: rest };
+  };
 
   const modelNotAllowed = (model: string | undefined) =>
     model && config.allowedModels && !config.allowedModels.includes(model) ? `Your plan includes ${config.allowedModels.join(", ")}; ${model} needs an upgrade.` : null;
@@ -399,6 +501,11 @@ export function createApi(deps: ApiDeps): Hono {
       credentialId: b.data.credentialId ?? null,
       githubCredentialId: b.data.githubCredentialId ?? null,
       customPrices: b.data.customPrices ?? null,
+      operatingInstructions: b.data.operatingInstructions ?? "",
+      taskInstructions: b.data.taskInstructions ?? "",
+      referenceNotes: b.data.referenceNotes ?? "",
+      approvalTools: b.data.approvalTools ?? [],
+      templateId: b.data.templateId ?? null,
     });
     store.addEvent({ type: "agent.created", agentId: agent.id, message: `${agent.name} the ${agent.role} moved into town`, data: { buildingId: agent.buildingId } });
     return c.json(agent, 201);
@@ -434,19 +541,85 @@ export function createApi(deps: ApiDeps): Hono {
       if (locked.length) return c.json(err(`Buy ${locked.join(", ")} in the shop first`), 403);
     }
     if (b.data.buildingId && !store.getBuilding(b.data.buildingId)) return c.json(err("Unknown building"), 400);
-    const { avatar, ...rest } = b.data;
-    const patch = { ...rest } as Parameters<Store["updateAgent"]>[1];
+    const { avatar, baseProfileVersion, ...rest } = b.data;
+    // Instructions are versioned: an edit based on an older version is refused, never silently merged.
+    const touchesProfile = PROFILE_KEYS.some((k) => rest[k] !== undefined);
+    if (touchesProfile && baseProfileVersion !== undefined && baseProfileVersion !== current.profileVersion) {
+      return c.json({ error: `These instructions changed since you opened them (now version ${current.profileVersion}). Reload to see the latest, then make your edit again.`, currentVersion: current.profileVersion }, 409);
+    }
+    const patch = { ...rest } as Parameters<Store["updateAgent"]>[1] & Partial<Record<(typeof PROFILE_KEYS)[number], unknown>>;
+    for (const k of PROFILE_KEYS) delete patch[k];
     if (avatar && !rest.appearance) patch.appearance = { ...current.appearance, bodyColor: avatar.color };
-    // Cosmetic-only edits (look, voice) never touch status or the current task.
-    const agent = store.updateAgent(id, patch)!;
+    const agent = transaction(store.db, () => {
+      if (touchesProfile) {
+        const next = { ...profileOf(current), ...Object.fromEntries(PROFILE_KEYS.filter((k) => rest[k] !== undefined).map((k) => [k, rest[k]])) };
+        if (!sameProfile(next, profileOf(current))) store.saveProfile(id, next, "edit");
+      }
+      // Cosmetic-only edits (look, voice) never touch status or the current task.
+      return store.updateAgent(id, patch)!;
+    });
     const cosmetic = Object.keys(b.data).every((k) => ["appearance", "voice", "avatar"].includes(k));
     store.addEvent({
       type: "agent.updated",
       agentId: id,
       message: cosmetic ? `${agent.name} got a new look` : `${agent.name}'s profile was updated`,
-      data: { fields: Object.keys(b.data), cosmetic },
+      data: { fields: Object.keys(b.data).filter((k) => k !== "baseProfileVersion"), cosmetic, profileVersion: agent.profileVersion },
     });
     return c.json(agent);
+  });
+
+  // ── instruction profile history ──
+  api.get("/api/agents/:id/profile/versions", (c) => {
+    const agent = store.getAgent(c.req.param("id"));
+    if (!agent) return c.json(err("Agent not found"), 404);
+    return c.json({ current: agent.profileVersion, versions: store.listProfileVersions(agent.id) });
+  });
+  api.post("/api/agents/:id/profile/restore", async (c) => {
+    const id = c.req.param("id") as string;
+    const b = await body(c, z.object({ version: z.number().int().min(1), baseProfileVersion: z.number().int().min(1) }).strict());
+    if (!b.ok) return b.res;
+    const result = transaction(store.db, () => {
+      const current = store.getAgent(id);
+      if (!current) return { status: 404 as const, error: "Agent not found" };
+      if (current.archived) return { status: 409 as const, error: "Restore this employee before editing" };
+      if (b.data.baseProfileVersion !== current.profileVersion) return { status: 409 as const, error: `These instructions changed since you opened them (now version ${current.profileVersion}).` };
+      const old = store.getProfileVersion(id, b.data.version);
+      if (!old) return { status: 404 as const, error: "No such version" };
+      return { agent: store.saveProfile(id, old.profile, "restore", `Restored version ${old.version}`) };
+    });
+    if (!result.agent) return c.json(err(result.error ?? "Couldn't restore"), result.status ?? 400);
+    store.addEvent({ type: "agent.updated", agentId: id, message: `${result.agent.name}'s instructions were restored to version ${b.data.version}`, data: { fields: ["profile"], profileVersion: result.agent.profileVersion } });
+    return c.json(result.agent);
+  });
+  /** Save an employee's job, instructions and equipment as a reusable template (no keys, no ids). */
+  api.post("/api/agents/:id/template", async (c) => {
+    const agent = store.getAgent(c.req.param("id"));
+    if (!agent) return c.json(err("Agent not found"), 404);
+    const b = await body(c, z.object({ role: z.string().trim().min(1).max(PROFILE_LIMITS.role).optional(), icon: z.string().trim().min(1).max(16).optional(), description: z.string().max(500).optional() }).strict());
+    if (!b.ok) return b.res;
+    const building = store.getBuilding(agent.buildingId);
+    const t = store.saveCustomTemplate(
+      {
+        role: b.data.role ?? agent.role,
+        icon: b.data.icon ?? "⭐",
+        description: b.data.description ?? `Saved from ${agent.name}.`,
+        personality: agent.personality,
+        systemPrompt: agent.systemPrompt,
+        responsibilities: agent.responsibilities,
+        operatingInstructions: agent.operatingInstructions,
+        taskInstructions: agent.taskInstructions,
+        referenceNotes: agent.referenceNotes,
+        skills: agent.skills,
+        effort: agent.effort,
+        avatar: { color: agent.appearance.bodyColor, accessory: agent.appearance.wearables.head ?? "sprout" },
+        buildingKind: building?.kind ?? "studio",
+        department: building?.department ?? "Team",
+        tags: [],
+      },
+      "custom",
+    );
+    store.addEvent({ type: "system.notice", agentId: agent.id, message: `Saved ${agent.name} as the “${t.role}” template`, data: { templateId: t.id } });
+    return c.json(t, 201);
   });
 
   /** Archive (soft delete): history is kept; queued work is cancelled; schedules targeting the agent are paused. */

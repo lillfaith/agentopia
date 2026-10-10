@@ -4,6 +4,8 @@ import type { SkillDefinition } from "./types.js";
 export const research: SkillDefinition = {
   id: "research",
   label: "Web research",
+  shortLabel: "Research",
+  providerNote: "Claude uses hosted web search and page reading, OpenAI its web search, Gemini Google Search. Some older models can't search; the employee then says so and works from what it knows.",
   icon: "🔭",
   category: "research",
   description: "Search the web and read pages for current, citable facts (Claude's hosted web search + web fetch).",

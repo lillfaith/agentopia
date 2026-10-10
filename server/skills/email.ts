@@ -4,6 +4,7 @@ import type { SkillDefinition } from "./types.js";
 export const email: SkillDefinition = {
   id: "email",
   label: "Email (approval)",
+  shortLabel: "Email",
   icon: "✉️",
   category: "communication",
   description:

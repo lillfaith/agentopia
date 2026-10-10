@@ -4,6 +4,7 @@ import type { SkillDefinition } from "./types.js";
 export const publishing: SkillDefinition = {
   id: "publishing",
   label: "Publishing (approval)",
+  shortLabel: "Publishing",
   icon: "📣",
   category: "publishing",
   description:

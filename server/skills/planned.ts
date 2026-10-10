@@ -9,6 +9,7 @@ import type { SkillDefinition } from "./types.js";
 export const imageGeneration: SkillDefinition = {
   id: "image_generation",
   label: "Image generation",
+  shortLabel: "Images",
   icon: "🎨",
   category: "media",
   description: "Generate and edit images (e.g. ad creatives, illustrations). Requires an image-model provider — planned, not connected.",
@@ -22,6 +23,7 @@ export const imageGeneration: SkillDefinition = {
 export const modeling3d: SkillDefinition = {
   id: "3d_modeling",
   label: "3D modeling",
+  shortLabel: "3D",
   icon: "🧊",
   category: "3d",
   description: "Create 3D models and scenes (e.g. product mock-ups, theme assets). Requires a 3D-generation provider — planned, not connected.",

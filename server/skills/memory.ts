@@ -4,6 +4,7 @@ import type { SkillDefinition } from "./types.js";
 export const memory: SkillDefinition = {
   id: "memory",
   label: "Memory",
+  shortLabel: "Memory",
   icon: "📝",
   category: "coordination",
   description: "Keep short notes between tasks (owner preferences, facts, decisions). Notes appear in later briefs; you can read and delete every note.",

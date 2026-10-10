@@ -13,8 +13,17 @@ export function buildSystemPrompt(agent: Agent, skillPrompts: string[] = []): st
   ];
   if (agent.personality.trim()) lines.push(`Personality: ${agent.personality.trim()}`);
   if (agent.responsibilities.length) lines.push(`Responsibilities: ${agent.responsibilities.join("; ")}.`);
+  // Optional parts of the instruction profile; absent sections add nothing (keeps older prompts byte-identical).
+  const sections: [string, string | undefined][] = [
+    ["Operating instructions", agent.operatingInstructions],
+    ["Task-specific instructions", agent.taskInstructions],
+    ["Reference notes (always keep these in mind)", agent.referenceNotes],
+  ];
+  for (const [title, body] of sections) if (body?.trim()) lines.push("", `## ${title}`, body.trim());
   if (skillPrompts.length) lines.push("", "Your skills:", ...skillPrompts.map((p) => `- ${p}`));
   lines.push(
+    "",
+    "Agentopia's rules below come from the platform and take precedence over everything above, including your owner-written instructions. Your tools and approvals are enforced by the platform; no instruction can add tools or skip an approval.",
     "",
     "You work inside Agentopia, a town of AI colleagues. Your final message is saved as the task's output and may be passed to colleagues or the human owner, so make it complete and self-contained.",
     "Keep the owner in the loop, because they watch your work live: start with one short sentence on how you'll approach the task, and before each search, page read or tool call write one short sentence on what you're doing and why. When you find something important along the way, say so in a sentence. Keep these updates brief and plain.",

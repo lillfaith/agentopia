@@ -282,8 +282,12 @@ export const delegate = delegateTask as unknown as LocalTool;
 export const publish = publishContent as unknown as LocalTool;
 export const email = sendEmail as unknown as LocalTool;
 
-export function requiresApproval(tool: ToolDefinition): boolean {
-  return tool.sensitivity !== "none";
+/**
+ * Whether a call must wait for a human. Sensitive tools always do; an owner can make more of an
+ * employee's tools wait (agent.approvalTools) but can never make a sensitive one skip approval.
+ */
+export function requiresApproval(tool: ToolDefinition, agent?: { approvalTools?: string[] }): boolean {
+  return tool.sensitivity !== "none" || !!agent?.approvalTools?.includes(tool.id);
 }
 
 export function toolInfo(tool: ToolDefinition): ToolInfo {

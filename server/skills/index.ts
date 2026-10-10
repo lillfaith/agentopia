@@ -22,6 +22,11 @@ export function getSkill(id: string): SkillDefinition | undefined {
   return SKILLS.find((s) => s.id === id);
 }
 
+/** Ids of every tool that runs on this server (the ones an owner can put behind approval). */
+export function localToolIds(): string[] {
+  return SKILLS.flatMap((s) => s.tools.filter((t) => t.kind === "local").map((t) => t.id));
+}
+
 export function isEnableableSkill(id: string): boolean {
   return getSkill(id)?.status === "available";
 }
@@ -30,7 +35,10 @@ export function skillInfo(): SkillInfo[] {
   return SKILLS.map((s) => ({
     id: s.id,
     label: s.label,
+    shortLabel: s.shortLabel,
     icon: s.icon,
+    connection: s.connection ?? null,
+    providerNote: s.providerNote ?? null,
     category: s.category,
     description: s.description,
     status: s.status,
