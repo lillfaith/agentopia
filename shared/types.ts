@@ -286,6 +286,8 @@ export interface TaskUsageBreakdown {
   };
   /** Cache hit rate: cache reads / all input tokens. */
   cacheHitRate: number;
+  /** How many attempts the task took (retries after errors). */
+  attempts?: number;
   notes: string[];
 }
 
@@ -496,6 +498,36 @@ export interface TreasurySummary {
     capped: boolean;
   };
   pricingNote: string;
+  /** Who paid: Agentopia's plan (platform) or the owner's own API keys. */
+  funding?: Array<{ billing: "platform" | "own"; costUsd: number; requests: number; tokens: number }>;
+  /** What the spend was for. Automated tests never appear here: they run in a separate, throwaway town. */
+  operations?: Array<{ id: TreasuryOperation; costUsd: number; requests: number; tokens: number }>;
+  /** Tokens by billing category and what each category cost (Claude models; other providers in otherUsd). */
+  categories?: {
+    freshInput: number;
+    cacheWrite: number;
+    cacheRead: number;
+    output: number;
+    thinking: number;
+    webSearches: number;
+    webFetches: number;
+    costs: { freshInputUsd: number; cacheWriteUsd: number; cacheReadUsd: number; outputUsd: number; webSearchUsd: number; otherUsd: number };
+  };
+  /** The most expensive tasks. */
+  topTasks?: Array<{ taskId: string; title: string; agentId: string; costUsd: number; requests: number; searches: number; attempts: number }>;
+  /** Tasks that needed more than one attempt, and how many extra attempts that was. */
+  retries?: { tasks: number; extraAttempts: number };
+  /** The AI provider's rate limits as of its latest response (self-hosted only). */
+  rateLimit?: { at: string; requests?: RateWindow; inputTokens?: RateWindow; outputTokens?: RateWindow; tokens?: RateWindow } | null;
+  /** All costs are estimates from list prices; each live call keeps its request id for checking against the provider's console. */
+  costBasis?: "estimated";
+}
+
+export type TreasuryOperation = "work" | "delegated" | "scheduled" | "hiring-desk" | "system";
+export interface RateWindow {
+  limit: number | null;
+  remaining: number | null;
+  reset: string | null;
 }
 
 // ───────────────────────── System / settings ─────────────────────────

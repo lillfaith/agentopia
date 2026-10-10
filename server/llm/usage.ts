@@ -32,7 +32,7 @@ export function costSplit(
 const ZERO_SPLIT: UsageCostSplit = { freshInputUsd: 0, cacheReadUsd: 0, cacheWriteUsd: 0, outputUsd: 0, webSearchUsd: 0, totalUsd: 0 };
 
 /** Every recorded call of a task with its cost split, plus totals and plain-language notes. */
-export function taskUsageBreakdown(taskId: string, depth: TaskUsageBreakdown["depth"], rows: UsageRecord[]): TaskUsageBreakdown {
+export function taskUsageBreakdown(taskId: string, depth: TaskUsageBreakdown["depth"], rows: UsageRecord[], attempts = 1): TaskUsageBreakdown {
   const calls: TaskUsageCall[] = rows.map((r) => ({
     id: r.id,
     ts: r.ts,
@@ -88,6 +88,11 @@ export function taskUsageBreakdown(taskId: string, depth: TaskUsageBreakdown["de
     notes.push(`Web research ran inside the API calls: ${totals.serverIterations} model steps in ${totals.apiCalls} call${totals.apiCalls === 1 ? "" : "s"}, each re-reading the conversation so far.`);
   }
   if (cost.webSearchUsd > 0) notes.push(`Web searches cost $10 per 1,000 ($0.01 each). Page reads have no fee beyond their tokens.`);
+  if (attempts > 1) {
+    notes.push(`This task needed ${attempts} attempts. A retry continues from the saved conversation; a request that failed with an error isn't billed.`);
+  }
+  if (calls.some((c) => c.billing === "own")) notes.push("Calls marked “own key” are billed by that provider, not your Agentopia plan.");
+  if (calls.some((c) => !c.simulated)) notes.push("All costs are estimates from list prices. Each call's request id can be matched in the provider's console.");
   if (Math.abs(cost.totalUsd - cost.recordedUsd) > 0.000005) {
     notes.push(`Recorded spend ($${cost.recordedUsd.toFixed(4)}) differs from the recomputed estimate ($${cost.totalUsd.toFixed(4)}); prices may have changed since it was recorded.`);
   }
@@ -99,6 +104,7 @@ export function taskUsageBreakdown(taskId: string, depth: TaskUsageBreakdown["de
     totals,
     cost,
     cacheHitRate: allInput ? totals.cacheReadTokens / allInput : 0,
+    attempts,
     notes,
   };
 }

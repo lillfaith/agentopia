@@ -167,6 +167,7 @@ export function TreasuryPanel() {
             </table>
           </section>
 
+          <SpendBreakdown t={t} />
           <TownTax t={t} />
           <p className="muted small">{t.pricingNote}</p>
         </>
@@ -648,5 +649,169 @@ function ResearchDefaults() {
         ))}
       </div>
     </section>
+  );
+}
+
+const OPERATION_LABEL: Record<NonNullable<TreasurySummary["operations"]>[number]["id"], string> = {
+  work: "Work you assigned",
+  delegated: "Work employees delegated",
+  scheduled: "Scheduled runs",
+  "hiring-desk": "🪄 Hiring desk (instruction drafts)",
+  system: "Connection tests",
+};
+
+/** Who paid, what for, which billing categories, and the most expensive tasks. */
+function SpendBreakdown({ t }: { t: TreasurySummary }) {
+  if (!t.operations || !t.categories) return null; // older servers / demo data
+  const c = t.categories;
+  const total = t.totals.costUsd || 1;
+  const pct = (n: number) => `${Math.round((n / total) * 100)}%`;
+  const own = t.funding?.find((f) => f.billing === "own");
+  const platform = t.funding?.find((f) => f.billing === "platform");
+  const window = (label: string, w?: { limit: number | null; remaining: number | null; reset: string | null }) =>
+    w ? (
+      <li key={label}>
+        {label}: <b>{w.remaining ?? "?"}</b> of {w.limit ?? "?"} left{w.reset ? ` (resets ${new Date(w.reset).toLocaleTimeString()})` : ""}
+      </li>
+    ) : null;
+  return (
+    <>
+      <section className="card">
+        <h3>Who paid</h3>
+        <div className="spend-split">
+          <span>
+            <b>{fmtUsd(platform?.costUsd ?? 0)}</b> Agentopia&apos;s Claude (your plan) · {platform?.requests ?? 0} calls
+          </span>
+          <span>
+            <b>{fmtUsd(own?.costUsd ?? 0)}</b> your own API keys (billed by those providers) · {own?.requests ?? 0} calls
+          </span>
+        </div>
+      </section>
+
+      <section className="card">
+        <h3>What it was for</h3>
+        <table className="data-table">
+          <tbody>
+            {t.operations.map((o) => (
+              <tr key={o.id}>
+                <td>{OPERATION_LABEL[o.id] ?? o.id}</td>
+                <td>{o.requests} calls</td>
+                <td>{fmtTokens(o.tokens)} tokens</td>
+                <td>
+                  {fmtUsd(o.costUsd)} <small className="muted">{pct(o.costUsd)}</small>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <small className="muted">
+          Nothing runs on its own: villagers wandering, opening the town, the wardrobe and this page never call the AI. Automated tests run in a separate throwaway town and never appear here.
+          {t.retries && t.retries.tasks > 0 ? ` ${t.retries.tasks} task(s) needed retries (${t.retries.extraAttempts} extra attempt(s)).` : ""}
+        </small>
+      </section>
+
+      <section className="card">
+        <h3>Where the money went</h3>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Charge</th>
+              <th>Tokens / uses</th>
+              <th>Est. cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Fresh input</td>
+              <td>{fmtTokens(c.freshInput)}</td>
+              <td>{fmtUsd(c.costs.freshInputUsd)}</td>
+            </tr>
+            <tr>
+              <td>Cache writes</td>
+              <td>{fmtTokens(c.cacheWrite)}</td>
+              <td>{fmtUsd(c.costs.cacheWriteUsd)}</td>
+            </tr>
+            <tr>
+              <td>
+                Cache reads <small className="muted">(about a tenth of the input price)</small>
+              </td>
+              <td>{fmtTokens(c.cacheRead)}</td>
+              <td>{fmtUsd(c.costs.cacheReadUsd)}</td>
+            </tr>
+            <tr>
+              <td>Output{c.thinking ? <small className="muted"> (incl. {fmtTokens(c.thinking)} reasoning)</small> : null}</td>
+              <td>{fmtTokens(c.output)}</td>
+              <td>{fmtUsd(c.costs.outputUsd)}</td>
+            </tr>
+            <tr>
+              <td>Web searches</td>
+              <td>{c.webSearches}</td>
+              <td>{fmtUsd(c.costs.webSearchUsd)}</td>
+            </tr>
+            <tr>
+              <td>Page reads</td>
+              <td>{c.webFetches}</td>
+              <td className="muted">tokens only</td>
+            </tr>
+            {c.costs.otherUsd > 0 && (
+              <tr>
+                <td>Other providers (your own keys)</td>
+                <td>—</td>
+                <td>{fmtUsd(c.costs.otherUsd)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <small className="muted">
+          “Tokens” counts every category together, so research tasks look large: most of their tokens are cheap cache reads. Cost is the better measure.
+        </small>
+      </section>
+
+      {t.topTasks && t.topTasks.length > 0 && (
+        <section className="card">
+          <h3>Most expensive tasks</h3>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Calls</th>
+                <th>Searches</th>
+                <th>Est. cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {t.topTasks.map((x) => (
+                <tr key={x.taskId}>
+                  <td>
+                    {x.title} <small className="muted">· <AgentName id={x.agentId} plain />{x.attempts > 1 ? ` · ${x.attempts} attempts` : ""}</small>
+                  </td>
+                  <td>{x.requests}</td>
+                  <td>{x.searches}</td>
+                  <td>{fmtUsd(x.costUsd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <small className="muted">Open a task&apos;s “Usage & cost breakdown” to see every API call.</small>
+        </section>
+      )}
+
+      {t.rateLimit && (
+        <section className="card">
+          <h3>Anthropic rate limits</h3>
+          <ul className="small">
+            {window("Requests per minute", t.rateLimit.requests)}
+            {window("Input tokens per minute", t.rateLimit.inputTokens)}
+            {window("Output tokens per minute", t.rateLimit.outputTokens)}
+            {window("Tokens per minute", t.rateLimit.tokens)}
+          </ul>
+          <small className="muted">As of the latest call ({new Date(t.rateLimit.at).toLocaleTimeString()}). Credit balance and monthly limits are in the Anthropic Console → Billing and Limits.</small>
+        </section>
+      )}
+
+      <small className="muted">
+        All costs are estimates from list prices. Every real call keeps its Anthropic request id (in each task&apos;s breakdown), so you can match it in the Anthropic Console.
+      </small>
+    </>
   );
 }

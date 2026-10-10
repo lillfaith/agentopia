@@ -540,3 +540,4 @@ details.mini[open] > summary { margin-bottom: 8px; }
 .draft-source { gap: 6px; padding: 8px 10px; }
 .draft-source .check span { line-height: 1.35; }
 .draft-receipt { display: block; padding: 0 2px; }
+.spend-split { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
