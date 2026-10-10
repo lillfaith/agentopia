@@ -1,0 +1,44 @@
+# Before/after benchmark of the token-efficiency changes on the REAL Claude API (scripts/benchmark.ts).
+# Five task types, three variants, blind grading. Spend is hard-capped by the `budget` input (runs + grading).
+# Manual only (Actions → benchmark → Run workflow): paid test runs need the owner's go-ahead and a budget.
+name: benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      budget:
+        description: "Total spend cap in USD (runs + grading)"
+        required: true
+        default: "1.50"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Run the benchmark
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_CI || secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          # Which key paid, for the report (never the value).
+          AGENTOPIA_CI_KEY_SOURCE: ${{ secrets.ANTHROPIC_API_KEY_CI != '' && 'dedicated CI key (ANTHROPIC_API_KEY_CI)' || 'shared key (set ANTHROPIC_API_KEY_CI to separate test spend)' }}
+          NODE_NO_WARNINGS: "1"
+        run: npx tsx scripts/benchmark.ts --budget "${{ inputs.budget }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark
+          path: benchmark.json
+          if-no-files-found: ignore

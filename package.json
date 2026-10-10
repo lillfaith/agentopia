@@ -2,7 +2,7 @@
   "name": "agentopia",
   "version": "0.2.0",
   "private": true,
-  "description": "Agentopia — an isometric AI-agent town where every villager is a real, configurable AI employee.",
+  "description": "Agentopia \u2014 an isometric AI-agent town where every villager is a real, configurable AI employee.",
   "type": "module",
   "license": "UNLICENSED",
   "engines": {
@@ -26,7 +26,8 @@
     "start:saas": "NODE_ENV=production AGENTOPIA_MODE=saas tsx server/index.ts",
     "dev:saas": "AGENTOPIA_MODE=saas concurrently -k -n server,web -c magenta,cyan \"npm:dev:server\" \"npm:dev:web\"",
     "e2e:live": "tsx scripts/e2e-live.ts",
-    "migrate": "tsx scripts/migrate.ts"
+    "migrate": "tsx scripts/migrate.ts",
+    "benchmark": "tsx scripts/benchmark.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.0",
