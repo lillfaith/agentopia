@@ -171,9 +171,11 @@ async function runOne(c: Case, variant: Variant, rep: number): Promise<Run | nul
   const started = Date.now();
   const task = s.createTask({ agentId: c.agent, title: c.title, instructions: c.instructions, createdBy: "user", ...(c.depth ? { depth: c.depth } : {}) });
   try {
-    await app.runner.drain();
+    await app.runner.drain(300_000); // research calls can take a minute or two
   } catch (err) {
     console.error(`  run error: ${err instanceof Error ? err.message : err}`);
+    for (const t of s.listTasks({ limit: 50 })) if (t.status === "running" || t.status === "queued") app.runner.cancelTask(t.id);
+    await new Promise((r) => setTimeout(r, 2000));
   }
   const seconds = (Date.now() - started) / 1000;
   const rows = s.usageQuery<Record<string, number | string>>("SELECT * FROM usage WHERE simulated = 0");
@@ -199,6 +201,7 @@ async function runOne(c: Case, variant: Variant, rep: number): Promise<Run | nul
     costUsd: cost,
     output,
   };
+  await app.runner.stop?.();
   app.db.close();
   console.log(`✓ ${c.id}/${variant}#${rep}: ${run.status} · ${run.model} · ${run.calls} call(s) · ${run.searches} searches · ${run.tokens.total} tokens · $${cost.toFixed(4)} · ${seconds.toFixed(1)}s  (spent $${spent.toFixed(4)})`);
   return run;
