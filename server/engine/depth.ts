@@ -1,4 +1,4 @@
-import type { AIProvider, Agent, Effort, ResearchDepth, Task } from "../../shared/types.js";
+import type { AIProvider, Agent, Effort, ModelPreference, ResearchDepth, Task } from "../../shared/types.js";
 import type { HostedTool } from "../llm/provider.js";
 import { modelSpec, priceSpec, type CustomPrices } from "../llm/models.js";
 
@@ -50,9 +50,9 @@ export const DEPTHS: Record<ResearchDepth, DepthProfile> = {
   standard: {
     id: "standard",
     label: "Standard",
-    description: "A sourced brief from several searches and page reads.",
-    maxSearches: 6,
-    maxFetches: 4,
+    description: "A sourced brief: answers from knowledge where that's reliable, searches to verify and cite.",
+    maxSearches: 4,
+    maxFetches: 3,
     fetchMaxContentTokens: 8_000,
     maxTurns: 5,
     maxContextTokens: 90_000,
@@ -118,30 +118,41 @@ export interface TaskRunPlan {
 /**
  * Decide the model and effort for one task run.
  *  - A model picked on the task wins (if the plan allows it).
- *  - Otherwise Quick research uses the cheapest allowed model; other depths use the villager's model.
+ *  - Otherwise the town's model preference decides (the employee's own model is never changed):
+ *      economy  → the cheapest allowed model for every task;
+ *      balanced → the cheapest allowed model for Quick research, the employee's model otherwise;
+ *      quality  → always the employee's model.
  *  - Effort is the villager's, capped by the depth (research effort curves are nearly flat:
  *    medium matches high on knowledge work for noticeably less).
  */
 export function planTaskRun(
   task: Pick<Task, "depth" | "modelOverride">,
   agent: Pick<Agent, "model" | "effort">,
-  opts: { defaultDepth: ResearchDepth; allowedModels: string[] | null; research: boolean; provider?: AIProvider },
+  opts: { defaultDepth: ResearchDepth; allowedModels: string[] | null; research: boolean; provider?: AIProvider; preference?: ModelPreference },
 ): TaskRunPlan {
+  const preference = opts.preference ?? "balanced";
   const depth = DEPTHS[task.depth ?? opts.defaultDepth] ?? DEPTHS.standard;
   // Model choices below are Claude models: other providers keep the villager's own model.
   if (opts.provider && opts.provider !== "anthropic") {
     return { depth, model: agent.model, effort: opts.research ? capEffort(agent.effort, depth.effortCap) : agent.effort, modelReason: null };
   }
   const allowed = (m: string) => !opts.allowedModels || opts.allowedModels.includes(m);
-  if (!opts.research) return { depth, model: task.modelOverride && allowed(task.modelOverride) ? task.modelOverride : agent.model, effort: agent.effort, modelReason: null };
+  const cheaper = () => {
+    const cheap = CHEAP_ORDER.find((m) => allowed(m));
+    return cheap && CHEAP_ORDER.indexOf(cheap) < CHEAP_ORDER.indexOf(agent.model) ? cheap : null;
+  };
+  if (!opts.research) {
+    if (task.modelOverride && allowed(task.modelOverride)) return { depth, model: task.modelOverride, effort: agent.effort, modelReason: null };
+    const cheap = preference === "economy" ? cheaper() : null;
+    return cheap ? { depth, model: cheap, effort: agent.effort, modelReason: "Economy mode uses the lower-cost model" } : { depth, model: agent.model, effort: agent.effort, modelReason: null };
+  }
   if (task.modelOverride && allowed(task.modelOverride)) {
     return { depth, model: task.modelOverride, effort: capEffort(agent.effort, depth.effortCap), modelReason: task.modelOverride !== agent.model ? "chosen for this task" : null };
   }
-  if (depth.preferCheapModel) {
-    const cheap = CHEAP_ORDER.find((m) => allowed(m));
-    if (cheap && CHEAP_ORDER.indexOf(cheap) < CHEAP_ORDER.indexOf(agent.model)) {
-      return { depth, model: cheap, effort: capEffort(agent.effort, depth.effortCap), modelReason: `${depth.label} research uses the lower-cost model` };
-    }
+  const wantsCheap = preference === "economy" ? depth.id !== "deep" : preference === "balanced" ? depth.preferCheapModel : false;
+  const cheap = wantsCheap ? cheaper() : null;
+  if (cheap) {
+    return { depth, model: cheap, effort: capEffort(agent.effort, depth.effortCap), modelReason: preference === "economy" ? "Economy mode uses the lower-cost model" : `${depth.label} research uses the lower-cost model` };
   }
   return { depth, model: agent.model, effort: capEffort(agent.effort, depth.effortCap), modelReason: null };
 }

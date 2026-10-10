@@ -115,8 +115,8 @@ describe("research depth", () => {
 
   it("writes up instead of searching again once the depth's searches are used", async () => {
     const provider = new ScriptedProvider([
-      // Turn 1: six searches (Standard's whole allowance), then saves a note.
-      (req) => ({ ...callTool("remember", { note: "Protein bars: ALOHA leads." })(req), usage: { inputTokens: 100, outputTokens: 400, cacheReadTokens: 0, cacheWriteTokens: 3000, webSearchRequests: 6 } }),
+      // Turn 1: four searches (Standard's whole allowance), then saves a note.
+      (req) => ({ ...callTool("remember", { note: "Protein bars: ALOHA leads." })(req), usage: { inputTokens: 100, outputTokens: 400, cacheReadTokens: 0, cacheWriteTokens: 3000, webSearchRequests: 4 } }),
       say("Final brief with [sources](https://example.com)."),
     ]);
     const h = harness(provider);
@@ -124,7 +124,7 @@ describe("research depth", () => {
     await h.runner.drain();
     expect(h.store.getTask(task.id)).toMatchObject({ status: "completed", output: "Final brief with [sources](https://example.com)." });
     expect(provider.calls[0].noTools).toBeUndefined();
-    expect(provider.calls[0].hostedLimits).toEqual({ webSearchMaxUses: 6, webFetchMaxUses: 4, webFetchMaxContentTokens: 8000 });
+    expect(provider.calls[0].hostedLimits).toEqual({ webSearchMaxUses: 4, webFetchMaxUses: 3, webFetchMaxContentTokens: 8000 });
     expect(provider.calls[0].effort).toBe("medium"); // Pip's "high", capped by Standard
     expect(provider.calls[1].noTools).toBe(true);
     expect(provider.calls[1].maxTokens).toBeLessThanOrEqual(8000);

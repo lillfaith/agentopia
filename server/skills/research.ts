@@ -12,8 +12,10 @@ export const research: SkillDefinition = {
   status: "available",
   tools: [webSearch, webFetch],
   prompt:
-    "Research skill: use web search for anything time-sensitive or factual, fetch the most relevant pages to read them properly, " +
-    "and cite sources inline as Markdown links. Separate verified facts from assumptions.",
+    "Research skill: answer well-established knowledge from what you already know, and use web search for what is recent, niche, " +
+    "disputed, numeric, or needs a citation. Plan your searches first, don't repeat a search, and fetch a page only when a result's " +
+    "snippet isn't enough. Cite the key claims inline as Markdown links (one or two good sources beat many weak ones), " +
+    "and separate verified facts from your own background knowledge and assumptions.",
   costNote:
     "Web search: $10 per 1,000 searches plus tokens for results. Web fetch: no extra fee beyond the tokens it adds. " +
     "Each task's research depth (Quick / Standard / Deep) caps searches, page reads, page size and spend.",

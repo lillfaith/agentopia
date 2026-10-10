@@ -693,6 +693,8 @@ export interface EmployeeDraft {
   cached: boolean;
 }
 
+export type ModelPreference = "economy" | "balanced" | "quality";
+
 export interface TownSettings {
   townName: string;
   themeId: string;
@@ -707,6 +709,13 @@ export interface TownSettings {
   paused: boolean;
   /** Research depth for new tasks that don't choose one. */
   defaultDepth: ResearchDepth;
+  /**
+   * Which model a task runs on when it doesn't pick one (never changes an employee's own setting):
+   *  economy  = the lowest-cost allowed model for every task;
+   *  balanced = the lowest-cost model for Quick research, the employee's model otherwise;
+   *  quality  = always the employee's model.
+   */
+  modelPreference: ModelPreference;
 }
 
 // ───────────────────────── Projects ─────────────────────────
