@@ -35,9 +35,13 @@ You can edit the document section by section (**Simple**) or as one Markdown fil
 - AI drafts are only suggestions. During hiring, a draft fills the form only until you edit the instructions by hand; after that it appears as "Use the draft". On the Profile tab, **Rewrite from a description** shows a preview that you choose to apply, and nothing is saved until you press Save.
 - Changes to the employee's status (working, idle) don't reset the form.
 
-**AI drafts:**
-- Drafts use Agentopia's own Claude, on the cheapest model your plan allows. A draft costs a fraction of a cent and is recorded in the Treasury under `hiring-desk`.
-- When AI isn't available (simulation mode, or the town is over its spending limit), the draft is built from the template and the description, and it says so.
+**Drafts: you choose how, and AI only runs when you ask:**
+- **From the template and your words** is the default. It's free and makes no AI call.
+- **✨ Write with AI** uses Agentopia's Claude on the cheapest model your plan allows, about $0.0003 a draft. The estimate and today's remaining allowance (`AGENTOPIA_DRAFTS_PER_DAY`, default 20) are shown before you choose it.
+- **✨ Write with AI using your … key** uses any connected Claude, OpenAI or Gemini key. It's billed by that provider, not your plan.
+- The same request is never paid for twice: identical drafts are reused for 24 hours at no charge.
+- Every draft says who wrote it and what it cost. AI drafts appear in the Treasury as "🪄 Hiring desk (drafts)".
+- See [COSTS.md](COSTS.md#hiring-desk-ai-written-instruction-drafts) for the full audit.
 
 ## What comes first
 

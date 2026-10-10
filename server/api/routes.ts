@@ -7,7 +7,7 @@ import type { Config } from "../config.js";
 import { transaction } from "../db/database.js";
 import type { Store } from "../db/store.js";
 import { AGENT_TEMPLATES, builtinTemplate, searchTemplates } from "../agents/templates.js";
-import { draftEmployee } from "../agents/drafts.js";
+import { draftEmployee, draftEstimateUsd, draftModel, platformDraftsToday } from "../agents/drafts.js";
 import { PROFILE_LIMITS, profileOf, sameProfile } from "../../shared/profile.js";
 import { MODELS, isKnownModel } from "../llm/models.js";
 import { SERVICE_LABEL, checkKey, type KeyCheckers, type ProviderResolver } from "../llm/keys.js";
@@ -132,8 +132,12 @@ const draftRequest = z
   .object({
     description: z.string().trim().min(3).max(4000),
     role: z.string().trim().max(PROFILE_LIMITS.role).optional(),
-    name: z.string().trim().max(40).optional(),
+    name: z.string().trim().max(40).optional(), // accepted for older clients; not sent to the AI
     templateId: z.string().max(80).optional(),
+    /** "template" = free, no AI. "ai" = an AI-written draft. Omitted = "ai" (an explicit API call). */
+    mode: z.enum(["template", "ai"]).optional(),
+    /** Write the AI draft with the owner's own key instead of Agentopia's Claude. */
+    credentialId: z.string().min(1).max(80).nullable().optional(),
   })
   .strict();
 
@@ -277,6 +281,13 @@ export function systemStatus({ config, store, runner, embedded }: ApiDeps): Syst
     worker: { running: runner.running, concurrency: config.workerConcurrency, activeTasks: runner.activeCount },
     // Worker hostnames and pids are operator details, not shown to SaaS users.
     workers: embedded ? [] : store.listWorkers(),
+    drafts: {
+      model: draftModel(config.allowedModels),
+      estimateUsd: draftEstimateUsd(config.allowedModels),
+      perDay: config.draftsPerDay,
+      usedToday: platformDraftsToday(store),
+      available: !p.simulated && !!config.anthropicApiKey,
+    },
     limits: {
       dailyBudgetUsd: config.dailyBudgetUsd,
       maxTurnsPerTask: config.maxTurnsPerTask,
@@ -385,7 +396,12 @@ export function createApi(deps: ApiDeps): Hono {
     if (!b.ok) return b.res;
     const template = b.data.templateId ? allTemplates().find((t) => t.id === b.data.templateId) : undefined;
     const hold = runner.holdReason() ?? (budgetStatus(store, config, runner.provider.simulated).globalHold ? "The town's spending limit is reached" : null);
-    return c.json(await draftEmployee({ store, config, provider: hold ? null : runner.provider, holdReason: hold }, { ...b.data, template }));
+    return c.json(
+      await draftEmployee(
+        { store, config, provider: hold ? null : runner.provider, resolver: deps.resolver, holdReason: hold },
+        { description: b.data.description, role: b.data.role, template, mode: b.data.mode, credentialId: b.data.credentialId ?? null },
+      ),
+    );
   });
 
   // ── agents ──

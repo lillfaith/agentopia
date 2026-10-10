@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import type { AgentTemplate, EmployeeDraft, Effort, InstructionProfile } from "../../../shared/types";
+import { fmtUsd } from "./common";
 import { profileProblems } from "../../../shared/profile";
 import { api } from "../api/client";
 import { useTown } from "../state/store";
@@ -35,7 +36,10 @@ interface HireState {
   /** True once the owner edits the instructions by hand: drafts then become suggestions, never replacements. */
   edited: boolean;
   draft: EmployeeDraft | null;
+  /** What the last draft was made from (description + source), so the same request isn't sent twice. */
   draftedFrom: string;
+  /** How to write the instructions: "template" (free, default), "platform" (Agentopia's Claude) or an owner key id. */
+  draftSource: DraftSource;
   skills: string[];
   approvalTools: string[];
   effort: Effort;
@@ -79,6 +83,7 @@ export function HireWizard({ onDone }: { onDone: () => void }) {
     edited: false,
     draft: null,
     draftedFrom: "",
+    draftSource: "template",
     skills: BLANK.skills,
     approvalTools: [],
     effort: "medium",
@@ -123,20 +128,31 @@ export function HireWizard({ onDone }: { onDone: () => void }) {
     setStep(2);
   };
 
-  /** Ask for a draft; apply it only if the owner hasn't written instructions by hand. */
+  /**
+   * Make the draft the owner chose. The free template draft is the default; an AI draft is only
+   * requested when they picked an AI source, and never twice for the same description and source.
+   */
   const draftAndReview = async () => {
     const description = s.description.trim();
-    if (!description || description === s.draftedFrom) return setStep(3);
+    const source = description ? s.draftSource : "template";
+    const requestKey = `${source}|${s.profile.role.trim()}|${description}`;
+    if (!description || requestKey === s.draftedFrom) return setStep(3);
     setBusy("draft");
     try {
-      const d = await api.draftEmployee({ description, role: s.profile.role.trim() || undefined, name: s.name.trim() || undefined, templateId: s.template?.id || undefined });
+      const d = await api.draftEmployee({
+        description,
+        role: s.profile.role.trim() || undefined,
+        templateId: s.template?.id || undefined,
+        mode: source === "template" ? "template" : "ai",
+        credentialId: source === "template" || source === "platform" ? null : source,
+      });
       setS((x) =>
         x.edited
-          ? { ...x, draft: d, draftedFrom: description }
+          ? { ...x, draft: d, draftedFrom: requestKey }
           : {
               ...x,
               draft: d,
-              draftedFrom: description,
+              draftedFrom: requestKey,
               profile: { ...x.profile, role: d.role, personality: d.personality, systemPrompt: d.systemPrompt, responsibilities: d.responsibilities, operatingInstructions: d.operatingInstructions, taskInstructions: d.taskInstructions },
               skills: d.skills,
             },
@@ -257,15 +273,16 @@ export function HireWizard({ onDone }: { onDone: () => void }) {
               onChange={(e) => set("description", e.target.value)}
             />
             <small className="muted">
-              {s.description.trim() ? "Next, Agentopia writes their instructions from this. You can edit everything before hiring." : s.template ? "Optional. Leave it empty to use the template as it is." : "Tell us the job, or skip and write the instructions yourself on the next step."}
+              {s.description.trim() ? "You can edit everything on the next step before hiring." : s.template ? "Optional. Leave it empty to use the template as it is." : "Tell us the job, or skip and write the instructions yourself on the next step."}
             </small>
           </label>
+          {s.description.trim() && <DraftSourcePicker value={s.draftSource} onChange={(v) => set("draftSource", v)} />}
           <div className="row between">
             <button type="button" className="btn ghost" onClick={() => setStep(1)}>
               ← Back
             </button>
             <button type="button" className="btn primary" disabled={!s.name.trim() || !s.profile.role.trim() || busy === "draft"} onClick={draftAndReview}>
-              {busy === "draft" ? "✨ Writing their instructions…" : "Next: review ✨"}
+              {busy === "draft" ? "✨ Writing their instructions…" : s.description.trim() && s.draftSource !== "template" ? "✨ Write with AI & review" : "Next: review"}
             </button>
           </div>
         </section>
@@ -284,6 +301,7 @@ export function HireWizard({ onDone }: { onDone: () => void }) {
             </div>
           </div>
 
+          {s.draft && <DraftReceipt draft={s.draft} />}
           {s.draft?.note && <div className="note-box small">{s.draft.note}</div>}
           {s.draft && s.edited && (
             <div className="note-box small row between">
@@ -495,4 +513,65 @@ function JobCard({ t, onClick }: { t: AgentTemplate; onClick: () => void }) {
       <small>{t.tagline ?? t.description}</small>
     </button>
   );
+}
+
+/** "template" = free; "platform" = Agentopia's Claude; anything else = an owner key id. */
+export type DraftSource = "template" | "platform" | string;
+
+/**
+ * How to write the instructions. The free template draft is the default; AI is opt-in, with the
+ * cost and who pays shown before anything runs.
+ */
+export function DraftSourcePicker({ value, onChange, allowTemplate = true }: { value: DraftSource; onChange: (v: DraftSource) => void; allowTemplate?: boolean }) {
+  const drafts = useTown((s) => s.snapshot!.status.drafts);
+  const creds = useTown((s) => s.snapshot!.credentials);
+  const keys = (creds ?? []).filter((c) => c.service !== "github" && c.status !== "error");
+  const left = drafts ? Math.max(0, drafts.perDay - drafts.usedToday) : 0;
+  const platformOk = !!drafts?.available && (drafts.perDay === 0 || left > 0);
+  const label = (svc: string) => (svc === "anthropic" ? "Claude" : svc === "openai" ? "OpenAI" : "Gemini");
+  return (
+    <fieldset className="draft-source">
+      <legend>How should we write their instructions?</legend>
+      {allowTemplate && (
+        <label className="check">
+          <input type="radio" name="draft-source" checked={value === "template"} onChange={() => onChange("template")} />
+          <span>
+            <b>From the template and your words</b> <small className="muted">· free, instant</small>
+          </span>
+        </label>
+      )}
+      <label className="check">
+        <input type="radio" name="draft-source" checked={value === "platform"} disabled={!platformOk} onChange={() => onChange("platform")} />
+        <span>
+          <b>✨ Write with AI</b>{" "}
+          <small className="muted">
+            {drafts?.available
+              ? `· Agentopia's Claude · about ${fmtUsd(drafts.estimateUsd)} from your plan${drafts.perDay ? ` · ${left} of ${drafts.perDay} left today` : ""}`
+              : "· not available on this server"}
+          </small>
+        </span>
+      </label>
+      {keys.map((k) => (
+        <label key={k.id} className="check">
+          <input type="radio" name="draft-source" checked={value === k.id} onChange={() => onChange(k.id)} />
+          <span>
+            <b>✨ Write with AI using your {label(k.service)} key</b> <small className="muted">· “{k.label}” · billed by {label(k.service)}, not your plan</small>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+/** Who wrote the draft and what it cost, in one line. */
+export function DraftReceipt({ draft }: { draft: EmployeeDraft }) {
+  const text =
+    draft.source === "template"
+      ? "📄 Free draft from the template and your words"
+      : draft.cached
+        ? `♻️ Same as your earlier AI draft (${draft.model}) · no new charge`
+        : draft.billing === "own"
+          ? `✨ Written by ${draft.model} on your own key · billed by that provider`
+          : `✨ Written by ${draft.model} on Agentopia's Claude · ${draft.costUsd !== null ? fmtUsd(draft.costUsd) : "cost unknown"} from your plan`;
+  return <small className="draft-receipt muted">{text}</small>;
 }

@@ -527,6 +527,8 @@ export interface Verification {
 
 export interface SystemStatus {
   version: string;
+  /** AI-written employee drafts on Agentopia's Claude: model, typical cost, today's allowance. */
+  drafts?: { model: string; estimateUsd: number; perDay: number; usedToday: number; available: boolean };
   /** Which roles this API process runs. Workers may also run as separate processes. */
   role: "all" | "api";
   provider: {
@@ -649,6 +651,14 @@ export interface EmployeeDraft {
   skills: string[];
   source: "ai" | "template";
   note: string | null;
+  /** What this draft cost: 0 for template drafts and reused ones; null when the provider's price is unknown (own key). */
+  costUsd: number | null;
+  /** Model that wrote it (null for template drafts). */
+  model: string | null;
+  /** Who pays: Agentopia's plan, the owner's own key, or nobody (template). */
+  billing: "platform" | "own" | "free";
+  /** True when the same request was answered from the cache (no new AI call). */
+  cached: boolean;
 }
 
 export interface TownSettings {

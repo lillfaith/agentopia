@@ -537,3 +537,6 @@ details.mini[open] > summary { margin-bottom: 8px; }
 .version-row { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; border-bottom: 1px dashed var(--panel-border); }
 .version-row:last-child { border-bottom: 0; }
 .template-actions { flex-wrap: wrap; }
+.draft-source { gap: 6px; padding: 8px 10px; }
+.draft-source .check span { line-height: 1.35; }
+.draft-receipt { display: block; padding: 0 2px; }

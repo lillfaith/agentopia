@@ -52,6 +52,7 @@ Recommended:
 | `AGENTOPIA_BACKUP_INTERVAL_HOURS` | `24` in production | How often snapshots are taken. `0` turns them off |
 | `AGENTOPIA_BACKUP_KEEP` | `7` | Number of snapshots kept on the volume |
 | `AGENTOPIA_SESSION_DAYS` | `30` | Sliding session lifetime |
+| `AGENTOPIA_DRAFTS_PER_DAY` | `20` | AI-written employee instruction drafts per town per day on Agentopia's Claude (about $0.0003 each on Haiku). Past it, owners get the free template draft or use their own key. `0` = unlimited |
 | `AGENTOPIA_SECRETS_KEY` | key file on the volume | Master key that encrypts owners' own API keys (32 bytes: 64 hex characters or base64, e.g. `openssl rand -hex 32`). Mark it as a secret. See "Owners' own API keys" below |
 
 Billing: set all four of these, or none of them.

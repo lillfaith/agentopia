@@ -12,6 +12,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
+import { DatabaseSync } from "node:sqlite";
 import { serve } from "@hono/node-server";
 import { loadConfig } from "../server/config.js";
 import { createSaasApp } from "../server/saas/server.js";
@@ -129,11 +130,21 @@ try {
   check("start a free-form chat", chatDone?.status === "completed" && chatDone.kind === "chat" && (chatDone.output ?? "").trim().length > 10, JSON.stringify((chatDone?.output ?? chatDone?.lastError ?? "").slice(0, 120)));
 
   // Hire from a plain-language description: AI drafts the instructions, the owner hires, the employee works.
-  const draft = await alice("/api/employee-drafts", "POST", { description: "Write short, friendly product descriptions for a small candle shop.", role: "Product Writer", templateId: "job-writer" });
+  const draftReq = { description: "Write short, friendly product descriptions for a small candle shop.", role: "Product Writer", templateId: "job-writer", mode: "ai" };
+  const draft = await alice("/api/employee-drafts", "POST", draftReq);
+  // Asking again with the same description must not call the AI again.
+  const again2 = await alice("/api/employee-drafts", "POST", draftReq);
+  check(
+    "repeating the same draft request is free (cached)",
+    simulate ? again2.status === 200 : again2.body.cached === true && again2.body.costUsd === 0,
+    `cached=${again2.body.cached} cost=${again2.body.costUsd}`,
+  );
+  const free = await alice("/api/employee-drafts", "POST", { ...draftReq, mode: "template" });
+  check("the template draft is free and makes no AI call", free.body.source === "template" && free.body.costUsd === 0, free.body.billing);
   check(
     "draft an employee's instructions from a description",
     draft.status === 200 && draft.body.systemPrompt?.length > 20 && Array.isArray(draft.body.skills) && (simulate || draft.body.source === "ai"),
-    `${draft.body.source ?? draft.body.error}${draft.body.note ? ` (${draft.body.note})` : ""}: ${JSON.stringify((draft.body.systemPrompt ?? "").slice(0, 100))}`,
+    `${draft.body.source ?? draft.body.error} · ${draft.body.model ?? "no model"} · $${Number(draft.body.costUsd ?? 0).toFixed(5)}${draft.body.note ? ` (${draft.body.note})` : ""}: ${JSON.stringify((draft.body.systemPrompt ?? "").slice(0, 80))}`,
   );
   const snapNow = (await alice("/api/snapshot")).body;
   const hired = await alice("/api/agents", "POST", {
@@ -199,7 +210,52 @@ try {
   console.error("✗ e2e crashed:", err instanceof Error ? err.message : err);
 } finally {
   await first.stop();
+  try {
+    reportSpend();
+  } catch (err) {
+    console.error("(couldn't total this run's spend:", err instanceof Error ? err.message : err, ")");
+  }
   fs.rmSync(dataDir, { recursive: true, force: true });
+}
+
+/**
+ * This run's API spend, read from the test towns' own usage tables. It is operator-funded test
+ * spend on the CI key, not customer usage: the run uses a throwaway data directory that's deleted
+ * afterwards. "Own key" calls also go to the CI key here, because the test uses it as the owner's key.
+ */
+function reportSpend() {
+  const townsDir = path.join(dataDir, "towns");
+  const rows: { agent_id: string; billing: string; n: number; cost: number; tokens: number }[] = [];
+  for (const f of fs.existsSync(townsDir) ? fs.readdirSync(townsDir).filter((x) => x.endsWith(".sqlite")) : []) {
+    const db = new DatabaseSync(path.join(townsDir, f), { readOnly: true });
+    rows.push(
+      ...(db
+        .prepare("SELECT agent_id, billing, COUNT(*) AS n, SUM(cost_usd) AS cost, SUM(input_tokens + cache_read_tokens + cache_write_tokens + output_tokens) AS tokens FROM usage WHERE simulated = 0 GROUP BY agent_id, billing")
+        .all() as typeof rows),
+    );
+    db.close();
+  }
+  const sum = (pick: (r: (typeof rows)[number]) => boolean) => rows.filter(pick).reduce((a, r) => ({ n: a.n + Number(r.n), cost: a.cost + Number(r.cost ?? 0), tokens: a.tokens + Number(r.tokens ?? 0) }), { n: 0, cost: 0, tokens: 0 });
+  const all = sum(() => true);
+  const drafts = sum((r) => r.agent_id === "hiring-desk");
+  const own = sum((r) => r.billing === "own");
+  const work = sum((r) => r.agent_id !== "hiring-desk" && r.billing !== "own");
+  const key = process.env.AGENTOPIA_CI_KEY_SOURCE ?? (simulate ? "none (simulated)" : "local ANTHROPIC_API_KEY");
+  const usd = (n: number) => `$${n.toFixed(4)}`;
+  const lines = [
+    `### CI test spend (operator-funded, not customer usage)`,
+    ``,
+    `Key: ${key}. Throwaway test town, deleted after the run.`,
+    ``,
+    `| | API calls | tokens | est. cost |`,
+    `|---|---:|---:|---:|`,
+    `| Employee work (tasks, replies, chats) | ${work.n} | ${work.tokens} | ${usd(work.cost)} |`,
+    `| Hiring desk (AI instruction drafts) | ${drafts.n} | ${drafts.tokens} | ${usd(drafts.cost)} |`,
+    `| "Own key" check (also the CI key here) | ${own.n} | ${own.tokens} | ${usd(own.cost)} |`,
+    `| **Total charged to the CI key** | **${all.n}** | **${all.tokens}** | **${usd(all.cost)}** |`,
+  ];
+  console.log(`\n${lines.join("\n")}`);
+  if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join("\n")}\n`);
 }
 console.log(`\n${results.filter((r) => r.ok).length}/${results.length} checks passed${simulate ? " (SIMULATED — no AI was called)" : ""}`);
 process.exit(exitCode);

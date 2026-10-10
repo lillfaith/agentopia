@@ -199,6 +199,53 @@ describe("drafting instructions from a description", () => {
     expect((await (await ask(bad)).json()).note).toMatch(/systemPrompt/);
   });
 
+  it("only calls AI when asked, never twice for the same request, and within a daily allowance", async () => {
+    const reply = (role: string) => say(JSON.stringify({ role, systemPrompt: `You are a ${role}.`, responsibilities: ["A"], skills: ["writing"] }));
+    const p = new ScriptedProvider([reply("One"), reply("Two"), reply("Three")]);
+    const h = harness(p, { draftsPerDay: 2 });
+    const before = (await (await h.request("/api/status")).json()).drafts;
+    expect(before).toMatchObject({ model: "claude-haiku-5-5", perDay: 2, usedToday: 0 });
+    expect(before.estimateUsd).toBeGreaterThan(0);
+    expect(before.estimateUsd).toBeLessThan(0.002);
+
+    // The free template draft makes no AI call at all.
+    const free = await (await ask(h, { mode: "template" })).json();
+    expect(free).toMatchObject({ source: "template", billing: "free", costUsd: 0, model: null });
+    expect(p.calls).toHaveLength(0);
+
+    // One AI draft; asking again with the same words is answered from the cache, free.
+    const first = await (await ask(h, { mode: "ai" })).json();
+    expect(first).toMatchObject({ source: "ai", billing: "platform", cached: false, model: "claude-haiku-5-5" });
+    expect(first.costUsd).toBeGreaterThan(0);
+    const again = await (await ask(h, { mode: "ai" })).json();
+    expect(again).toMatchObject({ source: "ai", cached: true, costUsd: 0, systemPrompt: first.systemPrompt });
+    expect(p.calls).toHaveLength(1);
+    expect((await (await h.request("/api/status")).json()).drafts.usedToday).toBe(1);
+
+    // A different description is a new draft; past the daily allowance it's the free template draft instead.
+    await ask(h, { mode: "ai", description: "Something else entirely for this employee" });
+    const capped = await (await ask(h, { mode: "ai", description: "A third, different description" })).json();
+    expect(capped).toMatchObject({ source: "template", costUsd: 0 });
+    expect(capped.note).toMatch(/today's 2 AI drafts/);
+    expect(p.calls).toHaveLength(2);
+  });
+
+  it("can write the draft with the owner's own AI key, billed to them, not the plan", async () => {
+    const own = new ScriptedProvider([say(JSON.stringify({ role: "Writer", systemPrompt: "You write.", responsibilities: [], skills: ["writing"] }))]);
+    const platform = new ScriptedProvider([]);
+    const h = harness(platform, {}, { providerFactory: () => own });
+    const cred = h.store.addCredential({ service: "openai", label: "Work", secret: "sk-test-openai-0123456789abcdef" });
+    h.store.setCredentialStatus(cred.id, "ok", "fine", ["gpt-3.5-turbo", "gpt-5", "gpt-5-mini"]);
+    const d = await (await ask(h, { mode: "ai", credentialId: cred.id })).json();
+    expect(d).toMatchObject({ source: "ai", billing: "own", costUsd: null });
+    expect(own.calls[0].model).toBe("gpt-5-mini");
+    expect(platform.calls).toHaveLength(0);
+    expect(h.store.spendSince("2000-01-01")).toBe(0); // nothing on the plan
+    expect((await (await h.request("/api/status")).json()).drafts.usedToday).toBe(0);
+    const gh = h.store.addCredential({ service: "github", label: "GH", secret: "ghp_0123456789abcdef0123" });
+    expect((await (await ask(h, { mode: "ai", credentialId: gh.id })).json()).source).toBe("template");
+  });
+
   it("falls back to the template when AI isn't available or the reply is unusable", async () => {
     const sim = harness(new SimulatedProvider(0));
     const fromTemplate = await (await ask(sim, { templateId: "youtube-manager" })).json();

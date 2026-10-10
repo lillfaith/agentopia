@@ -1,7 +1,10 @@
 import { useState } from "react";
-import type { AIProvider, SkillInfo } from "../../../shared/types";
+import type { CredentialInfo, AIProvider, SkillInfo } from "../../../shared/types";
 import { useTown } from "../state/store";
 import { Badge } from "./common";
+
+/** Stable empty list, so a selector never returns a new array (that would re-render forever). */
+const NO_CREDENTIALS: CredentialInfo[] = [];
 
 /** What an employee's equipment needs to know about its setup. */
 export interface EquipmentContext {
@@ -158,7 +161,7 @@ const CONNECTIONS: { id: string; label: string; icon: string; service?: "anthrop
 
 /** The services an employee can be connected to, and whether each is ready, missing or coming soon. */
 export function ConnectionsStrip() {
-  const creds = useTown((s) => s.snapshot!.credentials ?? []);
+  const creds = useTown((s) => s.snapshot!.credentials ?? NO_CREDENTIALS);
   return (
     <div className="connections">
       <span className="label-text">Connections</span>

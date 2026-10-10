@@ -4,6 +4,9 @@ import { rankModels } from "../../../shared/modelRank";
 import { api } from "../api/client";
 import { useTown } from "../state/store";
 
+/** Stable empty list, so a selector never returns a new array (that would re-render forever). */
+const NO_CREDENTIALS: CredentialInfo[] = [];
+
 export const SERVICE_LABEL: Record<CredentialService, string> = {
   anthropic: "Claude",
   openai: "OpenAI",
@@ -50,7 +53,7 @@ export function aiSetupPayload(v: AiSetupValue) {
  */
 export function AiSetup({ value, onChange, skills }: { value: AiSetupValue; onChange: (v: AiSetupValue) => void; skills: string[] }) {
   const status = useTown((s) => s.snapshot!.status);
-  const creds = useTown((s) => s.snapshot!.credentials ?? []);
+  const creds = useTown((s) => s.snapshot!.credentials ?? NO_CREDENTIALS);
   const aiKeys = creds.filter((c) => c.service !== "github");
   const ghKeys = creds.filter((c) => c.service === "github");
   const cred = aiKeys.find((c) => c.id === value.credentialId);
@@ -161,7 +164,7 @@ export function AiSetup({ value, onChange, skills }: { value: AiSetupValue; onCh
 
 /** Settings → API keys: add, check and remove the owner's own keys. Secrets never come back. */
 export function ApiKeys() {
-  const creds = useTown((s) => s.snapshot!.credentials ?? []);
+  const creds = useTown((s) => s.snapshot!.credentials ?? NO_CREDENTIALS);
   const agents = useTown((s) => s.snapshot!.agents);
   const push = useTown((s) => s.pushToast);
   const load = useTown((s) => s.load);

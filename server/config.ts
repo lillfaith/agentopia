@@ -22,6 +22,8 @@ export interface Config {
   dailyBudgetUsd: number;
   monthlyBudgetUsd: number;
   maxTaskCostUsd: number;
+  /** AI-written employee drafts per town per day on Agentopia's Claude (0 = unlimited). */
+  draftsPerDay: number;
   minScheduleIntervalMinutes: number;
   /** "all" = API + worker in one process; "api" = HTTP only; "worker" = queue + scheduler only. */
   role: "all" | "api" | "worker";
@@ -110,6 +112,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dailyBudgetUsd: num(env.AGENTOPIA_DAILY_BUDGET_USD, 5),
     monthlyBudgetUsd: num(env.AGENTOPIA_MONTHLY_BUDGET_USD, 50),
     maxTaskCostUsd: num(env.AGENTOPIA_MAX_TASK_COST_USD, 1),
+    draftsPerDay: num(env.AGENTOPIA_DRAFTS_PER_DAY, 20),
     minScheduleIntervalMinutes: Math.max(1, num(env.AGENTOPIA_MIN_SCHEDULE_INTERVAL_MINUTES, 15)),
     role: parseRole(env.AGENTOPIA_ROLE),
     maxTurnsPerTask: Math.max(1, num(env.AGENTOPIA_MAX_TURNS_PER_TASK, 8)),
