@@ -85,16 +85,16 @@ When hiring (or on an employee's Profile → Instructions → Rewrite), the owne
 
 ## CI test spend (operator-funded, separate from customers)
 
-Three GitHub Actions workflows call the real Claude API. None runs on `main` or after a merge:
+Three GitHub Actions workflows call the real Claude API. All three run only when started by hand, never on a push, a merge or a schedule:
 
 | Workflow | When it runs | Spend per run |
 |---|---|---|
-| `e2e-live` | When the SaaS layer, providers, executor or the check itself change on the development branch, or by hand. Skip a push with `[skip live]` in the commit message. | About $0.003–$0.01 (Haiku; one AI draft, a handful of short tasks). Hard ceilings: $0.50/day and $0.05/task for the test town. |
+| `e2e-live` | By hand only (until 10 October 2026 it also ran on development-branch pushes) | Measured $0.0011 on 10 October 2026 (6 Haiku calls: four short tasks, one AI draft, one own-key task). Hard ceilings: $0.50/day and $0.05/task for the test town. |
 | `verify-live` | By hand only | Up to about $0.50 (script-enforced cap) |
 | `cost-probe` | By hand only (the push trigger was removed after the October measurements) | About $2 for a full comparison |
 
 History up to 10 October 2026:
-- `e2e-live` ran 14 times, all on the development branch.
+- `e2e-live` ran 16 times, all on the development branch.
 - `cost-probe` ran 5 times while it still had a push trigger. Its measured results are in this document.
 - `verify-live` ran once.
 
