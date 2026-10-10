@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Agent, Effort, InstructionProfile, ProfileVersion } from "../../../shared/types";
+import type { Agent, EmployeeDraft, Effort, InstructionProfile, ProfileVersion } from "../../../shared/types";
 import { profileOf, profileToMarkdown, sameProfile } from "../../../shared/profile";
 import { DEMO, api } from "../api/client";
 import { useTown } from "../state/store";
@@ -7,6 +7,7 @@ import { AiSetup, aiSetupFrom, aiSetupPayload, type AiSetupValue } from "./AiSet
 import { timeAgo } from "./common";
 import { ConnectionsStrip, EquipmentGrid, PermissionsList } from "./Equipment";
 import { InstructionsEditor } from "./InstructionsEditor";
+import { DraftReceipt, DraftSourcePicker, type DraftSource } from "./HireWizard";
 
 type Section = "job" | "instructions" | "equipment" | "connections" | "permissions" | "workplace";
 const SECTIONS: [Section, string][] = [
@@ -225,13 +226,19 @@ function Redraft({ agent, current, onApply }: { agent: Agent; current: Instructi
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<InstructionProfile | null>(null);
-  const [note, setNote] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<EmployeeDraft | null>(null);
+  const [source, setSource] = useState<DraftSource>("template");
   const ask = async () => {
     setBusy(true);
     try {
-      const d = await api.draftEmployee({ description: text.trim(), role: current.role, name: agent.name });
+      const d = await api.draftEmployee({
+        description: text.trim(),
+        role: current.role,
+        mode: source === "template" ? "template" : "ai",
+        credentialId: source === "template" || source === "platform" ? null : source,
+      });
       setDraft({ ...current, role: d.role, personality: d.personality, systemPrompt: d.systemPrompt, responsibilities: d.responsibilities, operatingInstructions: d.operatingInstructions, taskInstructions: d.taskInstructions });
-      setNote(d.note);
+      setReceipt(d);
     } catch (e) {
       push({ tone: "bad", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -242,12 +249,14 @@ function Redraft({ agent, current, onApply }: { agent: Agent; current: Instructi
     <details className="option">
       <summary>✨ Rewrite from a description</summary>
       <textarea rows={3} value={text} placeholder="Describe what you want them to do now, in plain words." onChange={(e) => setText(e.target.value)} />
+      {text.trim().length >= 3 && <DraftSourcePicker value={source} onChange={setSource} />}
       <button type="button" className="btn" disabled={busy || text.trim().length < 3 || DEMO} onClick={ask}>
-        {busy ? "Writing…" : "Write a suggestion"}
+        {busy ? "Writing…" : source === "template" ? "Make a free suggestion" : "✨ Write a suggestion with AI"}
       </button>
       {draft && (
         <div className="card">
-          {note && <small className="muted">{note}</small>}
+          {receipt && <DraftReceipt draft={receipt} />}
+          {receipt?.note && <small className="muted">{receipt.note}</small>}
           <pre className="draft-preview">{profileToMarkdown(draft)}</pre>
           <small className="muted">Your current instructions stay as they are unless you use this suggestion. Nothing is saved until you press Save.</small>
           <div className="row gap-s">

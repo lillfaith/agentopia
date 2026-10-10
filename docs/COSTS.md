@@ -69,6 +69,39 @@ above. For OpenAI and Gemini models Agentopia uses the prices you enter on the v
 assumes $10 / $50 per million input / output tokens, which is deliberately high so caps stop work early
 rather than late. Your provider's own bill is the authority.
 
+### Hiring desk: AI-written instruction drafts
+
+When hiring (or on an employee's Profile → Instructions → Rewrite), the owner can ask AI to write the employee's instructions from a plain description. Audit of how that spends money:
+
+| Question | Answer |
+|---|---|
+| When does it call AI? | Only when the owner picks **✨ Write with AI** and continues. The default is **From the template and your words**, which is free and makes no AI call. Typing, going back and forth between steps, or opening a profile never calls AI. |
+| Which model? | The cheapest Claude the plan allows: Claude Haiku 5.5 when included ($0.10 / $0.50 per M tokens), otherwise the lowest-priced allowed model. Effort low, no tools, at most 1,500 output tokens. |
+| What does one draft cost? | About 700 tokens in and 500 out, roughly **$0.0003 on Haiku**. The estimate is shown next to the option before anything runs, and the actual cost is shown on the draft ("Written by … · $0.0003 from your plan"). |
+| Is it regenerated unnecessarily? | No. The wizard doesn't re-send a request with the same description and source. The server also caches drafts per town for 24 hours, keyed on description, job title, template and source: a repeat is answered free and marked "no new charge". |
+| Is there a ceiling? | Yes. At most `AGENTOPIA_DRAFTS_PER_DAY` (default 20) platform-funded drafts per town per UTC day. After that, the owner gets the free template draft with a note, and can still use their own key. Drafts also stop when the town is over its spending limit, the plan is held, or the operator's cap is reached. That's at most about $0.006 per town per day on Haiku. |
+| Can owners avoid platform spend? | Yes: the free template draft, or **Write with AI using your … key** for any connected Claude, OpenAI or Gemini key. That uses an inexpensive model from the key's list (Haiku, a `gpt-…-mini`, a `gemini-…-flash`). It's billed by that provider, recorded with `billing = own`, and doesn't count toward the plan or the daily draft allowance. |
+| How is it accounted? | Each AI draft is a usage row under `hiring-desk` with the real token counts, model, request id and billing. It appears in the Treasury as "🪄 Hiring desk (drafts)" and in the activity log. Platform-funded drafts count toward the town's daily and monthly limits and the account's usage ledger, like any other work on Agentopia's Claude. |
+
+## CI test spend (operator-funded, separate from customers)
+
+Three GitHub Actions workflows call the real Claude API. None runs on `main` or after a merge:
+
+| Workflow | When it runs | Spend per run |
+|---|---|---|
+| `e2e-live` | When the SaaS layer, providers, executor or the check itself change on the development branch, or by hand. Skip a push with `[skip live]` in the commit message. | About $0.003–$0.01 (Haiku; one AI draft, a handful of short tasks). Hard ceilings: $0.50/day and $0.05/task for the test town. |
+| `verify-live` | By hand only | Up to about $0.50 (script-enforced cap) |
+| `cost-probe` | By hand only (the push trigger was removed after the October measurements) | About $2 for a full comparison |
+
+History up to 10 October 2026:
+- `e2e-live` ran 14 times, all on the development branch.
+- `cost-probe` ran 5 times while it still had a push trigger. Its measured results are in this document.
+- `verify-live` ran once.
+
+Test runs use a throwaway data directory that's deleted afterwards. They never touch customer towns, the accounts database or any customer's Treasury.
+
+To keep test spend apart from customer spend in Anthropic's billing, create a separate API key (ideally in its own Console workspace) and store it as the repository secret **`ANTHROPIC_API_KEY_CI`**. The workflows use it when it exists, and each run reports which key paid. Every `e2e-live` run writes a spend table to its job summary, split into employee work, hiring-desk drafts and the own-key check, with calls, tokens and estimated cost.
+
 ## Illustrative costs (assumptions, not measurements)
 
 These examples show the arithmetic. They use **assumed** token counts, not data from a real run. Your

@@ -140,6 +140,7 @@ export function AgentName({ id, plain }: { id: string | null; plain?: boolean })
   const agent = useTown((s) => s.snapshot?.agents.find((a) => a.id === id));
   const select = useTown((s) => s.selectAgent);
   if (!id) return <span className="muted">—</span>;
+  if (id === "hiring-desk") return <span title="AI-written instruction drafts when hiring or rewriting an employee">🪄 Hiring desk (drafts)</span>;
   if (!agent) return <span>{id}</span>;
   if (plain) {
     return (

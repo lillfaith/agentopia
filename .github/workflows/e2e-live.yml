@@ -2,6 +2,8 @@
 # sign up → project → task → background run → real output → persists across a restart.
 # Uses claude-haiku-5-5 and a one-paragraph task: a few cents at most per run.
 # Runs when triggered manually, or when the SaaS layer, the AI provider, the executor or this check changes on the dev branch.
+# Never on main or after merges. Put [skip live] in a commit message to skip the paid run for that push.
+# Spend is operator-funded test spend, capped per run, and reported in the job summary; it never touches customer data.
 name: e2e-live
 
 on:
@@ -24,6 +26,7 @@ concurrency:
 
 jobs:
   e2e:
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip live]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -35,6 +38,11 @@ jobs:
       - run: npm ci
       - name: npm run e2e:live
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_CI || secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          # Which key paid, for the spend report (never the value): a dedicated CI key keeps test spend apart from customers in the Anthropic Console.
+          AGENTOPIA_CI_KEY_SOURCE: ${{ secrets.ANTHROPIC_API_KEY_CI != '' && 'dedicated CI key (ANTHROPIC_API_KEY_CI)' || 'shared key (set ANTHROPIC_API_KEY_CI to separate test spend)' }}
           NODE_NO_WARNINGS: "1"
+          # Hard ceilings for this test town, so a bug can't run up a bill.
+          AGENTOPIA_DAILY_BUDGET_USD: "0.50"
+          AGENTOPIA_MAX_TASK_COST_USD: "0.05"
         run: npm run e2e:live

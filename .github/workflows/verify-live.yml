@@ -1,13 +1,11 @@
 # Live verification of the Claude integration (npm run verify:live).
 # Spends real API credit (hard cap ~$0.50 per run, enforced by the script).
-# Runs only when triggered manually, or when this file changes on the dev branch.
+# Runs only when triggered manually.
 name: verify-live
 
+# Manual only (Actions → verify-live → Run workflow): it spends up to ~$0.50 of operator test money.
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/happy-fermi-ypjunl]
-    paths: [".github/workflows/verify-live.yml"]
 
 permissions:
   contents: read
@@ -30,11 +28,12 @@ jobs:
       - name: Locate the API key secret (names only, never values)
         id: key
         env:
+          K0: ${{ secrets.ANTHROPIC_API_KEY_CI }}
           K1: ${{ secrets.ANTHROPIC_API_KEY }}
           K2: ${{ secrets.ANTHROPIC_KEY }}
           K3: ${{ secrets.CLAUDE_API_KEY }}
         run: |
-          for n in K1:ANTHROPIC_API_KEY K2:ANTHROPIC_KEY K3:CLAUDE_API_KEY; do
+          for n in K0:ANTHROPIC_API_KEY_CI K1:ANTHROPIC_API_KEY K2:ANTHROPIC_KEY K3:CLAUDE_API_KEY; do
             var="${n%%:*}"; name="${n#*:}"
             if [ -n "${!var}" ]; then echo "Found repository secret: $name"; echo "name=$name" >> "$GITHUB_OUTPUT"; exit 0; fi
           done
@@ -42,7 +41,9 @@ jobs:
           exit 1
       - name: npm run verify:live
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_CI || secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+          # Which key paid, for the spend report (never the value): a dedicated CI key keeps test spend apart from customers in the Anthropic Console.
+          AGENTOPIA_CI_KEY_SOURCE: ${{ secrets.ANTHROPIC_API_KEY_CI != '' && 'dedicated CI key (ANTHROPIC_API_KEY_CI)' || 'shared key (set ANTHROPIC_API_KEY_CI to separate test spend)' }}
           AGENTOPIA_DB_PATH: ${{ runner.temp }}/verify.sqlite
           NODE_NO_WARNINGS: "1"
         run: npm run verify:live

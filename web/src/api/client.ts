@@ -96,7 +96,7 @@ export const api = {
   profileVersions: (id: string) => call<{ current: number; versions: ProfileVersion[] }>(`/api/agents/${id}/profile/versions`),
   restoreProfile: (id: string, version: number, baseProfileVersion: number) => post<Agent>(`/api/agents/${id}/profile/restore`, { version, baseProfileVersion }),
   saveAsTemplate: (id: string, body: { role?: string; icon?: string; description?: string }) => post<AgentTemplate>(`/api/agents/${id}/template`, body),
-  draftEmployee: (body: { description: string; role?: string; name?: string; templateId?: string }) => post<EmployeeDraft>("/api/employee-drafts", body),
+  draftEmployee: (body: { description: string; role?: string; templateId?: string; mode: "template" | "ai"; credentialId?: string | null }) => post<EmployeeDraft>("/api/employee-drafts", body),
   searchTemplates: (q: string) => call<AgentTemplate[]>(`/api/templates?q=${encodeURIComponent(q)}`),
   saveTemplate: (body: TemplateBody) => post<AgentTemplate>("/api/templates", body),
   deleteTemplate: (id: string) => del<{ ok: true }>(`/api/templates/${id}`),
