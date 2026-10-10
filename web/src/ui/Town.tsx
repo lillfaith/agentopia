@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import { STATUS_LABEL, useTown } from "../state/store";
 import { HireWizard } from "./HireWizard";
 import { useTheme } from "../theme-engine/ThemeContext";
-import { Badge, Drawer, Empty, SkillChip, StatusDot, fmtUsd } from "./common";
+import { Drawer, Empty, SkillChip, StatusDot, fmtUsd } from "./common";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 type Tab = "villagers" | "hire" | "departments";
@@ -109,38 +109,6 @@ function Villagers({ onHire }: { onHire: () => void }) {
         </details>
       )}
     </div>
-  );
-}
-
-export function SkillPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  const skills = useTown((s) => s.snapshot!.status.skills);
-  const verifications = useTown((s) => s.snapshot!.status.verifications);
-  return (
-    <fieldset>
-      <legend>Skills</legend>
-      {skills.map((s) => {
-        const v = s.verificationCheck ? verifications.find((x) => x.checkId === s.verificationCheck) : null;
-        return (
-          <label key={s.id} className="check">
-            <input type="checkbox" checked={value.includes(s.id)} onChange={(e) => onChange(e.target.checked ? [...value, s.id] : value.filter((x) => x !== s.id))} />
-            <span>
-              <b>
-                {s.icon} {s.label}
-              </b>{" "}
-              {s.status === "planned" && <Badge tone="muted">planned · inactive</Badge>}
-              {s.tools.some((t) => t.requiresApproval) && <Badge tone="warn">needs approval</Badge>}
-              {s.tools.some((t) => t.implementation === "placeholder") && <Badge tone="muted">placeholder</Badge>}
-              {v && <Badge tone={v.ok ? "good" : "bad"}>{v.ok ? "verified live" : "last check failed"}</Badge>}
-              {s.status === "available" && s.verificationCheck && !v && <Badge tone="muted">not yet verified live</Badge>}
-              <br />
-              <small className="muted">{s.description}</small>
-              <br />
-              <small className="muted">💰 {s.costNote}</small>
-            </span>
-          </label>
-        );
-      })}
-    </fieldset>
   );
 }
 

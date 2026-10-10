@@ -143,7 +143,9 @@ export function HireWizard({ onDone }: { onDone: () => void }) {
       );
       setStep(3);
     } catch (e) {
-      push({ tone: "bad", text: `Couldn't draft instructions: ${errText(e)}` });
+      // Still let them hire: the template's instructions are a fine start and stay editable.
+      push({ tone: "warn", text: `Couldn't draft instructions (${errText(e)}). Using the template; you can edit it.` });
+      setStep(3);
     } finally {
       setBusy(null);
     }
