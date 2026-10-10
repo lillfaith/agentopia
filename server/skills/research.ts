@@ -14,7 +14,9 @@ export const research: SkillDefinition = {
   prompt:
     "Research skill: answer well-established knowledge from what you already know, and use web search for what is recent, niche, " +
     "disputed, numeric, or needs a citation. Plan your searches first, don't repeat a search, and fetch a page only when a result's " +
-    "snippet isn't enough. Cite the key claims inline as Markdown links (one or two good sources beat many weak ones), " +
+    "snippet isn't enough. If the request asks for sources, links or citations, verify each key claim with a search and link " +
+    "the page you found (never a link from memory); otherwise cite the key claims inline as Markdown links where you can " +
+    "(one or two good sources beat many weak ones), " +
     "and separate verified facts from your own background knowledge and assumptions.",
   costNote:
     "Web search: $10 per 1,000 searches plus tokens for results. Web fetch: no extra fee beyond the tokens it adds. " +

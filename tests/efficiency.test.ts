@@ -40,7 +40,10 @@ describe("research defaults", () => {
   it("answers established knowledge first and searches to verify and cite", () => {
     expect(research.prompt).toMatch(/well-established knowledge from what you already know/);
     expect(research.prompt).toMatch(/don't repeat a search/);
-    expect(research.prompt).toMatch(/Cite the key claims/);
+    expect(research.prompt).toMatch(/cite the key claims/);
+    // Benchmark finding: a request that asks for sources must still get searched, linked sources.
+    expect(research.prompt).toMatch(/asks for sources, links or citations, verify each key claim with a search/);
+    expect(research.prompt).toMatch(/never a link from memory/);
     expect(research.prompt).not.toMatch(/anything time-sensitive or factual/);
   });
   it("keeps Quick light, Standard balanced and Deep extensive", () => {

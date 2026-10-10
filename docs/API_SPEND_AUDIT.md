@@ -38,7 +38,7 @@ Villagers wandering or sleeping, speech bubbles, opening or refreshing the site,
 
 | Change | Why (evidence) |
 |---|---|
-| Research skill is **knowledge-first**: answer well-established knowledge directly, and search for what's recent, niche, disputed, numeric or needs a citation. Plan searches, don't repeat them, fetch a page only when a snippet isn't enough, and cite the key claims. | The old wording ("search anything factual") made searching the default, and searches are the largest single research cost. |
+| Research skill is **knowledge-first**: answer well-established knowledge directly, and search for what's recent, niche, disputed, numeric or needs a citation. Plan searches, don't repeat them, and fetch a page only when a snippet isn't enough. When the request asks for sources, each key claim is verified with a search and linked (never a link from memory). | The old wording ("search anything factual") made searching the default, and searches are the largest single research cost. |
 | **Standard depth: 4 searches, 3 page reads** (was 6 and 4). Quick (3/2) and Deep (12/10) are unchanged. | Fewer searches also means fewer results re-read on every later pass. |
 | Town **Model choice** setting (Settings → Research depth & model): **Economy** / **Balanced** (default, same behaviour as before) / **Quality**. | Haiku costs about 1/20 of Sonnet per token, with similar measured quality on research briefs. Opt-in, and an employee's own model setting is never changed. |
 | Briefs include at most **10** of an employee's notes: the latest three plus the most relevant to the task (was the latest 20). | Notes are re-read on every pass of a research call. |
@@ -98,4 +98,42 @@ That's roughly 10–25 tasks a day inside the target, and the $1 cap stops anyth
 
 ## Benchmark
 
-See below (filled in from the live run).
+These are live runs on 10 October 2026: cost-probe workflow, `suite=benchmark`, runs [38088915885](https://github.com/lillfaith/agentopia/actions/runs/38088915885) (a partial first run) and [38089371210](https://github.com/lillfaith/agentopia/actions/runs/38089371210).
+- **Variants:**
+  - "Before" is the old research prompt with Standard at 6 searches and 4 reads.
+  - "After" is this change.
+  - Balanced is the default and keeps the employee's model, Sonnet 5.5. Economy uses Haiku 5.5.
+- **Setup:** every run used a fresh test town.
+- **Spend:** about **$0.97** in total, under the authorised $1.50.
+- **Grading:** the blind grading step failed because the shared API key ran out of credits (see the note below), so no scores were produced. I reviewed the 16 outputs by hand instead.
+
+| Task | Before (Sonnet) | After, Balanced (Sonnet) | After, Economy (Haiku) |
+|---|---|---|---|
+| Plain writing | $0.0061–0.0066 | same as before | **$0.0012–0.0013 (−80%)** |
+| General-knowledge research ("three most misunderstood historical events, with a source") | **$0.080–0.099**, 5 searches, 36–45K tokens | **$0.017–0.032 (−73%)**, 0 searches, about 9K tokens | **$0.035 (−61%)**, 3 searches, 36K tokens |
+| Multi-source research (Asana / Trello / Notion pricing, linked) | $0.083–0.095, 4–6 searches | $0.085 (run 1, no change); $0.036 (run 2, failed to search) | **$0.068 (−24%)** |
+| Coding (parser plus tests in the sandbox) | $0.036 | same as before | **$0.0027 (−93%)** |
+| Delegation (brief to the copywriter, plus the copywriter's work) | $0.022 | same as before | **$0.0011 (−95%)** |
+
+**Quality review**
+- **Writing, coding and delegation on Haiku:** comparable to Sonnet. Haiku's parser was correct, with more test cases, and rejected years and months instead of approximating them. Its taglines were slightly weaker, with one cliché.
+- **General-knowledge research on Balanced:** this was a regression, now fixed.
+  - The content was accurate and well organised.
+  - The request asked for "a source", and the employee gave book titles and links from memory that it hadn't checked. One of its two answers also had a muddled summary paragraph.
+  - The research prompt now says that when a request asks for sources, each key claim is verified with a search and linked, never a link from memory. Questions that don't ask for sources still skip the searches.
+  - This fix is covered by a unit test but hasn't been measured live, because the account is out of credits. Expect requests like this to cost between the old $0.09 and the new $0.02, since Standard now caps them at 4 searches.
+- **Haiku research:** both Economy research runs cited real, linked pages and flagged where sources conflicted. The multi-source answer was the most thorough of all runs.
+- **Pre-existing search flake, not caused by this change:**
+  - One "before" and one "after" multi-source run each failed to finish their searches. The model tried to run searches from inside the code sandbox and hit the search limit.
+  - Both employees said so honestly and marked the prices unverified.
+  - This is a follow-up item. The engine doesn't yet treat "search limit reached with nothing verified" as a reason to retry.
+
+**Takeaways**
+- Default (Balanced) customers save most on research questions that well-established knowledge answers, about −70%.
+- Source-heavy research costs about the same per search, but it's capped at 4 searches instead of 6.
+- The largest saving is the opt-in **Economy** setting: 60–95% cheaper across every task type, with comparable quality in this sample.
+- Samples are small (1–2 runs per variant), so treat the percentages as indicative.
+
+**Note: credits ran out during the benchmark.**
+- The grading calls were refused with "Your credit balance is too low". The benchmark used the same key as production because `ANTHROPIC_API_KEY_CI` isn't set.
+- Until the balance is topped up in the Anthropic Console (Billing), live tasks on Agentopia's key will fail with that message. Tasks on customers' own keys are unaffected.
